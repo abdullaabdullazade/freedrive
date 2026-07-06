@@ -206,5 +206,90 @@ const Upload = (() => {
         }
     }
 
-    return { init, handleFiles, handleFolderFiles, addFiles };
+    // Read all entries from a DirectoryReader, looping until exhausted.
+    // readEntries() returns at most 100 items per call (browser limit).
+    function readAllEntries(reader) {
+        return new Promise((resolve, reject) => {
+            const all = [];
+            const next = () =>
+                reader.readEntries((batch) => {
+                    if (!batch.length) return resolve(all);
+                    all.push(...batch);
+                    next();
+                }, reject);
+            next();
+        });
+    }
+
+    // Accepts FileSystemEntry[] captured synchronously from the drop event.
+    async function handleDropEntries(entries) {
+        if (!entries.length) return;
+
+        const hasDir = entries.some((e) => e.isDirectory);
+
+        if (!hasDir) {
+            // Pure files — fast path
+            const files = await Promise.all(
+                entries.map((entry) => new Promise((res, rej) => entry.file(res, rej)))
+            );
+            handleFiles(files);
+            return;
+        }
+
+        // Mixed or folder-only — show preparing indicator
+        const uploadProgress = document.getElementById('upload-progress');
+        const uploadList = document.getElementById('upload-list');
+        const uploadCount = document.getElementById('upload-count');
+        uploadProgress.classList.remove('hidden');
+
+        const prepItem = document.createElement('div');
+        prepItem.className = 'upload-item';
+        prepItem.innerHTML = `
+            <div style="flex:1;min-width:0;">
+                <div class="upload-item-name">Creating folder structure…</div>
+                <div class="upload-item-progress"><div class="upload-item-progress-fill" style="width:60%;transition:none"></div></div>
+            </div>
+            <div class="upload-item-status">Preparing…</div>
+        `;
+        uploadList.appendChild(prepItem);
+        uploadCount.textContent = '…';
+
+        const currentFolder = FileManager.getCurrentFolder?.() || null;
+        const fileJobPromises = [];
+
+        async function traverse(entry, parentFolderId) {
+            if (entry.isFile) {
+                fileJobPromises.push(
+                    new Promise((res, rej) =>
+                        entry.file((f) => res({ file: f, folderId: parentFolderId }), rej)
+                    )
+                );
+            } else if (entry.isDirectory) {
+                let folderId;
+                try {
+                    const created = await API.folders.create(entry.name, parentFolderId || null);
+                    if (!created?.id) throw new Error('no id returned');
+                    folderId = created.id;
+                } catch (err) {
+                    Components.toast(`Folder "${entry.name}" could not be created: ${err.message}`, 'error');
+                    return;
+                }
+                const children = await readAllEntries(entry.createReader());
+                await Promise.all(children.map((child) => traverse(child, folderId)));
+            }
+        }
+
+        try {
+            await Promise.all(entries.map((entry) => traverse(entry, currentFolder)));
+            const jobs = await Promise.all(fileJobPromises);
+            prepItem.remove();
+            FileManager.refresh?.();
+            addFiles(jobs);
+        } catch (err) {
+            prepItem.remove();
+            Components.toast(`Upload failed: ${err.message}`, 'error');
+        }
+    }
+
+    return { init, handleFiles, handleFolderFiles, handleDropEntries, addFiles };
 })();

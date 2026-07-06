@@ -370,6 +370,17 @@ const App = (() => {
                 e.preventDefault();
                 dragCounter = 0;
                 document.getElementById('drop-overlay')?.classList.add('hidden');
+                // Capture FileSystemEntry objects synchronously — DataTransfer items
+                // become inaccessible once the event handler returns.
+                if (e.dataTransfer?.items?.length) {
+                    const entries = Array.from(e.dataTransfer.items)
+                        .map((item) => item.webkitGetAsEntry?.())
+                        .filter(Boolean);
+                    if (entries.length) {
+                        Upload.handleDropEntries(entries);
+                        return;
+                    }
+                }
                 if (e.dataTransfer?.files?.length) {
                     Upload.handleFiles(e.dataTransfer.files);
                 }
