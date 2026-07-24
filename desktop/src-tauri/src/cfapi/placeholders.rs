@@ -542,6 +542,7 @@ mod tests {
             id: "f1".into(),
             name: "Docs".into(),
             parent_id: None,
+            is_trashed: false,
         }];
         let files = vec![FileRecord {
             id: "file1".into(),

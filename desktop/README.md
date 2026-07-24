@@ -25,7 +25,7 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Device identity** — reports the computer hostname and keeps a stable installation ID, so signing in again updates the same entry in the server's Devices list instead of creating a duplicate
 - **Non-blocking sign-in** — crypto unlock, sync restore, and Explorer (CfAPI) start in the background so login does not block the UI
 - **System tray** — minimize to tray, pause/resume sync from the menu
-- **Windows Explorer integration** (Windows 10 1809+) — open `%USERPROFILE%\FreeDrive` in File Explorer while the desktop client is running; **My Drive** defaults to **Stream** (placeholders; download on open, free space on close). Optional **Mirror** keeps a full local copy. After sign-in, **FreeDrive** is pinned in Explorer’s left navigation pane (CLSID NameSpace + SyncRootManager, app icon). Logout leaves that entry pinned; uninstall removes it.
+- **Windows Explorer integration** (Windows 10 1809+) — open `%USERPROFILE%\FreeDrive` in File Explorer while the desktop client is running; **My Drive** defaults to **Stream** (placeholders; download on open, free space on close). Optional **Mirror** keeps a full local copy. Poll removes local placeholders after remote Move to bin. After sign-in, **FreeDrive** is pinned in Explorer’s left navigation pane (CLSID NameSpace + SyncRootManager, app icon). Logout leaves that entry pinned; uninstall removes it.
 
 ## Prerequisites
 

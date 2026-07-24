@@ -701,6 +701,22 @@ pub fn my_drive_delete_placeholder(conn: &Connection, relative_path: &str) -> Ap
     Ok(())
 }
 
+/// Delete a placeholder and every descendant under that relative path (folder trash reconcile).
+pub fn my_drive_delete_placeholders_under_prefix(
+    conn: &Connection,
+    relative_path: &str,
+) -> AppResult<usize> {
+    let relative_path = normalize_my_drive_relative_path(relative_path);
+    let like = format!("{}\\%", relative_path.trim_end_matches(['\\', '/']));
+    let n = conn.execute(
+        "DELETE FROM my_drive_placeholders
+         WHERE relative_path = ?1 COLLATE NOCASE
+            OR relative_path LIKE ?2 COLLATE NOCASE",
+        params![relative_path, like],
+    )?;
+    Ok(n)
+}
+
 pub fn get_sync_state(
     conn: &Connection,
     sync_folder_id: i64,
@@ -1218,6 +1234,34 @@ mod tests {
         let row = my_drive_get_placeholder(&conn, "My Drive\\Docs").unwrap();
         assert_eq!(row.as_ref().map(|r| r.0.as_str()), Some("f-1"));
         assert_eq!(row.as_ref().map(|r| r.1.as_str()), Some("folder"));
+    }
+
+    #[test]
+    fn my_drive_delete_placeholders_under_prefix_cascades() {
+        let conn = test_conn();
+        init_schema(&conn).unwrap();
+        my_drive_upsert_placeholder(&conn, "My Drive\\Docs", "f-1", "folder", Some("root-1")).unwrap();
+        my_drive_upsert_placeholder(
+            &conn,
+            "My Drive\\Docs\\a.txt",
+            "file-1",
+            "file",
+            Some("f-1"),
+        )
+        .unwrap();
+        my_drive_upsert_placeholder(&conn, "My Drive\\Other", "f-2", "folder", Some("root-1"))
+            .unwrap();
+        let n = my_drive_delete_placeholders_under_prefix(&conn, "My Drive\\Docs").unwrap();
+        assert_eq!(n, 2);
+        assert!(my_drive_get_placeholder(&conn, "My Drive\\Docs")
+            .unwrap()
+            .is_none());
+        assert!(my_drive_get_placeholder(&conn, "My Drive\\Docs\\a.txt")
+            .unwrap()
+            .is_none());
+        assert!(my_drive_get_placeholder(&conn, "My Drive\\Other")
+            .unwrap()
+            .is_some());
     }
 
     #[test]

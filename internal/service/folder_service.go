@@ -47,8 +47,9 @@ func NewFolderService(
 
 // Create creates a new folder. If a live folder with the same parent+name already
 // exists, it is returned (idempotent). If a trashed folder with that name exists,
-// it is restored and returned — this avoids UNIQUE(parent_id,name,owner_id)
-// collisions that leave desktop sync stuck on "folder not found".
+// it is renamed in the bin to free UNIQUE(parent_id,name,owner_id) and a new live
+// folder is created — never auto-restored into My Drive (that would undo a
+// mobile/web Move to bin when desktop sync retries create_or_resolve).
 func (s *FolderService) Create(ctx context.Context, folder *domain.Folder) error {
 	if folder.ParentID != nil && *folder.ParentID != "" {
 		if err := s.access.CanWriteFolder(ctx, *folder.ParentID, folder.OwnerID); err != nil {
@@ -71,22 +72,18 @@ func (s *FolderService) Create(ctx context.Context, folder *domain.Folder) error
 		return err
 	}
 	if existing != nil {
-		if existing.IsTrashed {
-			if err := s.Restore(ctx, existing.ID, folder.OwnerID); err != nil {
-				return err
-			}
-			restored, err := s.folderRepo.GetByID(ctx, existing.ID)
-			if err != nil {
-				return err
-			}
-			if restored == nil {
-				return fmt.Errorf("folder not found")
-			}
-			*folder = *restored
+		if !existing.IsTrashed {
+			*folder = *existing
 			return nil
 		}
-		*folder = *existing
-		return nil
+		suffix := existing.ID
+		if len(suffix) > 8 {
+			suffix = suffix[:8]
+		}
+		existing.Name = fmt.Sprintf("%s (bin %s)", existing.Name, suffix)
+		if err := s.folderRepo.Update(ctx, existing); err != nil {
+			return err
+		}
 	}
 
 	if err := s.folderRepo.Create(ctx, folder); err != nil {

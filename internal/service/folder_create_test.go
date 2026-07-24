@@ -93,7 +93,7 @@ func TestFolderService_CreateReusesLiveFolder(t *testing.T) {
 	}
 }
 
-func TestFolderService_CreateRestoresTrashedFolder(t *testing.T) {
+func TestFolderService_CreateDoesNotRestoreTrashedFolder(t *testing.T) {
 	f := setupFolderCreateTest(t)
 	parentID := f.parentID
 
@@ -119,21 +119,29 @@ func TestFolderService_CreateRestoresTrashedFolder(t *testing.T) {
 	if err := f.svc.Create(f.ctx, again); err != nil {
 		t.Fatalf("create after trash: %v", err)
 	}
-	if again.ID != originalID {
-		t.Fatalf("expected restore of %s, got %s", originalID, again.ID)
+	if again.ID == originalID {
+		t.Fatal("expected a new live folder, not restore of trashed id")
 	}
 	if again.IsTrashed {
-		t.Fatal("expected restored folder to be live")
+		t.Fatal("expected new folder to be live")
 	}
 
-	// UNIQUE must allow a second create to reuse the live row, not fail.
+	stillTrashed, err := f.folderRepo.GetByID(f.ctx, originalID)
+	if err != nil || stillTrashed == nil || !stillTrashed.IsTrashed {
+		t.Fatalf("original should remain trashed, got %#v err=%v", stillTrashed, err)
+	}
+	if stillTrashed.Name == "immich-backup" {
+		t.Fatalf("trashed name should be renamed to free UNIQUE, got %q", stillTrashed.Name)
+	}
+
+	// Live reuse still works for the new folder.
 	third := &domain.Folder{
 		Name: "immich-backup", OwnerID: f.ownerID, ParentID: &parentID,
 	}
 	if err := f.svc.Create(f.ctx, third); err != nil {
-		t.Fatalf("create after restore: %v", err)
+		t.Fatalf("create after new live: %v", err)
 	}
-	if third.ID != originalID {
-		t.Fatalf("expected same id after restore reuse, got %s", third.ID)
+	if third.ID != again.ID {
+		t.Fatalf("expected reuse of live id %s, got %s", again.ID, third.ID)
 	}
 }

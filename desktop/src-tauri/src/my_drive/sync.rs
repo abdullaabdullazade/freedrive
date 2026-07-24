@@ -3,8 +3,8 @@ use crate::auth_store::sync_root_dir;
 use crate::cfapi::{create_placeholders, notify_directory_updated, MY_DRIVE_FOLDER_NAME};
 use crate::crypto::key_to_b64url;
 use crate::db::{
-    get_file_key, my_drive_delete_placeholder, my_drive_get_placeholder, my_drive_upsert_placeholder,
-    store_file_key, DbHandle,
+    get_file_key, my_drive_delete_placeholder, my_drive_delete_placeholders_under_prefix,
+    my_drive_get_placeholder, my_drive_upsert_placeholder, store_file_key, DbHandle,
 };
 use crate::error::{AppError, AppResult};
 use crate::my_drive::{
@@ -13,6 +13,7 @@ use crate::my_drive::{
 };
 use crate::sync::log::sync_log;
 use crate::sync::DOWNLOAD_CONCURRENCY;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -55,6 +56,7 @@ async fn poll_my_drive_folder(
     let local_dir = local_dir_for_relative(sync_root, parent_relative);
     if std::fs::create_dir_all(&local_dir).is_ok() {
         let _ = create_placeholders(&local_dir, &contents.folders, &contents.files);
+        reconcile_local_against_remote(db, parent_relative, &local_dir, &contents);
         notify_directory_updated(&local_dir);
     }
 
@@ -77,6 +79,72 @@ async fn poll_my_drive_folder(
     }
 
     Ok(())
+}
+
+/// Remove local My Drive placeholders that are no longer in the remote listing
+/// (e.g. soft-deleted from mobile). Local-only paths without a placeholder row
+/// are left alone (pending upload).
+fn reconcile_local_against_remote(
+    db: &DbHandle,
+    parent_relative: &str,
+    local_dir: &Path,
+    contents: &crate::api::types::FolderContents,
+) {
+    let mut remote_names: HashSet<String> = HashSet::new();
+    for folder in &contents.folders {
+        remote_names.insert(sanitize_name(&folder.name).to_ascii_lowercase());
+    }
+    for file in &contents.files {
+        remote_names.insert(sanitize_name(&file.name).to_ascii_lowercase());
+    }
+
+    let entries = match std::fs::read_dir(local_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.eq_ignore_ascii_case("desktop.ini") || name.starts_with('.') {
+            continue;
+        }
+        if remote_names.contains(&name.to_ascii_lowercase()) {
+            continue;
+        }
+        let child_relative = join_my_drive_relative(parent_relative, &name);
+        let path = entry.path();
+        let tracked = {
+            let Ok(conn) = db.lock() else {
+                continue;
+            };
+            my_drive_get_placeholder(&conn, &child_relative)
+                .ok()
+                .flatten()
+                .is_some()
+        };
+        if !tracked {
+            continue;
+        }
+        let remove_result = if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+        } else {
+            std::fs::remove_file(&path)
+        };
+        match remove_result {
+            Ok(()) => {
+                if let Ok(conn) = db.lock() {
+                    let _ = my_drive_delete_placeholders_under_prefix(&conn, &child_relative);
+                }
+                sync_log(format!("My Drive reconcile removed — {}", child_relative));
+            }
+            Err(e) => {
+                sync_log(format!(
+                    "My Drive reconcile failed {}: {}",
+                    child_relative, e
+                ));
+            }
+        }
+    }
 }
 
 async fn mirror_files_parallel(

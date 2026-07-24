@@ -23,7 +23,7 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **User avatar** — photo from `avatar_url` on `GET /api/v1/me`, or initials fallback
 - **Profile menu** — avatar, Sign out, storage bar (`{used} of {total} used`) from `/me/storage`, Manage storage link to the web UI
 - **Devices** — appears as `Mobile (…)` and keeps a stable installation ID, so re-login updates the same entry in the account Devices list instead of creating a duplicate
-- **File actions** — item menu for opening, sharing a copy, downloading, starring, and moving files to Bin
+- **File actions** — item menu for opening, sharing a copy, downloading, starring, and **Move to bin** (soft-delete on the server — item appears in Bin / Trash on web and mobile; permanent delete is from Bin). Desktop My Drive poll removes matching Explorer placeholders within ~20s; creating the same name again does not revive the trashed folder into My Drive.
 - **Client-side decryption** — account and per-file keys sync from the server so encrypted files can be opened on Android; larger files download to disk and decrypt via native AES-GCM (avoids JS heap OOM)
 - **In-app preview** — images, video (native-controls player via `expo-video`), plain text (Markdown/JSON), spreadsheets (`.xlsx` / `.xls` / `.csv`), and PDF (open with another app)
 - **Large media limit** — images/videos **over 100 MiB** are not opened in the in-app player (avoids crashes); tapping shows Save / Share / Cancel instead
