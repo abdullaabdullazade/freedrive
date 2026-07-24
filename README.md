@@ -105,7 +105,7 @@ FreeDrive is ideal for:
 - **New** menu — folder, file/folder upload, Document (`.txt`), Spreadsheet (`.csv`), Presentation (`.md` stub); Document/Spreadsheet/Presentation open in Docs or Sheets after create
 - Download encrypted blob payloads with metadata headers
 - Rename and move files between folders
-- Soft delete to Trash (files and folders, including folder subtrees)
+- Soft delete to Trash (files and folders, including folder subtrees); Move to bin from mobile/web removes the item from My Drive listings — desktop Explorer catches up on the next My Drive poll (~20s)
 - Restore from Trash (files and folders)
 - Permanent delete (files and folders)
 - Scheduled and admin trash purge removes old trashed **files** (blobs + rows) and **folders** (metadata rows)
@@ -591,7 +591,7 @@ For encrypted payloads **> 32 MiB**, clients open a session and send **8 MiB
 
 #### Folders
 
-- `POST /folders` — create under `parent_id`; **idempotent** for the same `(parent, name, owner)`: returns an existing live folder, or **restores** a matching trashed folder (avoids UNIQUE conflicts that blocked desktop nested sync)
+- `POST /folders` — create under `parent_id`; **idempotent** for the same live `(parent, name, owner)` (returns the existing folder). If a **trashed** folder already uses that name, it is renamed in the bin to free UNIQUE and a **new** live folder is created — never auto-restored into My Drive (so mobile/web Move to bin is not undone by desktop `create_or_resolve`)
 - `GET /folders/root` — child folders + paginated files (`page_size`, `page_token`; response: `next_page_token`, `total_files`)
 - `GET /folders/all`
 - `GET /folders/trash`
@@ -681,7 +681,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Parallel sync** — up to 6 concurrent uploads and 6 concurrent downloads (initial folder scan, pending queue, My Drive mirror polling)
 - **Windows Explorer (CfAPI)** — after sign-in, with the app running in the tray, open `%USERPROFILE%\FreeDrive\My Drive` in File Explorer (Windows 10 1809+); **FreeDrive** is pinned in Explorer’s left nav with the app icon (CLSID NameSpace + SyncRootManager; stays on logout, removed on uninstall); provider connects in the background and reconnects automatically before opening the folder
 - **Explorer status** — desktop app exposes integration state (connected / registered / finalized) for diagnostics
-- **My Drive in Explorer** — `My Drive` subfolder with server folders/files; **Stream (default)** keeps cloud placeholders (download on open, upload on close, then free local space); **Mirror** keeps a full local copy; local edits upload on save, deletes sync to the server; remote changes polled every 20s (mirror downloads new/changed files)
+- **My Drive in Explorer** — `My Drive` subfolder with server folders/files; **Stream (default)** keeps cloud placeholders (download on open, upload on close, then free local space); **Mirror** keeps a full local copy; local edits upload on save, deletes sync to the server; remote changes polled every 20s (mirror downloads new/changed files); poll **removes** local placeholders after remote Move to bin so Explorer matches My Drive
 - **Uninstall (NSIS)** — setup uninstaller stops the app, unregisters the CfAPI sync root, removes Explorer NameSpace/SyncRootManager pins, removes `%USERPROFILE%\FreeDrive\My Drive`, and deletes app data under `%APPDATA%\FreeDrive` (sync.db, auth — not the Tauri BUNDLEID folder); prefer NSIS over MSI for this cleanup
 - Independent release tags: `desktop-v0.1.0` (server tags remain `v1.x.x`)
 - See [`desktop/README.md`](desktop/README.md) for dev setup, Explorer troubleshooting, and [`docs/desktop-api.md`](docs/desktop-api.md) for API endpoints used by the client
@@ -733,7 +733,7 @@ The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app
 - **User avatar** — circular profile photo from `GET /api/v1/me` (`avatar_url` data-URL), with initials fallback
 - **Profile menu** — storage bar (`{used} of {total} used`) from `/me/storage`, Manage storage (web), Sign out
 - **Device identification** — sessions appear as `Mobile (…)` on the account Devices list
-- **File actions** — open, share a decrypted copy, download, star/unstar, and move files to Bin from item menus
+- **File actions** — open, share a decrypted copy, download, star/unstar, and **Move to bin** (soft-delete on the server; item appears in Bin / Trash; permanent delete from Bin). Desktop My Drive poll drops matching Explorer placeholders within ~20s; creating the same name again does not revive the trashed folder into My Drive
 - **Cross-device decryption** — syncs password-wrapped account and file keys so encrypted files can be opened on Android
 - **In-app preview** — images, video (native-controls player via `expo-video`), plain text (Markdown/JSON), spreadsheets (`.xlsx` / `.xls` / `.csv`), PDF (open with another app)
 - **Large media** — images/videos over **100 MiB** are not opened in-app (Save / Share / Cancel instead) to avoid OOM crashes; smaller files may decrypt via native AES-GCM on disk

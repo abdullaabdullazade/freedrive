@@ -109,7 +109,7 @@ Desktop releases use tags **`desktop-v*`** (e.g. `desktop-v0.1.0`). Server relea
 
 ### Sync appears stuck or files do not upload
 
-- Ensure the FreeDrive **server** is running and reachable at the URL you entered during sign-in (use a build that includes idempotent `POST /folders` restore-from-trash).
+- Ensure the FreeDrive **server** is running and reachable at the URL you entered during sign-in (use a build that includes idempotent live `POST /folders` and rename-in-bin on name collision with trash — not auto-restore).
 - Check **Sync activity** in the app for per-file errors; upload rows show a progress ring while transferring.
 - Transient failures are retried automatically on the next scan/verify — you do **not** need to wipe `%APPDATA%\FreeDrive` after a server update.
 - Check `%APPDATA%\FreeDrive\sync.log` for detailed sync steps (`ensure remote folder`, `file start`, `create_folder … failed`).
