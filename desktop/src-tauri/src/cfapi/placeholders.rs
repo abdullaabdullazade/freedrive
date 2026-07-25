@@ -497,8 +497,25 @@ pub fn create_placeholders(
     for folder in folders {
         match create_named_folder_placeholder(parent_dir, &folder.name, &folder.id) {
             Ok(()) => stats.created += 1,
-            Err(e) if is_duplicate_placeholder_error(&e) => stats.skipped_duplicates += 1,
-            Err(e) => return Err(e),
+            Err(e) if is_duplicate_placeholder_error(&e) => {
+                stats.skipped_duplicates += 1;
+                let folder_path = parent_dir.join(file_display_name(&folder.name));
+                if let Err(ensure_err) =
+                    ensure_cloud_placeholder(&folder_path, "folder", &folder.id)
+                {
+                    sync_log(format!(
+                        "cfapi: ensure folder after duplicate {}: {}",
+                        folder_path.display(),
+                        ensure_err
+                    ));
+                }
+            }
+            Err(e) => {
+                sync_log(format!(
+                    "cfapi: create folder placeholder failed {}: {}",
+                    folder.name, e
+                ));
+            }
         }
     }
 
@@ -506,7 +523,12 @@ pub fn create_placeholders(
         match create_file_placeholder(parent_dir, file) {
             Ok(()) => stats.created += 1,
             Err(e) if is_duplicate_placeholder_error(&e) => stats.skipped_duplicates += 1,
-            Err(e) => return Err(e),
+            Err(e) => {
+                sync_log(format!(
+                    "cfapi: create file placeholder failed {}: {}",
+                    file.name, e
+                ));
+            }
         }
     }
 

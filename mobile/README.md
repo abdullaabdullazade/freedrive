@@ -1,4 +1,4 @@
-﻿# FreeDrive Mobile (MVP)
+# FreeDrive Mobile (MVP)
 
 React Native + Expo client for [FreeDrive](https://github.com/marcinx98x/freedrive). Android-first. Sign in to your self-hosted server and browse My Drive, Computers, Starred, Shared, Recent, and Bin.
 

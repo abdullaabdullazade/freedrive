@@ -710,8 +710,9 @@ npm run build:exe:clean
 Build outputs:
 
 - `desktop/src-tauri/target/release/freedrive-desktop.exe`
-- `desktop/src-tauri/target/release/bundle/nsis/FreeDrive_0.1.0_x64-setup.exe` (recommended — My Drive / CfAPI + `%APPDATA%\FreeDrive` uninstall cleanup)
-- `desktop/src-tauri/target/release/bundle/msi/FreeDrive_0.1.0_x64_en-US.msi` (no equivalent uninstall cleanup yet)
+- `desktop/src-tauri/target/release/bundle/nsis/FreeDrive_<version>_x64-setup.exe` (only target — NSIS runs the My Drive / CfAPI + `%APPDATA%\FreeDrive` uninstall hooks)
+
+To update an existing install, run the new `FreeDrive_*_x64-setup.exe` (in-place; no uninstall prompt). Or from `desktop/`: `npm run install:update`.
 
 ---
 

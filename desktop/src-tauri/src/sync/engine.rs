@@ -7,7 +7,7 @@ use crate::db::{
     delete_folder_mapping, delete_sync_state_row, get_file_key, get_folder_mapping,
     get_sync_folder_by_path, get_sync_state, insert_sync_folder, is_pending_remote_folder,
     list_folder_mappings, list_sync_folders, list_sync_states_for_folder, set_folder_mapping,
-    store_file_key, update_sync_folder_remote_id, upsert_activity, upsert_sync_state, DbHandle,
+    store_file_key, update_sync_folder_remote_id, insert_activity, upsert_activity, upsert_sync_state, DbHandle,
     SyncFolderRow,
 };
 use crate::error::{AppError, AppResult};
@@ -341,7 +341,12 @@ impl SyncEngine {
     }
 
     pub fn enqueue_file_removed(self: &Arc<Self>, path: PathBuf) {
-        if self.is_paused() {
+        if self.is_paused() || self.watcher_suppress.is_suppressed(&path) {
+            return;
+        }
+        // My Drive deletes go through CfAPI NOTIFY_DELETE only — ignore watcher
+        // echoes from reconcile/local placeholder removal (avoids re-trash after restore).
+        if is_my_drive_path(&path) {
             return;
         }
 
@@ -522,6 +527,45 @@ impl SyncEngine {
     pub fn emit_activity_public(&self, name: &str, detail: &str, size: i64, status: &str) {
         if let Ok(conn) = self.db.lock() {
             self.emit_activity_with_conn(&conn, name, detail, size, status);
+        } else {
+            let _ = self.app.emit(
+                "sync-activity",
+                serde_json::json!({
+                    "id": null,
+                    "name": name,
+                    "detail": detail,
+                    "file_size": size,
+                    "status": status,
+                }),
+            );
+        }
+    }
+
+    /// Append a new activity row (do not overwrite same basename) — for delete/restore history.
+    fn emit_activity_append_with_conn(
+        &self,
+        conn: &rusqlite::Connection,
+        name: &str,
+        detail: &str,
+        size: i64,
+        status: &str,
+    ) {
+        let activity_id = insert_activity(conn, name, detail, size, status).ok();
+        let _ = self.app.emit(
+            "sync-activity",
+            serde_json::json!({
+                "id": activity_id,
+                "name": name,
+                "detail": detail,
+                "file_size": size,
+                "status": status,
+            }),
+        );
+    }
+
+    pub fn emit_activity_append(&self, name: &str, detail: &str, size: i64, status: &str) {
+        if let Ok(conn) = self.db.lock() {
+            self.emit_activity_append_with_conn(&conn, name, detail, size, status);
         } else {
             let _ = self.app.emit(
                 "sync-activity",
@@ -984,9 +1028,11 @@ impl SyncEngine {
         Ok(())
     }
 
-    /// Walk the remote sync-folder tree and soft-delete anything that does not
-    /// exist on disk (or duplicate same-name files beside the tracked remote id).
-    /// Local disk is the source of truth for computer sync folders.
+    /// Walk the remote sync-folder tree and soft-delete *tracked* items that do
+    /// not exist on disk (or duplicate same-name files beside the tracked id).
+    /// Untracked remote files/folders (restore / web upload while offline) are
+    /// left alone — the change feed downloads them. Local deletes of previously
+    /// synced items are also caught by reconcile_local_deletions.
     async fn reconcile_remote_orphans(self: &Arc<Self>, sf: &SyncFolderRow) -> AppResult<()> {
         let root = PathBuf::from(&sf.local_path);
         if !root.exists() {
@@ -996,12 +1042,18 @@ impl SyncEngine {
             return Ok(());
         }
 
-        let tracked_files: HashMap<String, String> = {
+        let (tracked_files, tracked_folders) = {
             let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-            list_sync_states_for_folder(&conn, sf.id)?
+            let files: HashMap<String, String> = list_sync_states_for_folder(&conn, sf.id)?
                 .into_iter()
                 .filter_map(|(rel, _, rid)| rid.filter(|id| !id.is_empty()).map(|id| (rel, id)))
-                .collect()
+                .collect();
+            let folders: HashMap<String, String> = list_folder_mappings(&conn, sf.id)?
+                .into_iter()
+                .filter(|m| !m.relative_path.is_empty() && !m.remote_folder_id.is_empty())
+                .map(|m| (m.relative_path, m.remote_folder_id))
+                .collect();
+            (files, folders)
         };
 
         let mut queued = 0u32;
@@ -1011,6 +1063,7 @@ impl SyncEngine {
             "",
             &root,
             &tracked_files,
+            &tracked_folders,
             &mut queued,
         )
         .await?;
@@ -1031,6 +1084,7 @@ impl SyncEngine {
         parent_rel: &str,
         local_root: &Path,
         tracked_files: &HashMap<String, String>,
+        tracked_folders: &HashMap<String, String>,
         queued: &mut u32,
     ) -> AppResult<()> {
         let contents = match self.api.get_folder_contents(remote_folder_id).await {
@@ -1059,7 +1113,13 @@ impl SyncEngine {
             let local_path = local_root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
 
             if !local_path.is_file() {
+                // Only trash remote ids this computer previously tracked.
+                // Untracked remotes (restore / web create while offline) must
+                // survive until the change feed downloads them.
                 for f in &files {
+                    if tracked_files.get(&relative).map(String::as_str) != Some(f.id.as_str()) {
+                        continue;
+                    }
                     if self.queue_file_delete_if_needed(sync_folder_id, &relative, &f.id)? {
                         *queued += 1;
                     }
@@ -1101,6 +1161,9 @@ impl SyncEngine {
             };
             let local_dir = local_root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
             if !local_dir.is_dir() {
+                if tracked_folders.get(&relative).map(String::as_str) != Some(folder.id.as_str()) {
+                    continue;
+                }
                 if self.queue_folder_delete_if_needed(sync_folder_id, &relative, &folder.id)? {
                     *queued += 1;
                 }
@@ -1112,6 +1175,7 @@ impl SyncEngine {
                 &relative,
                 local_root,
                 tracked_files,
+                tracked_folders,
                 queued,
             ))
             .await?;
@@ -2369,6 +2433,7 @@ impl SyncEngine {
             &self.db,
             mirror,
             Arc::clone(&self.download_semaphore),
+            Some(&self.watcher_suppress),
         )
         .await
     }

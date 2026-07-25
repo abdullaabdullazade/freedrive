@@ -20,15 +20,19 @@ impl WatcherSuppress {
         self.inner.read().contains(path)
     }
 
-    pub fn run_suppressed<F: FnOnce()>(&self, path: &Path, f: F) {
+    pub fn run_suppressed<F, R>(&self, path: &Path, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
         self.inner.write().insert(path.to_path_buf());
-        f();
+        let result = f();
         let inner = Arc::clone(&self.inner);
         let p = path.to_path_buf();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(2)).await;
             inner.write().remove(&p);
         });
+        result
     }
 }
 

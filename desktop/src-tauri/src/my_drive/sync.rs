@@ -1,14 +1,15 @@
 use crate::api::ApiClient;
 use crate::auth_store::sync_root_dir;
 use crate::cfapi::{
-    create_placeholders, mark_directory_partially_populated, notify_directory_updated,
+    create_file_placeholder, create_named_folder_placeholder, ensure_cloud_placeholder,
+    is_duplicate_placeholder_error, mark_directory_partially_populated, notify_directory_updated,
     MY_DRIVE_FOLDER_NAME,
 };
 use crate::crypto::key_to_b64url;
 use crate::db::{
-    get_file_key, my_drive_delete_placeholder, my_drive_delete_placeholders_under_prefix,
-    my_drive_get_placeholder, my_drive_upsert_placeholder, store_file_key, upsert_activity,
-    DbHandle,
+    get_file_key, insert_activity, my_drive_delete_placeholder,
+    my_drive_delete_placeholders_under_prefix, my_drive_get_placeholder,
+    my_drive_upsert_placeholder, store_file_key, DbHandle,
 };
 use crate::error::{AppError, AppResult};
 use crate::my_drive::{
@@ -16,6 +17,7 @@ use crate::my_drive::{
     relative_path_from_sync_root, resolve_my_drive_root_id,
 };
 use crate::sync::log::sync_log;
+use crate::sync::suppress::WatcherSuppress;
 use crate::sync::DOWNLOAD_CONCURRENCY;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -28,6 +30,7 @@ pub async fn poll_my_drive(
     db: &DbHandle,
     mirror: bool,
     download_sem: Arc<Semaphore>,
+    suppress: Option<&WatcherSuppress>,
 ) -> AppResult<()> {
     let sync_root = sync_root_dir(false)?;
     sync_log(&format!("poll My Drive started (mirror={})", mirror));
@@ -39,6 +42,7 @@ pub async fn poll_my_drive(
         None,
         mirror,
         download_sem,
+        suppress,
     )
     .await?;
     notify_directory_updated(&local_dir_for_relative(&sync_root, MY_DRIVE_FOLDER_NAME));
@@ -54,13 +58,14 @@ async fn poll_my_drive_folder(
     folder_id: Option<&str>,
     mirror: bool,
     download_sem: Arc<Semaphore>,
+    suppress: Option<&WatcherSuppress>,
 ) -> AppResult<()> {
     let contents =
         fetch_folder_contents(api, db, sync_root, parent_relative, folder_id).await?;
     let local_dir = local_dir_for_relative(sync_root, parent_relative);
     if std::fs::create_dir_all(&local_dir).is_ok() {
-        apply_remote_children(db, parent_relative, &local_dir, &contents);
-        reconcile_local_against_remote(db, parent_relative, &local_dir, &contents);
+        apply_remote_children(db, parent_relative, &local_dir, &contents, suppress);
+        reconcile_local_against_remote(db, parent_relative, &local_dir, &contents, suppress);
         notify_directory_updated(&local_dir);
     }
 
@@ -78,6 +83,7 @@ async fn poll_my_drive_folder(
             Some(&folder.id),
             mirror,
             download_sem.clone(),
+            suppress,
         ))
         .await?;
     }
@@ -92,6 +98,7 @@ fn apply_remote_children(
     parent_relative: &str,
     local_dir: &Path,
     contents: &crate::api::types::FolderContents,
+    suppress: Option<&WatcherSuppress>,
 ) {
     let (missing_folders, missing_files) = missing_remote_children(local_dir, contents);
     let had_missing = !missing_folders.is_empty() || !missing_files.is_empty();
@@ -111,30 +118,73 @@ fn apply_remote_children(
         }
     }
 
-    match create_placeholders(local_dir, &contents.folders, &contents.files) {
-        Ok(stats) => {
-            if stats.created > 0 || stats.skipped_duplicates > 0 {
+    let mut created = 0u32;
+    let mut skipped = 0u32;
+
+    for folder in &contents.folders {
+        let name = sanitize_name(&folder.name);
+        let folder_path = local_dir.join(&name);
+        match create_named_folder_placeholder(local_dir, &name, &folder.id) {
+            Ok(()) => created += 1,
+            Err(e) if is_duplicate_placeholder_error(&e) => {
+                skipped += 1;
+                ensure_or_replace_folder_placeholder(
+                    local_dir,
+                    &folder_path,
+                    &name,
+                    &folder.id,
+                    suppress,
+                );
+            }
+            Err(e) => {
                 sync_log(format!(
-                    "My Drive placeholders under {} — created={} skipped={}",
-                    parent_relative, stats.created, stats.skipped_duplicates
+                    "My Drive folder placeholder failed {}\\{}: {}",
+                    parent_relative, name, e
                 ));
             }
         }
-        Err(e) => {
-            sync_log(format!(
-                "My Drive create_placeholders failed under {}: {}",
-                parent_relative, e
-            ));
+    }
+
+    // Ensure parent is a cloud placeholder before creating file children.
+    if let Ok(conn) = db.lock() {
+        if let Ok(Some((remote_id, _))) = my_drive_get_placeholder(&conn, parent_relative) {
+            if let Err(e) = ensure_cloud_placeholder(local_dir, "folder", &remote_id) {
+                sync_log(format!(
+                    "My Drive ensure parent cloud placeholder {}: {}",
+                    local_dir.display(),
+                    e
+                ));
+            }
         }
+    }
+
+    for file in &contents.files {
+        match create_file_placeholder(local_dir, file) {
+            Ok(()) => created += 1,
+            Err(e) if is_duplicate_placeholder_error(&e) => skipped += 1,
+            Err(e) => {
+                sync_log(format!(
+                    "My Drive file placeholder failed {}\\{}: {}",
+                    parent_relative, file.name, e
+                ));
+            }
+        }
+    }
+
+    if created > 0 || skipped > 0 {
+        sync_log(format!(
+            "My Drive placeholders under {} — created={} skipped={}",
+            parent_relative, created, skipped
+        ));
     }
 
     if had_missing {
         if let Ok(conn) = db.lock() {
             for folder in &missing_folders {
-                let _ = upsert_activity(&conn, &folder.name, "Restored from cloud", 0, "synced");
+                let _ = insert_activity(&conn, &folder.name, "Restored from cloud", 0, "synced");
             }
             for file in &missing_files {
-                let _ = upsert_activity(
+                let _ = insert_activity(
                     &conn,
                     &file.name,
                     "Restored from cloud",
@@ -155,6 +205,65 @@ fn apply_remote_children(
                 parent_relative, file.name
             ));
         }
+    }
+}
+
+/// When a leftover plain directory blocks CfCreatePlaceholders, convert it to a
+/// cloud placeholder — or replace an empty leftover if convert fails.
+fn ensure_or_replace_folder_placeholder(
+    parent_dir: &Path,
+    folder_path: &Path,
+    name: &str,
+    remote_id: &str,
+    suppress: Option<&WatcherSuppress>,
+) {
+    if let Err(e) = ensure_cloud_placeholder(folder_path, "folder", remote_id) {
+        sync_log(format!(
+            "My Drive ensure_cloud_placeholder {}: {}",
+            folder_path.display(),
+            e
+        ));
+    }
+
+    // Already a usable cloud folder?
+    if mark_directory_partially_populated(folder_path).is_ok() {
+        return;
+    }
+
+    let is_empty = folder_path.is_dir()
+        && std::fs::read_dir(folder_path)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false);
+    if !is_empty {
+        sync_log(format!(
+            "My Drive leftover folder not cloud and not empty — {}",
+            folder_path.display()
+        ));
+        return;
+    }
+
+    let remove_ok = if let Some(suppress) = suppress {
+        suppress.run_suppressed(folder_path, || std::fs::remove_dir_all(folder_path).is_ok())
+    } else {
+        std::fs::remove_dir_all(folder_path).is_ok()
+    };
+    if !remove_ok {
+        sync_log(format!(
+            "My Drive failed to remove leftover folder — {}",
+            folder_path.display()
+        ));
+        return;
+    }
+    match create_named_folder_placeholder(parent_dir, name, remote_id) {
+        Ok(()) => sync_log(format!(
+            "My Drive replaced leftover folder — {}",
+            folder_path.display()
+        )),
+        Err(e) => sync_log(format!(
+            "My Drive recreate folder after replace failed {}: {}",
+            folder_path.display(),
+            e
+        )),
     }
 }
 
@@ -187,6 +296,7 @@ fn reconcile_local_against_remote(
     parent_relative: &str,
     local_dir: &Path,
     contents: &crate::api::types::FolderContents,
+    suppress: Option<&WatcherSuppress>,
 ) {
     let mut remote_names: HashSet<String> = HashSet::new();
     for folder in &contents.folders {
@@ -223,24 +333,30 @@ fn reconcile_local_against_remote(
         if !tracked {
             continue;
         }
-        let remove_result = if path.is_dir() {
-            std::fs::remove_dir_all(&path)
-        } else {
-            std::fs::remove_file(&path)
-        };
-        match remove_result {
-            Ok(()) => {
-                if let Ok(conn) = db.lock() {
-                    let _ = my_drive_delete_placeholders_under_prefix(&conn, &child_relative);
+        // Clear DB first so NOTIFY_DELETE / watcher cannot re-trash on the server.
+        if let Ok(conn) = db.lock() {
+            let _ = my_drive_delete_placeholders_under_prefix(&conn, &child_relative);
+        }
+        let remove_ok = if let Some(suppress) = suppress {
+            suppress.run_suppressed(&path, || {
+                if path.is_dir() {
+                    std::fs::remove_dir_all(&path).is_ok()
+                } else {
+                    std::fs::remove_file(&path).is_ok()
                 }
-                sync_log(format!("My Drive reconcile removed — {}", child_relative));
-            }
-            Err(e) => {
-                sync_log(format!(
-                    "My Drive reconcile failed {}: {}",
-                    child_relative, e
-                ));
-            }
+            })
+        } else if path.is_dir() {
+            std::fs::remove_dir_all(&path).is_ok()
+        } else {
+            std::fs::remove_file(&path).is_ok()
+        };
+        if remove_ok {
+            sync_log(format!("My Drive reconcile removed — {}", child_relative));
+        } else {
+            sync_log(format!(
+                "My Drive reconcile failed to remove disk path — {}",
+                child_relative
+            ));
         }
     }
 }

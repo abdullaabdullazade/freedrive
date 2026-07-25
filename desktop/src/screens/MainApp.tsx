@@ -169,17 +169,25 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
       setActivity((prev) => {
         const name = item.name || "File";
         const status = item.status || "uploading";
-        const idx = prev.findIndex((a) => a.name === name);
-        const prevProgress = idx >= 0 ? prev[idx].progress : undefined;
+        const detail = item.detail || "";
+        const appendOnly =
+          status === "deleted" || detail === "Restored from cloud";
+        const prevProgress = !appendOnly
+          ? prev.find((a) => a.name === name)?.progress
+          : undefined;
         const row: ActivityItem = {
           id: typeof item.id === "number" ? item.id : Date.now(),
           name,
-          detail: item.detail || "",
+          detail,
           file_size: item.file_size || 0,
           status,
           created_at: new Date().toISOString(),
           progress: status === "uploading" ? prevProgress : undefined,
         };
+        if (appendOnly) {
+          return [row, ...prev].slice(0, 50);
+        }
+        const idx = prev.findIndex((a) => a.name === name);
         if (idx >= 0) {
           const next = [...prev];
           next[idx] = { ...row, id: prev[idx].id };

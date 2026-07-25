@@ -28,11 +28,9 @@ pub fn clear_my_drive_contents(db: &DbHandle) -> AppResult<()> {
     Ok(())
 }
 
-/// Unregister CfAPI sync root (best-effort) and delete the entire My Drive folder.
+/// Delete the entire My Drive folder. CfAPI is unregistered separately by
+/// `--uninstall-cleanup`, which also runs on upgrades where files must be kept.
 pub fn uninstall_remove_my_drive(db: &DbHandle) -> AppResult<()> {
-    #[cfg(windows)]
-    crate::cfapi::unregister_for_uninstall(db);
-
     let my_drive = my_drive_path(false)?;
     if my_drive.exists() {
         if let Err(e) = remove_path_recursive(&my_drive) {
@@ -66,18 +64,12 @@ pub fn uninstall_remove_app_data() {
     }
 }
 
+/// Roaming `%APPDATA%\FreeDrive` only — `%LOCALAPPDATA%\FreeDrive` is the per-user
+/// install directory (NSIS `$INSTDIR`) and is removed by the uninstaller itself.
 fn app_data_dirs() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Some(roaming) = dirs::data_dir() {
-        out.push(roaming.join("FreeDrive"));
-    }
-    if let Some(local) = dirs::data_local_dir() {
-        let local_fd = local.join("FreeDrive");
-        if out.iter().all(|d| d != &local_fd) {
-            out.push(local_fd);
-        }
-    }
-    out
+    dirs::data_dir()
+        .map(|roaming| vec![roaming.join("FreeDrive")])
+        .unwrap_or_default()
 }
 
 fn clear_placeholders_best_effort(db: &DbHandle) {

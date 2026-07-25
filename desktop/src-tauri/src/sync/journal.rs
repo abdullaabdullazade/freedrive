@@ -44,7 +44,7 @@ pub async fn process_journal_entry(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("file");
-            engine.emit_activity_public(name, "Removed from cloud", 0, "deleted");
+            engine.emit_activity_append(name, "Removed from cloud", 0, "deleted");
         }
         "folder_delete" => {
             if let Some(ref remote_id) = entry.remote_entity_id {
@@ -65,12 +65,12 @@ pub async fn process_journal_entry(
                 clear_sync_prefix(&conn, entry.sync_folder_id, &entry.relative_path)?;
                 mark_journal_done(&conn, entry.id)?;
             }
-            // Emit after releasing db lock — emit_activity_public locks db again.
+            // Emit after releasing db lock — emit_activity_append locks db again.
             let name = Path::new(&entry.relative_path)
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("folder");
-            engine.emit_activity_public(name, "Removed from cloud", 0, "deleted");
+            engine.emit_activity_append(name, "Removed from cloud", 0, "deleted");
         }
         "file_rename" => {
             let remote_id = entry

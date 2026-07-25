@@ -25,21 +25,32 @@ pub(crate) fn shutdown_cfapi() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // NSIS PREUNINSTALL invokes this before removing binaries (no UI).
-    if std::env::args().any(|a| a == "--uninstall-cleanup") {
+    // NSIS PREUNINSTALL invokes these before removing binaries (no UI). `--uninstall-cleanup`
+    // only drops the Explorer/CfAPI registration so an upgrade keeps working; `--uninstall-purge`
+    // additionally deletes My Drive and %APPDATA%\FreeDrive (Tauri's BUNDLEID path is not used).
+    let uninstall_cleanup = std::env::args().any(|a| a == "--uninstall-cleanup");
+    let uninstall_purge = std::env::args().any(|a| a == "--uninstall-purge");
+    if uninstall_cleanup || uninstall_purge {
         match db::open_db() {
             Ok(db) => {
-                if let Err(e) = my_drive::uninstall_remove_my_drive(&db) {
-                    eprintln!("uninstall cleanup failed: {}", e);
-                    sync::log::sync_log(format!("uninstall cleanup failed: {}", e));
+                #[cfg(windows)]
+                if uninstall_cleanup {
+                    cfapi::unregister_for_uninstall(&db);
+                }
+                if uninstall_purge {
+                    if let Err(e) = my_drive::uninstall_remove_my_drive(&db) {
+                        eprintln!("uninstall purge failed: {}", e);
+                        sync::log::sync_log(format!("uninstall purge failed: {}", e));
+                    }
                 }
             }
             Err(e) => {
                 eprintln!("uninstall cleanup: open db failed: {}", e);
             }
         }
-        // Always wipe app data (sync.db, auth) — Tauri's BUNDLEID path is not used.
-        my_drive::uninstall_remove_app_data();
+        if uninstall_purge {
+            my_drive::uninstall_remove_app_data();
+        }
         return;
     }
 

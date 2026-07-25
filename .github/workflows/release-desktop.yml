@@ -58,9 +58,6 @@ jobs:
           mkdir -p dist-desktop
           cp desktop/src-tauri/target/release/freedrive-desktop.exe dist-desktop/
           shopt -s nullglob
-          for f in desktop/src-tauri/target/release/bundle/msi/*.msi; do
-            cp "$f" dist-desktop/
-          done
           for f in desktop/src-tauri/target/release/bundle/nsis/*-setup.exe; do
             cp "$f" dist-desktop/
           done

@@ -147,8 +147,10 @@ async fn apply_remote_file(
         return Ok(());
     }
 
-    // Path-based safeguards: never clobber newer local content and never
-    // resurrect files the user deleted locally.
+    // Path-based safeguards: never clobber newer local content. Previously-synced
+    // files deleted locally (Some + missing) propagate a server delete. Untracked
+    // remotes (None + missing) are downloaded — restore / web create while offline.
+    let is_restore = change.operation.eq_ignore_ascii_case("restore");
     let state_row = {
         let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
         crate::db::get_sync_state(&conn, sync_folder_id, &relative)?
@@ -179,10 +181,10 @@ async fn apply_remote_file(
                     ));
                     return Ok(());
                 }
-            } else if Path::new(&local_root).exists() {
+            } else if !is_restore && Path::new(&local_root).exists() {
                 // File was synced before and is now gone locally: the user deleted
                 // it while the app was not watching. Propagate the delete instead
-                // of re-downloading.
+                // of re-downloading. (Skipped for restore — download below.)
                 if let Some(rid) = stored_remote_id.clone() {
                     crate::sync::journal::enqueue_file_delete(
                         db,
@@ -210,22 +212,20 @@ async fn apply_remote_file(
                     change.entity_id, relative
                 ));
                 return Ok(());
-            } else if Path::new(&local_root).exists() {
-                // No sync_state and file gone locally — local disk wins; trash
-                // on server instead of resurrecting the file.
-                crate::sync::journal::enqueue_file_delete(
-                    db,
-                    sync_folder_id,
-                    &relative,
-                    &change.entity_id,
-                )?;
-                sync_log(format!(
-                    "remote file {} -> {} missing locally, queued server delete",
-                    change.entity_id, relative
-                ));
-                return Ok(());
             }
+            // No sync_state and no local file: new / restored / uploaded-via-web.
+            // Download below — do NOT trash on the server (that re-trashed restores
+            // done while the desktop app was offline). Genuine local deletes of
+            // previously synced files are handled by the Some branch and by
+            // reconcile_local_deletions.
         }
+    }
+
+    if is_restore {
+        sync_log(format!(
+            "remote file {} -> {} restored, downloading",
+            change.entity_id, relative
+        ));
     }
 
     if let Some(parent) = local_path.parent() {
@@ -269,22 +269,31 @@ async fn apply_remote_file(
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64);
 
-    let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-    upsert_sync_state_with_version(
-        &conn,
-        sync_folder_id,
-        &relative,
-        &local_path.to_string_lossy(),
-        Some(&change.entity_id),
-        None,
-        mtime,
-        Some(&change.occurred_at),
-        change.version,
-        "synced",
-    )?;
+    {
+        let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        upsert_sync_state_with_version(
+            &conn,
+            sync_folder_id,
+            &relative,
+            &local_path.to_string_lossy(),
+            Some(&change.entity_id),
+            None,
+            mtime,
+            Some(&change.occurred_at),
+            change.version,
+            "synced",
+        )?;
+    }
 
     sync_log(format!("applied remote file {} -> {}", change.entity_id, relative));
-    let _ = engine;
+    if is_restore {
+        let name = Path::new(&relative)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(change.name.as_str());
+        // Must not hold db lock — emit_activity_append locks again.
+        engine.emit_activity_append(name, "Restored from cloud", 0, "synced");
+    }
     Ok(())
 }
 

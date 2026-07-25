@@ -8,7 +8,8 @@ mod connection;
 mod placeholders;
 #[cfg(windows)]
 pub use placeholders::{
-    create_placeholders, dehydrate_my_drive_tree, mark_directory_partially_populated,
+    create_file_placeholder, create_named_folder_placeholder, dehydrate_my_drive_tree,
+    ensure_cloud_placeholder, is_duplicate_placeholder_error, mark_directory_partially_populated,
     MY_DRIVE_FOLDER_NAME,
 };
 #[cfg(windows)]

@@ -623,6 +623,24 @@ fn handle_notify_delete(info: &CF_CALLBACK_INFO) -> Result<(), String> {
     if !path_is_under_my_drive(&sync_root, &full) {
         return Ok(());
     }
+    // Reconcile clears DB before disk remove — ignore echo deletes with no placeholder.
+    let relative = match relative_path_from_sync_root(&sync_root, &full) {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+    let tracked = {
+        let conn = db.lock().map_err(|e| e.to_string())?;
+        crate::db::my_drive_get_placeholder(&conn, &relative)
+            .map_err(|e| e.to_string())?
+            .is_some()
+    };
+    if !tracked {
+        cfapi_callback_log(&format!(
+            "NOTIFY_DELETE ignored (no placeholder) {}",
+            full.display()
+        ));
+        return Ok(());
+    }
     cfapi_callback_log(&format!("NOTIFY_DELETE {}", full.display()));
     tauri::async_runtime::spawn(async move {
         if let Err(e) = crate::my_drive::delete_my_drive_path(&api, &db, &full).await {

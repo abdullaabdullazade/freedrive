@@ -95,11 +95,28 @@ npm run build:exe:clean
 Outputs (monorepo path):
 
 - `desktop/src-tauri/target/release/freedrive-desktop.exe`
-- `desktop/src-tauri/target/release/bundle/msi/` and `bundle/nsis/` (installers)
+- `desktop/src-tauri/target/release/bundle/nsis/FreeDrive_<version>_x64-setup.exe`
 
-> Prefer the **NSIS** installer for uninstall cleanup: it unregisters the CfAPI sync root, removes `%USERPROFILE%\FreeDrive\My Drive`, and deletes app data under `%APPDATA%\FreeDrive` (sync.db, auth — not the Tauri BUNDLEID folder `com.freedrive.desktop`). Check **Delete application data** in the uninstaller as well. The MSI target does not run that cleanup yet.
+> Only the **NSIS** target is built: it runs the uninstall hooks (CfAPI sync root, My Drive, `%APPDATA%\FreeDrive`), which MSI/WiX cannot do. A previous MSI install also forces a full uninstall on the reinstall page.
 
 > Use **`npm run build:exe:clean`** after changing the logo — it regenerates icons and runs `cargo clean` so Windows embeds the new `.ico` in the exe. Do not run an old copy from `freedrive-app/`.
+
+### Updating an existing install
+
+Just run the new `FreeDrive_*_x64-setup.exe` (double-click). Same version or newer installs **in place** — no “uninstall previous version” prompt; sign-in, `%APPDATA%\FreeDrive\sync.db`, My Drive and Explorer registration are preserved.
+
+```bash
+npm run install:update
+```
+
+Same result via `/UPDATE` (useful in scripts). Files and app data are removed only when you uninstall from Windows Settings and check **Delete application data**.
+
+| Action | Explorer/CfAPI registration | `~/FreeDrive/My Drive` + `%APPDATA%\FreeDrive` |
+|--------|-----------------------------|-----------------------------------------------|
+| Setup (same/newer version) | kept | kept |
+| `install:update` (`/UPDATE`) | kept | kept |
+| Uninstall, checkbox off | removed | kept |
+| Uninstall, **Delete application data** | removed | removed |
 
 ## Releases
 

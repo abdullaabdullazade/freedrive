@@ -775,14 +775,15 @@ pub fn insert_activity(
     detail: &str,
     file_size: i64,
     status: &str,
-) -> AppResult<()> {
+) -> AppResult<i64> {
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO sync_activity (name, detail, file_size, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![name, detail, file_size, status, now],
     )?;
+    let id = conn.last_insert_rowid();
     prune_activity(conn)?;
-    Ok(())
+    Ok(id)
 }
 
 fn prune_activity(conn: &Connection) -> AppResult<()> {
@@ -830,8 +831,7 @@ pub fn upsert_activity(
         prune_activity(conn)?;
         return Ok(id);
     }
-    insert_activity(conn, name, detail, file_size, status)?;
-    Ok(conn.last_insert_rowid())
+    insert_activity(conn, name, detail, file_size, status)
 }
 
 #[derive(Debug, Clone, Serialize)]

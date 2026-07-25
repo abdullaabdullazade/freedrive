@@ -1,13 +1,14 @@
 {
   "name": "freedrive-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "build:exe": "npm run icons && npm run tauri build",
     "build:exe:clean": "npm run icons && cargo clean --manifest-path src-tauri/Cargo.toml && npm run tauri build",
+    "install:update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-update.ps1",
     "preview": "vite preview",
     "tauri": "tauri",
     "icons:source": "node scripts/generate-app-icon.mjs",
