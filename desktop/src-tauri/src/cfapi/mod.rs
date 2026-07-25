@@ -7,7 +7,10 @@ mod connection;
 #[cfg(windows)]
 mod placeholders;
 #[cfg(windows)]
-pub use placeholders::{create_placeholders, dehydrate_my_drive_tree, MY_DRIVE_FOLDER_NAME};
+pub use placeholders::{
+    create_placeholders, dehydrate_my_drive_tree, mark_directory_partially_populated,
+    MY_DRIVE_FOLDER_NAME,
+};
 #[cfg(windows)]
 mod register;
 #[cfg(windows)]

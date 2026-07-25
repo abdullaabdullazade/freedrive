@@ -534,6 +534,13 @@ fn handle_notify_file_close(info: &CF_CALLBACK_INFO) -> Result<(), String> {
     if !full.is_file() {
         return Ok(());
     }
+    let file_name = full
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file");
+    if crate::sync::should_skip_file(file_name) {
+        return Ok(());
+    }
     let (api, db, sync_root) = with_context(|ctx| {
         (ctx.api.clone(), ctx.db.clone(), ctx.sync_root.clone())
     })

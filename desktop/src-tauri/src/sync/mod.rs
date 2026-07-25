@@ -10,3 +10,4 @@ pub const UPLOAD_CONCURRENCY: usize = 12;
 pub const DOWNLOAD_CONCURRENCY: usize = 12;
 
 pub use engine::SyncEngine;
+pub(crate) use engine::should_skip_file;

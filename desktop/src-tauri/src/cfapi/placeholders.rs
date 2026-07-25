@@ -15,7 +15,7 @@ use windows::Win32::Storage::CloudFilters::{
     CF_OPERATION_PARAMETERS_0_7, CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION,
     CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS, CF_PLACEHOLDER_CREATE_FLAG_DISABLE_ON_DEMAND_POPULATION,
     CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC, CF_PLACEHOLDER_CREATE_FLAGS, CF_PLACEHOLDER_CREATE_INFO,
-    CF_UPDATE_FLAG_DISABLE_ON_DEMAND_POPULATION,
+    CF_UPDATE_FLAG_DISABLE_ON_DEMAND_POPULATION, CF_UPDATE_FLAG_ENABLE_ON_DEMAND_POPULATION,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
@@ -397,6 +397,19 @@ pub unsafe fn transfer_or_complete_fetch(
 
 /// Mark a placeholder directory as fully populated (no further FETCH_PLACEHOLDERS).
 pub fn mark_directory_populated(dir: &Path) -> AppResult<()> {
+    update_directory_population(dir, CF_UPDATE_FLAG_DISABLE_ON_DEMAND_POPULATION)
+}
+
+/// Re-enable on-demand population so Explorer will send FETCH_PLACEHOLDERS again
+/// (needed after remote restore when the folder was previously marked fully populated).
+pub fn mark_directory_partially_populated(dir: &Path) -> AppResult<()> {
+    update_directory_population(dir, CF_UPDATE_FLAG_ENABLE_ON_DEMAND_POPULATION)
+}
+
+fn update_directory_population(
+    dir: &Path,
+    flags: windows::Win32::Storage::CloudFilters::CF_UPDATE_FLAGS,
+) -> AppResult<()> {
     let wide = path_to_wide(dir);
     let handle = unsafe {
         CreateFileW(
@@ -412,17 +425,8 @@ pub fn mark_directory_populated(dir: &Path) -> AppResult<()> {
     };
 
     let result = unsafe {
-        CfUpdatePlaceholder(
-            handle,
-            None,
-            None,
-            0,
-            None,
-            CF_UPDATE_FLAG_DISABLE_ON_DEMAND_POPULATION,
-            None,
-            None,
-        )
-        .map_err(|e| AppError::msg(format!("CfUpdatePlaceholder: {}", e)))
+        CfUpdatePlaceholder(handle, None, None, 0, None, flags, None, None)
+            .map_err(|e| AppError::msg(format!("CfUpdatePlaceholder: {}", e)))
     };
 
     unsafe {

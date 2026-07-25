@@ -208,6 +208,13 @@ impl SyncEngine {
             if !path.is_file() {
                 return;
             }
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file");
+            if should_skip_file(file_name) {
+                return;
+            }
             let engine = Arc::clone(self);
             tauri::async_runtime::spawn(async move {
                 let _ = engine.sync_my_drive_path(&path).await;
@@ -2523,7 +2530,7 @@ fn is_my_drive_path(path: &Path) -> bool {
         .is_some_and(|root| path.starts_with(&root))
 }
 
-fn should_skip_file(name: &str) -> bool {
+pub(crate) fn should_skip_file(name: &str) -> bool {
     let lower = name.to_lowercase();
     if lower == "desktop.ini" || lower == "thumbs.db" || lower == "ehthumbs.db" {
         return true;
@@ -2749,4 +2756,21 @@ pub fn set_sync_mode(db: &DbHandle, mode: &str) -> AppResult<()> {
     let normalized = if mode == "stream" { "stream" } else { "mirror" };
     let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
     config_set(&conn, SYNC_MODE_KEY, normalized)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_skip_file;
+
+    #[test]
+    fn skips_office_lock_and_junk_files() {
+        assert!(should_skip_file("~$jpowszechniejsze atrybuty S.M.A.R.T.rtf"));
+        assert!(should_skip_file("~$foo.docx"));
+        assert!(should_skip_file("desktop.ini"));
+        assert!(should_skip_file("Thumbs.db"));
+        assert!(should_skip_file(".hidden"));
+        assert!(should_skip_file("notes.tmp"));
+        assert!(!should_skip_file("Najpowszechniejsze atrybuty S.M.A.R.T.rtf"));
+        assert!(!should_skip_file("report.docx"));
+    }
 }

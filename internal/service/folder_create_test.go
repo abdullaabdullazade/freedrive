@@ -12,11 +12,12 @@ import (
 )
 
 type folderCreateFixture struct {
-	ctx       context.Context
-	svc       *FolderService
+	ctx        context.Context
+	svc        *FolderService
 	folderRepo *sqlite.FolderRepo
-	ownerID   string
-	parentID  string
+	fileRepo   *sqlite.FileRepo
+	ownerID    string
+	parentID   string
 }
 
 func setupFolderCreateTest(t *testing.T) *folderCreateFixture {
@@ -60,6 +61,7 @@ func setupFolderCreateTest(t *testing.T) *folderCreateFixture {
 		ctx:        ctx,
 		svc:        svc,
 		folderRepo: folderRepo,
+		fileRepo:   fileRepo,
 		ownerID:    ownerID,
 		parentID:   parent.ID,
 	}
@@ -143,5 +145,68 @@ func TestFolderService_CreateDoesNotRestoreTrashedFolder(t *testing.T) {
 	}
 	if third.ID != again.ID {
 		t.Fatalf("expected reuse of live id %s, got %s", again.ID, third.ID)
+	}
+}
+
+func TestFolderService_RestoreRestoresSubtreeFiles(t *testing.T) {
+	f := setupFolderCreateTest(t)
+	parentID := f.parentID
+
+	folder := &domain.Folder{
+		Name: "Docs", OwnerID: f.ownerID, ParentID: &parentID,
+	}
+	if err := f.svc.Create(f.ctx, folder); err != nil {
+		t.Fatalf("create folder: %v", err)
+	}
+
+	now := time.Now()
+	fileIDs := make([]string, 0, 2)
+	for _, name := range []string{"a.zip", "notes.txt"} {
+		file := &domain.File{
+			ID: uuid.New().String(), Name: name, MimeType: "application/octet-stream",
+			Size: 10, EncryptedSize: 20, FolderID: &folder.ID, OwnerID: f.ownerID,
+			BlobPath: "blob/" + name, IV: "iv", Version: 1,
+			CreatedAt: now, UpdatedAt: now, AccessedAt: now,
+		}
+		if err := f.fileRepo.Create(f.ctx, file); err != nil {
+			t.Fatalf("create file %s: %v", name, err)
+		}
+		fileIDs = append(fileIDs, file.ID)
+	}
+
+	if err := f.folderRepo.MoveToTrash(f.ctx, folder.ID); err != nil {
+		t.Fatalf("trash folder: %v", err)
+	}
+	for _, id := range fileIDs {
+		got, err := f.fileRepo.GetByID(f.ctx, id)
+		if err != nil || got == nil || !got.IsTrashed {
+			t.Fatalf("expected trashed file %s, got %#v err=%v", id, got, err)
+		}
+	}
+
+	empty, err := f.svc.GetContents(f.ctx, &folder.ID, f.ownerID, domain.FolderContentsOptions{})
+	if err != nil {
+		t.Fatalf("contents while trashed: %v", err)
+	}
+	if len(empty.Files) != 0 {
+		t.Fatalf("expected no live files while trashed, got %d", len(empty.Files))
+	}
+
+	if err := f.svc.Restore(f.ctx, folder.ID, f.ownerID); err != nil {
+		t.Fatalf("restore folder: %v", err)
+	}
+
+	contents, err := f.svc.GetContents(f.ctx, &folder.ID, f.ownerID, domain.FolderContentsOptions{})
+	if err != nil {
+		t.Fatalf("contents after restore: %v", err)
+	}
+	if len(contents.Files) != 2 {
+		t.Fatalf("expected 2 restored files, got %d", len(contents.Files))
+	}
+	for _, id := range fileIDs {
+		got, err := f.fileRepo.GetByID(f.ctx, id)
+		if err != nil || got == nil || got.IsTrashed {
+			t.Fatalf("expected live file %s after restore, got %#v err=%v", id, got, err)
+		}
 	}
 }

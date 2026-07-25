@@ -1,10 +1,14 @@
 use crate::api::ApiClient;
 use crate::auth_store::sync_root_dir;
-use crate::cfapi::{create_placeholders, notify_directory_updated, MY_DRIVE_FOLDER_NAME};
+use crate::cfapi::{
+    create_placeholders, mark_directory_partially_populated, notify_directory_updated,
+    MY_DRIVE_FOLDER_NAME,
+};
 use crate::crypto::key_to_b64url;
 use crate::db::{
     get_file_key, my_drive_delete_placeholder, my_drive_delete_placeholders_under_prefix,
-    my_drive_get_placeholder, my_drive_upsert_placeholder, store_file_key, DbHandle,
+    my_drive_get_placeholder, my_drive_upsert_placeholder, store_file_key, upsert_activity,
+    DbHandle,
 };
 use crate::error::{AppError, AppResult};
 use crate::my_drive::{
@@ -55,7 +59,7 @@ async fn poll_my_drive_folder(
         fetch_folder_contents(api, db, sync_root, parent_relative, folder_id).await?;
     let local_dir = local_dir_for_relative(sync_root, parent_relative);
     if std::fs::create_dir_all(&local_dir).is_ok() {
-        let _ = create_placeholders(&local_dir, &contents.folders, &contents.files);
+        apply_remote_children(db, parent_relative, &local_dir, &contents);
         reconcile_local_against_remote(db, parent_relative, &local_dir, &contents);
         notify_directory_updated(&local_dir);
     }
@@ -79,6 +83,100 @@ async fn poll_my_drive_folder(
     }
 
     Ok(())
+}
+
+/// Create missing local placeholders for remote children (e.g. after Trash→Restore).
+/// Re-enables on-demand FETCH when the folder was previously marked fully populated empty.
+fn apply_remote_children(
+    db: &DbHandle,
+    parent_relative: &str,
+    local_dir: &Path,
+    contents: &crate::api::types::FolderContents,
+) {
+    let (missing_folders, missing_files) = missing_remote_children(local_dir, contents);
+    let had_missing = !missing_folders.is_empty() || !missing_files.is_empty();
+
+    if had_missing {
+        if let Err(e) = mark_directory_partially_populated(local_dir) {
+            sync_log(format!(
+                "My Drive enable on-demand failed {}: {}",
+                local_dir.display(),
+                e
+            ));
+        } else {
+            sync_log(format!(
+                "My Drive re-enabled on-demand population — {}",
+                parent_relative
+            ));
+        }
+    }
+
+    match create_placeholders(local_dir, &contents.folders, &contents.files) {
+        Ok(stats) => {
+            if stats.created > 0 || stats.skipped_duplicates > 0 {
+                sync_log(format!(
+                    "My Drive placeholders under {} — created={} skipped={}",
+                    parent_relative, stats.created, stats.skipped_duplicates
+                ));
+            }
+        }
+        Err(e) => {
+            sync_log(format!(
+                "My Drive create_placeholders failed under {}: {}",
+                parent_relative, e
+            ));
+        }
+    }
+
+    if had_missing {
+        if let Ok(conn) = db.lock() {
+            for folder in &missing_folders {
+                let _ = upsert_activity(&conn, &folder.name, "Restored from cloud", 0, "synced");
+            }
+            for file in &missing_files {
+                let _ = upsert_activity(
+                    &conn,
+                    &file.name,
+                    "Restored from cloud",
+                    file.size,
+                    "synced",
+                );
+            }
+        }
+        for folder in &missing_folders {
+            sync_log(format!(
+                "My Drive restored folder — {}\\{}",
+                parent_relative, folder.name
+            ));
+        }
+        for file in &missing_files {
+            sync_log(format!(
+                "My Drive restored file — {}\\{}",
+                parent_relative, file.name
+            ));
+        }
+    }
+}
+
+fn missing_remote_children(
+    local_dir: &Path,
+    contents: &crate::api::types::FolderContents,
+) -> (Vec<crate::api::types::Folder>, Vec<crate::api::types::FileRecord>) {
+    let mut missing_folders = Vec::new();
+    let mut missing_files = Vec::new();
+    for folder in &contents.folders {
+        let name = sanitize_name(&folder.name);
+        if !local_dir.join(&name).exists() {
+            missing_folders.push(folder.clone());
+        }
+    }
+    for file in &contents.files {
+        let name = sanitize_name(&file.name);
+        if !local_dir.join(&name).exists() {
+            missing_files.push(file.clone());
+        }
+    }
+    (missing_folders, missing_files)
 }
 
 /// Remove local My Drive placeholders that are no longer in the remote listing
@@ -227,6 +325,9 @@ pub async fn upload_my_drive_path(api: &ApiClient, db: &DbHandle, path: &Path) -
         .and_then(|n| n.to_str())
         .unwrap_or("file")
         .to_string();
+    if crate::sync::should_skip_file(&file_name) {
+        return Ok(());
+    }
 
     let existing_remote = {
         let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
