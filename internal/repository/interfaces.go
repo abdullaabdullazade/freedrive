@@ -76,6 +76,7 @@ type FileRepository interface {
 	SumEncryptedSizeByOwner(ctx context.Context, ownerID string) (int64, error)
 	SumAllEncryptedSize(ctx context.Context) (int64, error)
 	ListFileMetaByOwner(ctx context.Context, ownerID string) ([]domain.FileMeta, error)
+	ListFileMetaAll(ctx context.Context) ([]domain.FileMeta, error)
 
 	// Versioning
 	CreateVersion(ctx context.Context, version *domain.FileVersion) error

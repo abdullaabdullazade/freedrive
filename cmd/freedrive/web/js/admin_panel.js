@@ -89,6 +89,8 @@ const AdminPanel = (() => {
         usersPerPage: 25,
         usersMenuOpen: '',
         drawerUserId: '',
+        drawerBreakdown: null,
+        storageBreakdown: null,
         storageUserPage: 1,
         storageUserPerPage: 25,
         activityFilters: {
@@ -443,7 +445,7 @@ const AdminPanel = (() => {
     }
 
     async function hydrateData() {
-        const [statsRes, usersRes, diskRes, activityRes, filesRes, invitesRes, backupsRes] = await Promise.all([
+        const [statsRes, usersRes, diskRes, activityRes, filesRes, invitesRes, backupsRes, breakdownRes] = await Promise.all([
             API.admin.stats().catch(() => ({})),
             API.admin.users().catch(() => ({ users: [] })),
             API.diskStats().catch(() => ({})),
@@ -451,6 +453,7 @@ const AdminPanel = (() => {
             API.files.list({ page_size: '800' }).catch(() => ({ files: [] })),
             API.admin.invites().catch(() => ({ invites: [] })),
             API.admin.listBackups().catch(() => ({ backups: [] })),
+            API.admin.storageBreakdown().catch(() => ({ breakdown: null })),
         ]);
 
         state.stats = statsRes.stats || statsRes || {};
@@ -460,6 +463,7 @@ const AdminPanel = (() => {
         state.files = Array.isArray(filesRes.files) ? filesRes.files : [];
         state.invites = (Array.isArray(invitesRes.invites) ? invitesRes.invites : []).map(mapInviteRecord);
         state.backups = Array.isArray(backupsRes.backups) ? backupsRes.backups : [];
+        state.storageBreakdown = breakdownRes?.breakdown || null;
 
         ensureUserMeta();
         saveLocalUiState();
@@ -506,8 +510,8 @@ const AdminPanel = (() => {
         return AdminFileIcons.document;
     }
 
-    function estimateFileTypeBuckets() {
-        const buckets = {
+    function emptyFileTypeBuckets() {
+        return {
             Images: { size: 0, count: 0, color: '#1967D2' },
             Videos: { size: 0, count: 0, color: '#188038' },
             Documents: { size: 0, count: 0, color: '#E37400' },
@@ -515,40 +519,36 @@ const AdminPanel = (() => {
             Archives: { size: 0, count: 0, color: '#E53935' },
             Other: { size: 0, count: 0, color: '#5F6368' },
         };
+    }
 
-        state.files.forEach((f) => {
-            const mime = String(f.mime_type || '').toLowerCase();
-            const size = asNumber(f.size, 0);
-            if (mime.startsWith('image/')) {
-                buckets.Images.size += size;
-                buckets.Images.count += 1;
-                return;
-            }
-            if (mime.startsWith('video/')) {
-                buckets.Videos.size += size;
-                buckets.Videos.count += 1;
-                return;
-            }
-            if (mime.startsWith('audio/')) {
-                buckets.Audio.size += size;
-                buckets.Audio.count += 1;
-                return;
-            }
-            if (mime.includes('zip') || mime.includes('rar') || mime.includes('tar') || mime.includes('7z')) {
-                buckets.Archives.size += size;
-                buckets.Archives.count += 1;
-                return;
-            }
-            if (mime.includes('pdf') || mime.includes('text') || mime.includes('sheet') || mime.includes('word') || mime.includes('csv') || mime.includes('markdown')) {
-                buckets.Documents.size += size;
-                buckets.Documents.count += 1;
-                return;
-            }
-            buckets.Other.size += size;
-            buckets.Other.count += 1;
+    function bucketsFromApiBreakdown(breakdown) {
+        const buckets = emptyFileTypeBuckets();
+        if (!breakdown || typeof breakdown !== 'object') return buckets;
+        const map = {
+            images: 'Images',
+            videos: 'Videos',
+            documents: 'Documents',
+            audio: 'Audio',
+            archives: 'Archives',
+            other: 'Other',
+        };
+        Object.entries(map).forEach(([apiKey, label]) => {
+            const item = breakdown[apiKey];
+            if (!item) return;
+            buckets[label].size = asNumber(item.size, 0);
+            buckets[label].count = asNumber(item.count, 0);
         });
-
         return buckets;
+    }
+
+    function estimateFileTypeBuckets(sourceBreakdown) {
+        if (sourceBreakdown) {
+            return bucketsFromApiBreakdown(sourceBreakdown);
+        }
+        if (state.storageBreakdown) {
+            return bucketsFromApiBreakdown(state.storageBreakdown);
+        }
+        return emptyFileTypeBuckets();
     }
 
     function generateStorageTrend() {
@@ -627,7 +627,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero">
-                    <h2 class="gd-storage-hero-title">Dashboard</h2>
                     <p class="gd-storage-hero-subtitle">Summary of your FreeDrive workspace.</p>
                 </div>
 
@@ -753,7 +752,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <h2 class="gd-storage-hero-title">Manage Users</h2>
                     <p class="gd-storage-hero-subtitle">Add, suspend, or change user roles and permissions.</p>
                 </div>
 
@@ -868,7 +866,7 @@ const AdminPanel = (() => {
         const status = meta.status || 'active';
         const twofaEnabled = Boolean(u.email_2fa_enabled);
         const global2FA = Boolean(state.settings?.security?.require_2fa);
-        const breakdown = estimateFileTypeBuckets();
+        const breakdown = estimateFileTypeBuckets(state.drawerBreakdown);
         const bItems = Object.entries(breakdown).slice(0, 4);
         const recent = (state.activities || [])
             .filter((a) => isAuthActivity(a.action))
@@ -1005,7 +1003,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero">
-                    <h2 class="gd-storage-hero-title">Storage</h2>
                     <div class="gd-meter-container">
                         <div class="gd-meter-header">
                             <span class="gd-meter-used">${Components.formatSize(used)}</span>
@@ -1229,7 +1226,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <h2 class="gd-storage-hero-title">Activity log</h2>
                     <p class="gd-storage-hero-subtitle">Authentication and sign-in events across all users.</p>
                 </div>
 
@@ -1392,7 +1388,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <h2 class="gd-storage-hero-title">Security & access</h2>
                     <p class="gd-storage-hero-subtitle">Monitor suspicious activity, sessions, and authentication policy.</p>
                 </div>
 
@@ -1781,20 +1776,6 @@ const AdminPanel = (() => {
         selection?.classList.add('hidden');
         chipBar?.classList.add('hidden');
 
-        const cu = getCurrentUser();
-        let savedPhoto = localStorage.getItem('fd_profile_photo');
-        if (!savedPhoto) {
-            try {
-                const prefs = JSON.parse(localStorage.getItem('fd_user_prefs') || '{}');
-                if (prefs.profileAvatar) savedPhoto = prefs.profileAvatar;
-            } catch (e) {}
-        }
-        savedPhoto = savedPhoto || cu.avatar_url;
-
-        const avatarHtml = savedPhoto 
-            ? `<img src="${esc(savedPhoto)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
-            : esc(initials(cu.username || cu.email || 'A'));
-
         grid.classList.remove('hidden');
         grid.classList.remove('grid-view');
         grid.innerHTML = `
@@ -1802,20 +1783,7 @@ const AdminPanel = (() => {
                 <header class="admin-page-header">
                     <div class="admin-header-left">
                         <div class="admin-breadcrumb">
-                            <h2>Admin Panel</h2>
-                        </div>
-                    </div>
-                    <div class="admin-head-actions">
-                        <div class="admin-profile-wrap">
-                            <button class="admin-profile-btn" data-admin-action="toggle-admin-profile-menu">
-                                <span class="admin-profile-pill-avatar">${avatarHtml}</span>
-                                <span>${esc(cu.username || cu.email || 'Admin')}</span>
-                            </button>
-                            <div class="admin-profile-menu hidden" id="admin-profile-menu">
-                                <button data-admin-action="open-admin-profile">Profile</button>
-                                <button data-admin-action="open-admin-settings">Settings</button>
-                                <button data-admin-action="admin-logout">Logout</button>
-                            </div>
+                            <h2 id="admin-page-title"></h2>
                         </div>
                     </div>
                 </header>
@@ -1828,9 +1796,23 @@ const AdminPanel = (() => {
         return document.getElementById('admin-section-root');
     }
 
+    function sectionTitle(section) {
+        switch (normalizeSection(section)) {
+            case 'users': return 'Manage Users';
+            case 'storage': return 'Storage';
+            case 'activity': return 'Activity log';
+            case 'security': return 'Security & access';
+            case 'settings': return 'Settings';
+            default: return 'Dashboard';
+        }
+    }
+
     function renderSection() {
         const root = getSectionRoot();
         if (!root) return;
+
+        const titleEl = document.getElementById('admin-page-title');
+        if (titleEl) titleEl.textContent = sectionTitle(state.section);
 
         if (state.section === 'dashboard') {
             root.innerHTML = renderDashboardSection();
@@ -2289,7 +2271,18 @@ const AdminPanel = (() => {
                 if (['open-user-drawer', 'change-role', 'reset-password', 'adjust-quota', 'toggle-suspend', 'delete-user'].includes(action)) {
                     if (action === 'open-user-drawer') {
                         state.drawerUserId = userId;
+                        state.drawerBreakdown = null;
                         renderSection();
+                        API.admin.storageBreakdown(userId)
+                            .then((res) => {
+                                if (state.drawerUserId !== userId) return;
+                                state.drawerBreakdown = res?.breakdown || null;
+                                renderSection();
+                            })
+                            .catch(() => {
+                                if (state.drawerUserId !== userId) return;
+                                state.drawerBreakdown = null;
+                            });
                         return;
                     }
                     await handleUserAction(action, userId);
@@ -2298,6 +2291,7 @@ const AdminPanel = (() => {
 
                 if (action === 'close-user-drawer') {
                     state.drawerUserId = '';
+                    state.drawerBreakdown = null;
                     renderSection();
                     return;
                 }
@@ -2333,6 +2327,12 @@ const AdminPanel = (() => {
                     Components.toast('User updated', 'success');
                     await load('users');
                     state.drawerUserId = userId;
+                    try {
+                        const res = await API.admin.storageBreakdown(userId);
+                        state.drawerBreakdown = res?.breakdown || null;
+                    } catch (_) {
+                        state.drawerBreakdown = null;
+                    }
                     renderSection();
                     return;
                 }
@@ -2521,29 +2521,6 @@ const AdminPanel = (() => {
                     renderSection();
                     return;
                 }
-                if (action === 'toggle-admin-profile-menu') {
-                    document.getElementById('admin-profile-menu')?.classList.toggle('hidden');
-                    return;
-                }
-                if (action === 'open-admin-profile') {
-                    document.getElementById('admin-profile-menu')?.classList.add('hidden');
-                    window.location.href = '/#/files';
-                    Components.toast('Use My Drive profile settings for your account', 'info');
-                    return;
-                }
-                if (action === 'open-admin-settings') {
-                    state.section = 'settings';
-                    state.settingsTab = 'general';
-                    document.getElementById('admin-profile-menu')?.classList.add('hidden');
-                    renderSection();
-                    return;
-                }
-                if (action === 'admin-logout') {
-                    await API.auth.logout().catch(() => {});
-                    window.location.reload();
-                    return;
-                }
-
                 if (action === 'toggle-live') {
                     state.activityLive = btn.checked;
                     if (state.liveTimer) {
@@ -3018,9 +2995,6 @@ const AdminPanel = (() => {
         shell?.addEventListener('click', (e) => {
             if (!e.target.closest('[data-admin-action="toggle-user-menu"]') && !e.target.closest('.gd-popup-menu')) {
                 closeAllRowMenus();
-            }
-            if (!e.target.closest('.admin-profile-wrap')) {
-                document.getElementById('admin-profile-menu')?.classList.add('hidden');
             }
         });
     }

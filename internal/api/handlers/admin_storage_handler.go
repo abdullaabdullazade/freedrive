@@ -55,6 +55,82 @@ func (h *AdminHandler) purgeTrashedFiles(ctx context.Context, files []domain.Fil
 	return removed, freed
 }
 
+type storageBucketStat struct {
+	Size  int64 `json:"size"`
+	Count int   `json:"count"`
+}
+
+// StorageBreakdown handles GET /api/v1/admin/storage/breakdown
+// Optional query: user_id — limit to one owner's non-trashed files.
+func (h *AdminHandler) StorageBreakdown(w http.ResponseWriter, r *http.Request) {
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+
+	var metas []domain.FileMeta
+	var err error
+	if userID != "" {
+		metas, err = h.fileRepo.ListFileMetaByOwner(r.Context(), userID)
+	} else {
+		metas, err = h.fileRepo.ListFileMetaAll(r.Context())
+	}
+	if err != nil {
+		writeError(w, "failed to compute storage breakdown", http.StatusInternalServerError)
+		return
+	}
+
+	breakdown := map[string]*storageBucketStat{
+		"images":    {Size: 0, Count: 0},
+		"videos":    {Size: 0, Count: 0},
+		"documents": {Size: 0, Count: 0},
+		"audio":     {Size: 0, Count: 0},
+		"archives":  {Size: 0, Count: 0},
+		"other":     {Size: 0, Count: 0},
+	}
+	for _, m := range metas {
+		key := adminStorageCategory(m.MimeType, m.Name)
+		b := breakdown[key]
+		if b == nil {
+			b = breakdown["other"]
+		}
+		b.Size += m.EncryptedSize
+		b.Count++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"breakdown": breakdown,
+	})
+}
+
+// adminStorageCategory maps a file into one of six admin Storage legend buckets.
+func adminStorageCategory(mime, name string) string {
+	mt := strings.ToLower(strings.TrimSpace(mime))
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+
+	if strings.HasPrefix(mt, "image/") || imageExts[ext] {
+		return "images"
+	}
+	if strings.HasPrefix(mt, "video/") || videoExts[ext] {
+		return "videos"
+	}
+	if strings.HasPrefix(mt, "audio/") || audioExts[ext] {
+		return "audio"
+	}
+	if strings.Contains(mt, "zip") || strings.Contains(mt, "rar") || strings.Contains(mt, "tar") ||
+		strings.Contains(mt, "7z") || strings.Contains(mt, "gzip") || strings.Contains(mt, "x-compressed") ||
+		archiveExts[ext] {
+		return "archives"
+	}
+	if mt == "application/pdf" ||
+		strings.HasPrefix(mt, "text/") ||
+		strings.Contains(mt, "word") || strings.Contains(mt, "opendocument") ||
+		strings.Contains(mt, "spreadsheet") || strings.Contains(mt, "ms-excel") || strings.Contains(mt, "spreadsheetml") ||
+		strings.Contains(mt, "presentation") || strings.Contains(mt, "powerpoint") ||
+		mt == "application/json" ||
+		docExts[ext] {
+		return "documents"
+	}
+	return "other"
+}
+
 // PurgeTrash handles POST /api/v1/admin/storage/purge-trash?days=30|0
 func (h *AdminHandler) PurgeTrash(w http.ResponseWriter, r *http.Request) {
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))

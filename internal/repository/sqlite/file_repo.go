@@ -570,7 +570,22 @@ func (r *FileRepo) ListFileMetaByOwner(ctx context.Context, ownerID string) ([]d
 		return nil, err
 	}
 	defer rows.Close()
+	return scanFileMetaRows(rows)
+}
 
+// ListFileMetaAll returns lightweight metadata for all non-trashed files
+// (admin storage breakdown across the whole instance).
+func (r *FileRepo) ListFileMetaAll(ctx context.Context) ([]domain.FileMeta, error) {
+	rows, err := r.reader.QueryContext(ctx,
+		"SELECT mime_type, name, encrypted_size FROM files WHERE is_trashed = 0")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanFileMetaRows(rows)
+}
+
+func scanFileMetaRows(rows *sql.Rows) ([]domain.FileMeta, error) {
 	var metas []domain.FileMeta
 	for rows.Next() {
 		var m domain.FileMeta

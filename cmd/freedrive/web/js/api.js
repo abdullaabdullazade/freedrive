@@ -401,6 +401,10 @@ const API = (() => {
         deleteInvite: (id) => request('DELETE', `/admin/invites/${id}`),
         activity: (page = 1, pageSize = 50) => request('GET', `/admin/activity?page=${page}&page_size=${pageSize}`),
         purgeTrash: (days = 30) => request('POST', `/admin/storage/purge-trash?days=${encodeURIComponent(days)}`),
+        storageBreakdown: (userId) => {
+            const q = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+            return request('GET', `/admin/storage/breakdown${q}`);
+        },
         listDuplicates: () => request('GET', '/admin/storage/duplicates'),
         purgeDuplicates: () => request('POST', '/admin/storage/duplicates/purge'),
         listBackups: () => request('GET', '/admin/backup/list'),

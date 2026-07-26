@@ -209,6 +209,8 @@ func toSet(items []string) map[string]bool {
 var (
 	imageExts = toSet([]string{"jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "ico", "tif", "tiff", "heic", "heif", "avif", "raw", "cr2", "nef", "arw", "dng", "psd"})
 	videoExts = toSet([]string{"mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpg", "mpeg", "3gp", "ts", "m2ts", "ogv", "mts"})
+	audioExts = toSet([]string{"mp3", "wav", "flac", "aac", "ogg", "m4a", "wma", "opus", "aiff", "aif", "mid", "midi"})
+	archiveExts = toSet([]string{"zip", "rar", "7z", "tar", "gz", "bz2", "xz", "tgz", "iso", "cab", "lz", "lzma"})
 	docExts   = toSet([]string{
 		"pdf", "doc", "docx", "odt", "rtf", "txt", "md", "markdown", "pages",
 		"ppt", "pptx", "odp", "key",
