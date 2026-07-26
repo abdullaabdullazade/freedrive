@@ -136,9 +136,9 @@ FreeDrive is ideal for:
 - **Key rotation** — re-wrap account and file keys with a new password-derived key under Advanced (web: Security center → Encryption; desktop: Settings)
 - Password reset can re-wrap the account key when crypto metadata is supplied
 - Secure email change with confirmation link sent to the new address
-- **Security center** groups account protection in the web profile menu: authenticator app (TOTP) setup with backup codes, per-user email 2FA toggle, logged-in devices, and encryption (status, recovery, key rotation, manual key export/import). The Settings modal keeps only profile fields (name, avatar, email)
-- When admin enables global `require_2fa`, all users must complete a second factor at sign-in (authenticator app or email). If both are enabled, authenticator is preferred with “Send code by email” as fallback
-- Authenticator enrollment (QR) is available in the web Security center; desktop and mobile clients support TOTP verification at login
+- **Security center** (web profile menu) is the place to enroll an authenticator app: scan the QR (or enter the secret), confirm a code, then save the one-time backup codes. Email 2FA remains a separate toggle for codes sent by SMTP. The Settings modal keeps only profile fields (name, avatar, email)
+- When admin enables global `require_2fa`, all users must complete a second factor at sign-in (authenticator app **or** email). If both are enabled, authenticator is preferred with **Send code by email** as fallback
+- Desktop **0.1.8+** and current mobile builds verify TOTP / backup codes at login; authenticator enrollment stays web-only in v1
 - **Logged-in devices** — the web Security center and desktop app list active web and desktop sessions with device name, IP address, and last activity; re-login from the same browser/app overwrites that device's session instead of creating a duplicate
 - **Instant remote logout** — revoke one device or every other device; server middleware rejects the revoked session immediately
 
@@ -279,7 +279,7 @@ Admin settings are read from `data/settings.json` via the `adminsettings` packag
 - Logout and remote device removal revoke the session immediately
 - Active sessions record device type/name, user agent, IP address, creation time, and last activity
 - Optional **email 2FA**: 6-digit code sent via SMTP after password verification
-- Optional **authenticator (TOTP) 2FA**: Google Authenticator / Authy / 1Password; preferred when both methods are enabled, with email as fallback
+- Optional **authenticator (TOTP) 2FA**: Google Authenticator / Authy / 1Password; preferred when both methods are enabled, with email as fallback; one-time backup codes issued at enroll
 - Global `require_2fa` admin setting forces 2FA for every account (satisfied by TOTP or email)
 
 ### Authorization
@@ -692,6 +692,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Profile menu** — server avatar from `GET /api/v1/me`, storage bar from `GET /api/v1/me/storage` (`{used} of {total} used`), Sign out
 - **Sign out** — disconnects CfAPI and clears the contents of `%USERPROFILE%\FreeDrive\My Drive` (the folder itself remains for the next login)
 - **Device identification** — login, 2FA verification, and refresh requests report the desktop hostname so the app appears clearly in the account's logged-in-device list
+- **Authenticator 2FA (0.1.8+)** — sign-in accepts a TOTP code or backup code; when email 2FA is also available, **Send code by email** switches the challenge (enroll the app in web Security first)
 - **Non-blocking sign-in** — encryption unlock, sync restore, and Explorer (CfAPI) integration run in the background so the UI returns immediately after login
 - **Silent background sync** — on restart, background verification shows progress on Home (`Syncing…` / `Processing N/M`) without flooding Sync activity; if initial sync was interrupted, startup resumes the full sync instead of verify-only
 - **Queued changes during sync** — uploads and deletes that happen while initial sync or verify is running are queued and applied when that pass finishes
@@ -703,7 +704,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Explorer status** — desktop app exposes integration state (connected / registered / finalized) for diagnostics
 - **My Drive in Explorer** — `My Drive` subfolder with server folders/files; **Stream (default)** keeps cloud placeholders (download on open, upload on close, then free local space); **Mirror** keeps a full local copy; local edits upload on save, deletes sync to the server; remote changes polled every 20s (mirror downloads new/changed files); poll **removes** local placeholders after remote Move to bin so Explorer matches My Drive
 - **Uninstall (NSIS)** — setup uninstaller stops the app, unregisters the CfAPI sync root, removes Explorer NameSpace/SyncRootManager pins, removes `%USERPROFILE%\FreeDrive\My Drive`, and deletes app data under `%APPDATA%\FreeDrive` (sync.db, auth — not the Tauri BUNDLEID folder); prefer NSIS over MSI for this cleanup
-- Independent release tags: `desktop-v0.1.7` (server tags remain `v1.x.x`)
+- Independent release tags: `desktop-v0.1.8` (server tags remain `v1.x.x`)
 - See [`desktop/README.md`](desktop/README.md) for dev setup, Explorer troubleshooting, and [`docs/desktop-api.md`](docs/desktop-api.md) for API endpoints used by the client
 
 Quick start (from repo root):
@@ -740,7 +741,7 @@ To update an existing install, run the new `FreeDrive_*_x64-setup.exe` (in-place
 
 The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app (Expo / React Native). It connects to the same REST API as the web UI and desktop client.
 
-- **Sign in** with server URL, email, password, and 2FA (authenticator or email) when enabled
+- **Sign in** with server URL, email, password, and 2FA when enabled (authenticator / backup code, or email code; **Send code by email** when TOTP is preferred and email is available)
 - **Drive-like dark UI** — bottom tabs (Home, Starred, Shared, Files) on portrait; pill search bar, list/grid toggle, sort chip
 - **Landscape NavRail** — when width > height (phone rotate / tablet landscape): narrow left rail with menu ≡, Create, and vertically centered primary tabs; portrait (including tablet) keeps phone chrome; Create uses rail `+` in landscape and FAB in portrait
 - **Navigation drawer** — hamburger opens a slide-in drawer (Recent, Bin, Settings, Help) with storage usage from `GET /api/v1/me/storage` (portrait and landscape)
@@ -893,7 +894,8 @@ curl -s http://localhost:8080/api/v1/health
 - Ensure system clock is correct
 - Confirm refresh token table integrity
 - Check whether your IP is blocked or not on the allowlist (Admin → Security)
-- If 2FA is enabled, confirm SMTP is configured and the code has not expired (10 minutes)
+- If **email** 2FA is required, confirm SMTP is configured and the code has not expired (10 minutes)
+- If **authenticator** 2FA is required, enter the 6-digit app code or a one-time backup code from Security setup; use **Send code by email** only when that method is available
 
 ### Upload returns size/form errors
 
@@ -903,9 +905,10 @@ curl -s http://localhost:8080/api/v1/health
 
 ### Email / authenticator 2FA unavailable at sign-in
 
+- Enroll an authenticator in web **Security** (QR + confirm), or enable email 2FA there
 - Admin must configure SMTP under Admin → Settings → Email when email 2FA (or email fallback) is used
 - Global `require_2fa` with neither TOTP nor SMTP configured returns an error asking users to enable 2FA in Security
-- Users can enable authenticator or email 2FA from Security in the profile menu (web)
+- Backup codes are shown once at TOTP confirm — store them offline in case the phone is lost
 
 ### SMTP test/reset mail fails
 
