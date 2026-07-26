@@ -688,13 +688,13 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Silent background sync** — on restart, background verification shows progress on Home (`Syncing…` / `Processing N/M`) without flooding Sync activity; if initial sync was interrupted, startup resumes the full sync instead of verify-only
 - **Queued changes during sync** — uploads and deletes that happen while initial sync or verify is running are queued and applied when that pass finishes
 - **Restore from Bin comes back to the PC** — restoring a file on the server (or uploading it from the web) downloads it into the sync folder, including when the restore happened while the desktop app was closed. Server deletes are only propagated for items this computer previously synced, so a restored file is never sent back to the Bin
-- **Server restart safe (0.1.5+)** — if the FreeDrive server is offline or restarting while Desktop stays running, sync-folder probes treat connection/timeout/5xx as temporary and **do not** queue mass deletes into Trash (only a confirmed HTTP 404 or trashed folder counts as missing)
+- **Server restart safe (0.1.6+)** — full scans start only after `/health` and `/me` succeed; offline/5xx/session failures pause scanning, delayed delete journal entries cannot erase a newer remote mapping, and same-name cleanup runs only after a successful upload while preserving the new file
 - **Parallel sync** — up to 6 concurrent uploads and 6 concurrent downloads (initial folder scan, pending queue, My Drive mirror polling)
 - **Windows Explorer (CfAPI)** — after sign-in, with the app running in the tray, open `%USERPROFILE%\FreeDrive\My Drive` in File Explorer (Windows 10 1809+); **FreeDrive** is pinned in Explorer’s left nav with the app icon (CLSID NameSpace + SyncRootManager; stays on logout, removed on uninstall); provider connects in the background and reconnects automatically before opening the folder
 - **Explorer status** — desktop app exposes integration state (connected / registered / finalized) for diagnostics
 - **My Drive in Explorer** — `My Drive` subfolder with server folders/files; **Stream (default)** keeps cloud placeholders (download on open, upload on close, then free local space); **Mirror** keeps a full local copy; local edits upload on save, deletes sync to the server; remote changes polled every 20s (mirror downloads new/changed files); poll **removes** local placeholders after remote Move to bin so Explorer matches My Drive
 - **Uninstall (NSIS)** — setup uninstaller stops the app, unregisters the CfAPI sync root, removes Explorer NameSpace/SyncRootManager pins, removes `%USERPROFILE%\FreeDrive\My Drive`, and deletes app data under `%APPDATA%\FreeDrive` (sync.db, auth — not the Tauri BUNDLEID folder); prefer NSIS over MSI for this cleanup
-- Independent release tags: `desktop-v0.1.5` (server tags remain `v1.x.x`)
+- Independent release tags: `desktop-v0.1.6` (server tags remain `v1.x.x`)
 - See [`desktop/README.md`](desktop/README.md) for dev setup, Explorer troubleshooting, and [`docs/desktop-api.md`](docs/desktop-api.md) for API endpoints used by the client
 
 Quick start (from repo root):

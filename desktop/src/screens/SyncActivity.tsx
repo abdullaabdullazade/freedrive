@@ -42,6 +42,7 @@ export function SyncActivity({
 
   const isError = syncStatus.status === "error";
   const isSyncing = syncStatus.status === "syncing";
+  const isOffline = syncStatus.status === "offline";
   const isUpToDate = syncStatus.status === "up_to_date";
 
   const headerTitle = syncStatus.paused
@@ -58,14 +59,16 @@ export function SyncActivity({
     <div className="sync-panel">
       <div className="sync-panel-header">
         <div className="status-icon">
-          {isError ? "!" : isSyncing ? "↻" : isUpToDate ? "☁" : "↻"}
+          {isError ? "!" : isSyncing ? "↻" : isOffline ? "×" : isUpToDate ? "☁" : "↻"}
         </div>
         <div style={{ flex: 1 }}>
           <div className={`status-title${isError ? " status-error" : ""}`}>
             {headerTitle}
           </div>
           <div className="status-subtitle">
-            {isSyncing
+            {isOffline
+              ? syncStatus.message
+              : isSyncing
               ? syncStatus.message || "Sync in progress…"
               : `Synced ${formatRelativeTime(syncStatus.last_synced_at)}`}
           </div>

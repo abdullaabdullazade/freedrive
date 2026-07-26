@@ -1,7 +1,7 @@
 use crate::api::client::ApiClient;
 use crate::db::{
-    delete_folder_mapping, delete_sync_state_row, mark_journal_done, mark_journal_retry,
-    set_folder_mapping, DbHandle, JournalEntry,
+    delete_folder_mapping, delete_sync_state_row, delete_sync_state_row_if_remote_matches,
+    mark_journal_done, mark_journal_retry, set_folder_mapping, DbHandle, JournalEntry,
 };
 use crate::error::{AppError, AppResult};
 use crate::sync::engine::SyncEngine;
@@ -36,7 +36,16 @@ pub async fn process_journal_entry(
             }
             {
                 let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-                delete_sync_state_row(&conn, entry.sync_folder_id, &entry.relative_path)?;
+                if let Some(remote_id) = entry.remote_entity_id.as_deref() {
+                    delete_sync_state_row_if_remote_matches(
+                        &conn,
+                        entry.sync_folder_id,
+                        &entry.relative_path,
+                        remote_id,
+                    )?;
+                } else {
+                    delete_sync_state_row(&conn, entry.sync_folder_id, &entry.relative_path)?;
+                }
                 mark_journal_done(&conn, entry.id)?;
             }
             // Emit after releasing db lock — emit_activity_public locks db again.
@@ -133,6 +142,14 @@ pub async fn process_journal_entry(
 }
 
 pub async fn drain_journal(engine: &SyncEngine, api: &ApiClient, db: &DbHandle) -> AppResult<u32> {
+    if engine.journal_backoff_active() {
+        return Ok(0);
+    }
+    let _drain_guard = engine.journal_drain_lock.lock().await;
+    if engine.journal_backoff_active() {
+        return Ok(0);
+    }
+
     let entries = {
         let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
         crate::db::list_pending_journal(&conn, 50)?
@@ -142,9 +159,15 @@ pub async fn drain_journal(engine: &SyncEngine, api: &ApiClient, db: &DbHandle) 
         match process_journal_entry(engine, api, db, &entry).await {
             Ok(()) => processed += 1,
             Err(e) => {
-                sync_log(format!("journal entry {} failed: {}", entry.id, e));
                 let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
                 mark_journal_retry(&conn, entry.id, entry.attempts)?;
+                drop(conn);
+                engine.pause_journal_after_error();
+                sync_log(format!(
+                    "journal drain paused after entry {} failed: {}",
+                    entry.id, e
+                ));
+                break;
             }
         }
     }

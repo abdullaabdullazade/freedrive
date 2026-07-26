@@ -45,6 +45,7 @@ export function Home({
 
   const isError = syncStatus.status === "error";
   const isSyncing = syncStatus.status === "syncing";
+  const isOffline = syncStatus.status === "offline";
   const isPaused = syncStatus.paused;
   const isUpToDate = syncStatus.status === "up_to_date";
 
@@ -63,9 +64,11 @@ export function Home({
           ? "Up to date"
           : syncStatus.message;
 
-  const statusSubtitle = isSyncing
-    ? formatFileCount(fileCount)
-    : `Synced ${formatRelativeTime(syncStatus.last_synced_at)}`;
+  const statusSubtitle = isOffline
+    ? syncStatus.message
+    : isSyncing
+      ? formatFileCount(fileCount)
+      : `Synced ${formatRelativeTime(syncStatus.last_synced_at)}`;
 
   useEffect(() => {
     api

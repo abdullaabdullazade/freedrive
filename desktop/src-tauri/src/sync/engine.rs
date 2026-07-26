@@ -26,7 +26,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
@@ -37,6 +37,7 @@ pub enum SyncStatusKind {
     UpToDate,
     Syncing,
     Paused,
+    Offline,
     Error,
 }
 
@@ -129,6 +130,9 @@ pub struct SyncEngine {
     computer_root_id: RwLock<Option<String>>,
     watcher_suppress: WatcherSuppress,
     shutdown: AtomicBool,
+    pub(crate) journal_drain_lock: tokio::sync::Mutex<()>,
+    journal_retry_after: Mutex<Option<Instant>>,
+    server_ready_until: Mutex<Option<Instant>>,
 }
 
 impl SyncEngine {
@@ -153,6 +157,9 @@ impl SyncEngine {
             computer_root_id: RwLock::new(None),
             watcher_suppress: WatcherSuppress::new(),
             shutdown: AtomicBool::new(false),
+            journal_drain_lock: tokio::sync::Mutex::new(()),
+            journal_retry_after: Mutex::new(None),
+            server_ready_until: Mutex::new(None),
         }
     }
 
@@ -369,6 +376,10 @@ impl SyncEngine {
     }
 
     pub async fn drain_pending_paths(self: &Arc<Self>) {
+        if !self.sync_preflight().await {
+            return;
+        }
+
         let paths: Vec<PathBuf> = {
             let mut queue = self.pending_paths.lock();
             queue.drain(..).collect()
@@ -457,6 +468,17 @@ impl SyncEngine {
         self.initial_sync_running.load(Ordering::SeqCst)
     }
 
+    pub(crate) fn journal_backoff_active(&self) -> bool {
+        self.journal_retry_after
+            .lock()
+            .as_ref()
+            .is_some_and(|until| Instant::now() < *until)
+    }
+
+    pub(crate) fn pause_journal_after_error(&self) {
+        *self.journal_retry_after.lock() = Some(Instant::now() + Duration::from_secs(30));
+    }
+
     pub fn get_status(&self) -> SyncStatus {
         self.status.read().clone()
     }
@@ -482,6 +504,53 @@ impl SyncEngine {
             }
         }
         let _ = self.app.emit("sync-status-changed", st.clone());
+    }
+
+    /// Do not start a scan until both the server and the authenticated session
+    /// are usable. This prevents transient outages from reaching delete/upload
+    /// reconciliation paths.
+    async fn sync_preflight(&self) -> bool {
+        if self
+            .server_ready_until
+            .lock()
+            .as_ref()
+            .is_some_and(|until| Instant::now() < *until)
+        {
+            return true;
+        }
+
+        if let Err(error) = self.api.check_health().await {
+            *self.server_ready_until.lock() = None;
+            sync_log(format!("sync waiting for server: {}", error));
+            self.set_status(SyncStatusKind::Offline, "Waiting for server…");
+            return false;
+        }
+
+        match tokio::time::timeout(Duration::from_secs(10), self.api.get_me()).await {
+            Ok(Ok(_)) => {
+                *self.server_ready_until.lock() =
+                    Some(Instant::now() + Duration::from_secs(15));
+                true
+            }
+            Ok(Err(error)) => {
+                *self.server_ready_until.lock() = None;
+                let detail = error.to_string();
+                sync_log(format!("sync waiting for session: {}", detail));
+                let message = if detail.to_lowercase().contains("session expired") {
+                    "Session expired — sign in again"
+                } else {
+                    "Waiting for server…"
+                };
+                self.set_status(SyncStatusKind::Offline, message);
+                false
+            }
+            Err(_) => {
+                *self.server_ready_until.lock() = None;
+                sync_log("sync waiting for session: request timed out");
+                self.set_status(SyncStatusKind::Offline, "Waiting for server…");
+                false
+            }
+        }
     }
 
     fn emit_activity_with_conn(
@@ -870,6 +939,9 @@ impl SyncEngine {
         if self.is_paused() {
             return Ok(());
         }
+        if !self.sync_preflight().await {
+            return Ok(());
+        }
 
         if self
             .initial_sync_running
@@ -1199,14 +1271,15 @@ impl SyncEngine {
         Ok(true)
     }
 
-    /// Soft-delete live remote files that share `file_name` in `remote_folder_id`
-    /// before creating a new upload (avoids durable same-name duplicates).
+    /// After a successful upload, soft-delete older live files with the same
+    /// name while always preserving the newly stored remote entity.
     async fn trash_same_name_remote_siblings(
         &self,
         sync_folder_id: i64,
         relative: &str,
         remote_folder_id: &str,
         file_name: &str,
+        keep_remote_id: &str,
     ) -> AppResult<()> {
         let contents = match self.api.get_folder_contents(remote_folder_id).await {
             Ok(c) => c,
@@ -1220,7 +1293,7 @@ impl SyncEngine {
         };
         let mut queued = 0u32;
         for f in contents.files {
-            if f.name != file_name {
+            if f.name != file_name || f.id == keep_remote_id {
                 continue;
             }
             if self.queue_file_delete_if_needed(sync_folder_id, relative, &f.id)? {
@@ -1229,7 +1302,7 @@ impl SyncEngine {
         }
         if queued > 0 {
             sync_log(format!(
-                "pre-upload trashed {} same-name remote file(s) for {}",
+                "post-upload trashed {} older same-name remote file(s) for {}",
                 queued, relative
             ));
             let _ = drain_journal(self, &self.api, &self.db).await;
@@ -1259,6 +1332,9 @@ impl SyncEngine {
 
     pub async fn run_background_verify(self: Arc<Self>) -> AppResult<()> {
         if self.is_paused() {
+            return Ok(());
+        }
+        if !self.sync_preflight().await {
             return Ok(());
         }
 
@@ -1357,6 +1433,9 @@ impl SyncEngine {
 
     pub async fn run_initial_sync(self: Arc<Self>) -> AppResult<()> {
         if self.is_paused() {
+            return Ok(());
+        }
+        if !self.sync_preflight().await {
             return Ok(());
         }
 
@@ -1747,6 +1826,9 @@ impl SyncEngine {
     }
 
     pub async fn sync_file_path(&self, path: &Path) -> AppResult<()> {
+        if !self.sync_preflight().await {
+            return Ok(());
+        }
         let _permit = self.acquire_upload_permit().await?;
         self.sync_file_path_unlocked(path).await
     }
@@ -2209,23 +2291,6 @@ impl SyncEngine {
             }
         };
 
-        // Soft-delete any live same-name files in the remote folder so a fresh
-        // upload does not leave duplicates beside a missed prior delete.
-        if let Err(e) = self
-            .trash_same_name_remote_siblings(
-                sync_folder_id,
-                &relative_str,
-                &remote_folder_id,
-                file_name,
-            )
-            .await
-        {
-            sync_log(format!(
-                "pre-upload same-name cleanup failed for {}: {}",
-                relative_str, e
-            ));
-        }
-
         if show_ui {
             self.emit_activity(file_name, "Uploading…", size, "uploading");
             if size >= LARGE_FILE_WARN_BYTES {
@@ -2260,36 +2325,53 @@ impl SyncEngine {
 
         match upload_result {
             Ok((rec, key)) => {
-                let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
-                store_file_key(&conn, &rec.id, &key_to_b64url(&key))?;
-                upsert_sync_state(
-                    &conn,
-                    sync_folder_id,
-                    &relative_str,
-                    &file_path.to_string_lossy(),
-                    Some(&rec.id),
-                    Some(&hash),
-                    Some(mtime),
-                    Some(&rec.updated_at),
-                    "synced",
-                )?;
-                // Always record successful uploads so background verify
-                // still appears on the activity list.
-                self.emit_activity_with_conn(
-                    &conn,
-                    file_name,
-                    "Successfully uploaded",
-                    rec.size,
-                    "synced",
-                );
-                if crate::db::has_pending_key_upload(&conn, &rec.id).unwrap_or(false) {
-                    let _ = self.app.emit(
-                        "crypto-key-queued",
-                        format!(
-                            "Encryption not unlocked — {} may be unavailable in the browser until you sign in with your password",
-                            file_name
-                        ),
+                {
+                    let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+                    store_file_key(&conn, &rec.id, &key_to_b64url(&key))?;
+                    upsert_sync_state(
+                        &conn,
+                        sync_folder_id,
+                        &relative_str,
+                        &file_path.to_string_lossy(),
+                        Some(&rec.id),
+                        Some(&hash),
+                        Some(mtime),
+                        Some(&rec.updated_at),
+                        "synced",
+                    )?;
+                    // Always record successful uploads so background verify
+                    // still appears on the activity list.
+                    self.emit_activity_with_conn(
+                        &conn,
+                        file_name,
+                        "Successfully uploaded",
+                        rec.size,
+                        "synced",
                     );
+                    if crate::db::has_pending_key_upload(&conn, &rec.id).unwrap_or(false) {
+                        let _ = self.app.emit(
+                            "crypto-key-queued",
+                            format!(
+                                "Encryption not unlocked — {} may be unavailable in the browser until you sign in with your password",
+                                file_name
+                            ),
+                        );
+                    }
+                }
+                if let Err(error) = self
+                    .trash_same_name_remote_siblings(
+                        sync_folder_id,
+                        &relative_str,
+                        &remote_folder_id,
+                        file_name,
+                        &rec.id,
+                    )
+                    .await
+                {
+                    sync_log(format!(
+                        "post-upload same-name cleanup failed for {}: {}",
+                        relative_str, error
+                    ));
                 }
                 Ok(SyncAttemptResult::Done(FileSyncOutcome::Synced))
             }

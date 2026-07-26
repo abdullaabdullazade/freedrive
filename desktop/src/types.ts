@@ -74,7 +74,7 @@ export interface SelectedFolder {
   checked?: boolean;
 }
 
-export type SyncStatusKind = "up_to_date" | "syncing" | "paused" | "error";
+export type SyncStatusKind = "up_to_date" | "syncing" | "paused" | "offline" | "error";
 
 export interface SyncStatus {
   status: SyncStatusKind;

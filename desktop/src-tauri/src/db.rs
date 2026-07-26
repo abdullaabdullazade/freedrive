@@ -692,6 +692,23 @@ pub fn delete_sync_state_row(
     Ok(())
 }
 
+/// Delete a tracked file only while it still points at the remote entity
+/// targeted by a journal entry. A delayed delete must not erase a newer
+/// upload stored at the same relative path.
+pub fn delete_sync_state_row_if_remote_matches(
+    conn: &Connection,
+    sync_folder_id: i64,
+    relative_path: &str,
+    remote_file_id: &str,
+) -> AppResult<bool> {
+    let changed = conn.execute(
+        "DELETE FROM sync_state
+         WHERE sync_folder_id = ?1 AND relative_path = ?2 AND remote_file_id = ?3",
+        params![sync_folder_id, relative_path, remote_file_id],
+    )?;
+    Ok(changed > 0)
+}
+
 pub fn my_drive_delete_placeholder(conn: &Connection, relative_path: &str) -> AppResult<()> {
     let relative_path = normalize_my_drive_relative_path(relative_path);
     conn.execute(
@@ -1375,5 +1392,47 @@ mod tests {
         assert_eq!(pending[0].operation, "file_delete");
         mark_journal_done(&conn, pending[0].id).unwrap();
         assert!(list_pending_journal(&conn, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn delayed_delete_does_not_remove_newer_remote_state() {
+        let conn = test_conn();
+        let id = insert_sync_folder(&conn, "/tmp/docs", "remote-root", "Documents").unwrap();
+        upsert_sync_state(
+            &conn,
+            id,
+            "docs/file.txt",
+            "/tmp/docs/docs/file.txt",
+            Some("remote-new"),
+            Some("hash"),
+            Some(1),
+            Some("2026-07-26"),
+            "synced",
+        )
+        .unwrap();
+
+        assert!(!delete_sync_state_row_if_remote_matches(
+            &conn,
+            id,
+            "docs/file.txt",
+            "remote-old",
+        )
+        .unwrap());
+        assert_eq!(
+            get_sync_state(&conn, id, "docs/file.txt")
+                .unwrap()
+                .and_then(|state| state.0)
+                .as_deref(),
+            Some("remote-new")
+        );
+
+        assert!(delete_sync_state_row_if_remote_matches(
+            &conn,
+            id,
+            "docs/file.txt",
+            "remote-new",
+        )
+        .unwrap());
+        assert!(get_sync_state(&conn, id, "docs/file.txt").unwrap().is_none());
     }
 }

@@ -11,8 +11,8 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Onboarding wizard** — choose folders to sync (Desktop, Documents, Downloads, or custom)
 - **Background sync** — uploads local changes, polls for remote changes; skips `.git`, `node_modules`, and `.svn` folders during scan; skips Office lock files (`~$…`), `desktop.ini`, `Thumbs.db`, and `*.tmp` in computer sync folders and My Drive; large encrypted uploads (>32 MiB) use resumable chunked API (Cloudflare-safe); each scan creates/restores remote folders for local subdirectories before uploading files
 - **Transient errors retry** — local `error` rows are retried on the next scan (permanent `rejected` only are skipped); Home/Sync activity show a Drive-style progress ring around ↑ during upload
-- **Local deletes → server trash** — removing a file from a sync folder (including Explorer Delete, which moves it out of the tree) soft-deletes the matching server file; periodic verify (~5 min) and pre-upload same-name cleanup catch missed events and avoid live duplicates
-- **Server restart safe** — if the FreeDrive server is offline or restarting, sync folder probes treat connection/5xx errors as temporary and **do not** queue mass deletes. Fixed in **0.1.5** (earlier builds could fill Trash after a server update while Desktop stayed running)
+- **Local deletes → server trash** — removing a file from a sync folder (including Explorer Delete, which moves it out of the tree) soft-deletes the matching server file; periodic verify (~5 min) and post-upload same-name cleanup catch missed events and avoid live duplicates without deleting the only good copy before an upload succeeds
+- **Server restart safe** — before a scan, Desktop checks `/health` and the authenticated session; while the server is offline/restarting it shows **Waiting for server** and does not enter scan/delete/upload reconciliation. Version **0.1.6** also preserves newer `sync_state` mappings when delayed delete journal entries recover
 - **Server restores → local download** — a file restored from the Bin (or created from the web) is downloaded into the sync folder, also when the restore happened while the app was closed. Only items this computer previously synced (`sync_state` / folder mappings) can trigger a server delete, so untracked remote files are never re-trashed while waiting to download
 - **Silent background verify** — on restart, verifies files in the background without a full UI rescan; if initial sync was never completed, startup resumes full sync with a “Resuming sync…” status
 - **Home & Sync activity** — status dashboard inspired by Google Drive for desktop
@@ -138,7 +138,7 @@ Desktop releases use tags **`desktop-v*`** (e.g. `desktop-v0.1.0`). Server relea
 
 - Soft-delete on the server can take a few seconds (journal). Look for `Removed from cloud` in Sync activity or `file_delete` lines in `sync.log`.
 - Explorer Delete moves the file out of the sync tree; the client treats that as a local delete. If an event was missed, the next periodic verify (~5 min) or app restart should soft-delete orphans.
-- Re-uploading the same name after a missed delete used to leave two live files; the client now trashes same-name siblings in that remote folder before a fresh upload.
+- Re-uploading the same name after a missed delete used to leave two live files; the client now uploads first, stores the new remote ID, then trashes only older same-name siblings.
 
 ### Restored from Bin but the file goes back to the Bin
 
@@ -148,9 +148,9 @@ Desktop releases use tags **`desktop-v*`** (e.g. `desktop-v0.1.0`). Server relea
 
 ### Server restarted while Desktop was running — files appeared in Trash
 
-- Fixed in **0.1.5**. Earlier builds treated any error listing a sync folder (including connection refused / timeout while the server was down for an update) as “remote folder gone”, queued durable deletes for every tracked file, and drained them as soon as the server came back.
-- Now only a confirmed HTTP **404** or a trashed folder metadata response counts as missing. Network and 5xx errors abort the scan without journaling deletes.
-- Update Desktop to **0.1.5+** before testing another server restart.
+- Fixed fully in **0.1.6**. Version 0.1.5 stopped network/5xx folder probes from becoming mass deletes, but a delayed same-name delete could still erase a newer local `sync_state` mapping and trigger repeated re-uploads into Trash.
+- Desktop now gates every full scan on `/health` plus `/me`, serializes and backs off the delete journal during outages, deletes local state only when its remote ID still matches the journal target, and runs same-name cleanup only after a successful upload while preserving the new remote ID.
+- Update Desktop to **0.1.6+** before testing another server restart.
 
 ### Encryption notes
 

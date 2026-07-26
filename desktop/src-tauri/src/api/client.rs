@@ -157,6 +157,33 @@ impl ApiClient {
 
     }
 
+    /// Fast, unauthenticated readiness probe used before starting a full scan.
+    pub async fn check_health(&self) -> AppResult<()> {
+        let (url, http) = {
+            let inner = self.inner.read();
+            (
+                format!("{}/api/v1/health", inner.server_url),
+                inner.http.clone(),
+            )
+        };
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            http.get(url).timeout(Duration::from_secs(5)).send(),
+        )
+            .await
+            .map_err(|_| AppError::msg("server health check timed out"))??;
+        let status = response.status();
+        let text = response.text().await?;
+        if !status.is_success() {
+            return Err(http_api_error(status, &text));
+        }
+        let payload: serde_json::Value = serde_json::from_str(&text)?;
+        if payload.get("status").and_then(|value| value.as_str()) != Some("ok") {
+            return Err(AppError::msg("server health check returned an invalid response"));
+        }
+        Ok(())
+    }
+
 
 
     fn api_url(&self, path: &str) -> String {
