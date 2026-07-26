@@ -132,12 +132,12 @@ FreeDrive is ideal for:
 - **Cross-device encryption** — account key (UEK) and per-file keys sync via server; unlocks automatically when you sign in with your password
 - **Device unlock cache** — web UI wraps the UEK with a per-browser device key (IndexedDB) so encryption stays active across page refreshes; cleared on logout
 - **Recovery code** — emergency restore when the server loses account crypto metadata but file keys remain (e.g. after a data reset); also used when password is forgotten
-- **Key rotation** — re-wrap account and file keys with a new password-derived key from Settings (web and desktop, under Advanced)
+- **Key rotation** — re-wrap account and file keys with a new password-derived key under Advanced (web: Security center → Encryption; desktop: Settings)
 - Password reset can re-wrap the account key when crypto metadata is supplied
 - Secure email change with confirmation link sent to the new address
-- Security center for per-user email 2FA toggle
+- **Security center** groups account protection in the web profile menu: per-user email 2FA toggle, logged-in devices, and encryption (status, recovery, key rotation, manual key export/import). The Settings modal keeps only profile fields (name, avatar, email)
 - When admin enables global `require_2fa`, all users must verify a 6-digit code at sign-in
-- **Logged-in devices** — account settings list active web and desktop sessions with device name, IP address, and last activity; re-login from the same browser/app overwrites that device's session instead of creating a duplicate
+- **Logged-in devices** — the web Security center and desktop app list active web and desktop sessions with device name, IP address, and last activity; re-login from the same browser/app overwrites that device's session instead of creating a duplicate
 - **Instant remote logout** — revoke one device or every other device; server middleware rejects the revoked session immediately
 
 ### 7. Sharing Model
@@ -301,7 +301,7 @@ File payloads are encrypted client-side (AES-GCM) before upload. The server stor
 - **Web UI** — WebCrypto encrypts/decrypts in the browser; keys are wrapped with a password-derived key and synced via `/api/v1/crypto/*`
 - **Desktop client** — same UEK + file-key model; auto-unlock on sign-in, UEK cached in OS keyring, pending file keys flushed when back online
 - **Auto-unlock** — password at sign-in unlocks encryption; no separate unlock step in normal use
-- **Recovery** — if account crypto metadata is missing on the server but wrapped file keys exist, Settings prompts for a recovery code to restore access
+- **Recovery** — if account crypto metadata is missing on the server but wrapped file keys exist, the web Security center (Encryption) and desktop Settings prompt for a recovery code to restore access
 - **Logout** — clears device-local encryption state (web IndexedDB + desktop keyring session)
 - On plain HTTP (non-localhost), the web UI warns and may upload without browser-side encryption
 

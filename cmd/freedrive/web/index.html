@@ -293,42 +293,33 @@
                     <button class="btn-icon hidden" id="admin-btn" title="Admin Panel" aria-label="Admin Panel" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg></button>
                     <div class="topbar-profile-wrap" id="topbar-profile-wrap">
                         <button class="btn-icon topbar-avatar-btn" id="profile-avatar-btn" title="Profile" aria-label="Profile"><div class="user-avatar" id="topbar-avatar">A</div></button>
-                        <div class="profile-dropdown hidden" id="profile-dropdown">
+                        <div class="profile-dropdown hidden" id="profile-dropdown" role="dialog" aria-label="Account menu">
+                            <button type="button" class="profile-dropdown-close" id="profile-dropdown-close" aria-label="Close">×</button>
                             <div class="profile-dropdown-header">
                                 <div class="profile-avatar-lg" id="profile-avatar-lg">A</div>
                                 <div class="profile-info">
-                                    <div class="profile-name" id="profile-name">Admin</div>
+                                    <div class="profile-greeting" id="profile-greeting">Hi!</div>
                                     <div class="profile-email" id="profile-email">admin@admin.com</div>
                                 </div>
                             </div>
-                            <div class="profile-dropdown-divider"></div>
-                            <button class="profile-dropdown-item" id="profile-settings-btn">
-                                <span class="material-icons-outlined">settings</span>
-                                <span>Settings</span>
-                            </button>
-                            <button class="profile-dropdown-item" id="profile-security-btn">
-                                <span class="material-icons-outlined">verified_user</span>
-                                <span>Security</span>
-                            </button>
-                            <button class="profile-dropdown-item" id="profile-toggle-view-btn">
-                                <span class="material-icons-outlined">view_module</span>
-                                <span>Toggle list/grid view</span>
-                            </button>
-                            <div class="profile-dropdown-divider"></div>
-                            <button class="profile-dropdown-item" id="profile-change-photo">
-                                <span class="material-icons-outlined">photo_camera</span>
-                                <span>Change profile photo</span>
-                            </button>
-                            <input type="file" id="profile-photo-input" accept="image/*" style="display:none">
-                            <button class="profile-dropdown-item" id="profile-keyboard-btn">
-                                <span class="material-icons-outlined">keyboard</span>
-                                <span>Keyboard shortcuts</span>
-                            </button>
-                            <div class="profile-dropdown-divider"></div>
-                            <button class="profile-dropdown-item profile-signout" id="logout-btn">
-                                <span class="material-icons-outlined">logout</span>
-                                <span>Sign out</span>
-                            </button>
+                            <div class="profile-dropdown-actions">
+                                <button type="button" class="profile-dropdown-signout" id="logout-btn">Sign out</button>
+                            </div>
+                            <div class="profile-dropdown-storage hidden" id="profile-storage">
+                                <div class="profile-storage-row">
+                                    <span class="profile-storage-warn hidden" id="profile-storage-warn" aria-hidden="true">!</span>
+                                    <span id="profile-storage-text">Loading storage…</span>
+                                    <button type="button" class="profile-storage-link" id="profile-manage-storage">Manage storage</button>
+                                </div>
+                                <div class="profile-storage-bar">
+                                    <div class="profile-storage-bar-fill" id="profile-storage-bar-fill" style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div class="profile-dropdown-footer">
+                                <a href="/" target="_blank" rel="noreferrer">Privacy Policy</a>
+                                <span aria-hidden="true">·</span>
+                                <a href="/" target="_blank" rel="noreferrer">Terms of Service</a>
+                            </div>
                         </div>
                     </div>
                 </div>

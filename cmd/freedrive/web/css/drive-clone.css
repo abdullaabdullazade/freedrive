@@ -263,11 +263,13 @@ body {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: 320px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
   z-index: 900;
+  padding: 20px 20px 16px;
   overflow: hidden;
   animation: profileDropIn 200ms cubic-bezier(0.2,0,0,1);
 }
@@ -281,26 +283,50 @@ body {
   display: none !important;
 }
 
+.profile-dropdown-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #5f6368;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: "Roboto", Arial, sans-serif;
+}
+
+.profile-dropdown-close:hover {
+  background: #f1f3f4;
+  color: #202124;
+}
+
 .profile-dropdown-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 20px 20px 16px;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-right: 28px;
 }
 
 .profile-avatar-lg {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   background: #1a73e8;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 500;
   flex-shrink: 0;
   overflow: hidden;
+  background-size: cover;
+  background-position: center;
 }
 
 .profile-avatar-lg img {
@@ -314,61 +340,129 @@ body {
   min-width: 0;
 }
 
-.profile-name {
-  font-size: 16px;
-  font-weight: 500;
+.profile-greeting {
+  font-size: 22px;
+  font-weight: 400;
   color: #202124;
+  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .profile-email {
-  font-size: 13px;
+  font-size: 14px;
   color: #5f6368;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.profile-dropdown-divider {
-  height: 1px;
-  background: #e8eaed;
-  margin: 4px 0;
-}
-
-.profile-dropdown-item {
+.profile-dropdown-actions {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 10px 20px;
-  border: none;
-  background: none;
-  font-size: 14px;
-  color: #3c4043;
-  cursor: pointer;
-  text-align: left;
-  font-family: "Roboto", Arial, sans-serif;
-  transition: background 0.12s ease;
+  gap: 8px;
+  margin-bottom: 20px;
 }
 
-.profile-dropdown-item:hover {
+.profile-dropdown-signout {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid #dadce0;
+  font-size: 13px;
+  color: #202124;
+  background: #fff;
+  cursor: pointer;
+  font-family: "Roboto", Arial, sans-serif;
+}
+
+.profile-dropdown-signout:hover {
   background: #f1f3f4;
 }
 
-.profile-dropdown-item .material-icons-outlined {
-  font-size: 20px;
+.profile-dropdown-storage {
+  margin-bottom: 16px;
+}
+
+.profile-dropdown-storage.hidden {
+  display: none !important;
+}
+
+.profile-storage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   color: #5f6368;
-  width: 20px;
+  margin-bottom: 8px;
 }
 
-.profile-dropdown-item.profile-signout {
-  color: #d93025;
+.profile-storage-warn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f9ab00;
+  color: #202124;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.profile-dropdown-item.profile-signout .material-icons-outlined {
-  color: #d93025;
+.profile-storage-warn.hidden {
+  display: none !important;
+}
+
+.profile-storage-link {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1a73e8;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: "Roboto", Arial, sans-serif;
+  white-space: nowrap;
+}
+
+.profile-storage-link:hover {
+  text-decoration: underline;
+}
+
+.profile-storage-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: #e8eaed;
+  overflow: hidden;
+}
+
+.profile-storage-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #1a73e8;
+  transition: width 0.2s ease;
+}
+
+.profile-dropdown-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 4px;
+  font-size: 12px;
+  color: #5f6368;
+}
+
+.profile-dropdown-footer a {
+  color: #5f6368;
+  text-decoration: none;
+}
+
+.profile-dropdown-footer a:hover {
+  text-decoration: underline;
+  color: #202124;
 }
 
 .app:not(.admin-mode) .activity-page {

@@ -98,6 +98,68 @@ const App = (() => {
         btn.setAttribute('aria-hidden', show ? 'false' : 'true');
     }
 
+    function profileDisplayName(user) {
+        if (!user) return 'User';
+        const username = String(user.username || '').trim();
+        if (username) return username;
+        const email = String(user.email || '');
+        const at = email.indexOf('@');
+        return at > 0 ? email.slice(0, at) : (email || 'User');
+    }
+
+    async function refreshProfileStorage() {
+        const storageEl = document.getElementById('profile-storage');
+        const textEl = document.getElementById('profile-storage-text');
+        const warnEl = document.getElementById('profile-storage-warn');
+        const fillEl = document.getElementById('profile-storage-bar-fill');
+        if (!storageEl || !textEl || !fillEl) return;
+
+        try {
+            const stats = await API.myStorage();
+            const used = Number(stats?.used_bytes || 0);
+            const total = Number(stats?.total_bytes || 0);
+            if (!(total > 0)) {
+                storageEl.classList.add('hidden');
+                return;
+            }
+            const pct = Math.min(100, Math.round((used / total) * 100));
+            textEl.textContent = `${Components.formatSize(used)} of ${Components.formatSize(total)} used`;
+            fillEl.style.width = `${pct}%`;
+            warnEl?.classList.toggle('hidden', pct < 80);
+            storageEl.classList.remove('hidden');
+        } catch {
+            storageEl.classList.add('hidden');
+        }
+    }
+
+    function populateProfileDropdown() {
+        const user = API.getUser?.() || {};
+        const displayName = profileDisplayName(user);
+        const greeting = document.getElementById('profile-greeting');
+        const emailEl = document.getElementById('profile-email');
+        if (greeting) greeting.textContent = `Hi, ${displayName}!`;
+        if (emailEl) emailEl.textContent = user.email || '';
+
+        const initial = Components.initials(displayName || user.email || 'U');
+        const lgAvatar = document.getElementById('profile-avatar-lg');
+        const prefs = getUserPrefs();
+        const savedPhoto = resolveAvatar(user, prefs);
+
+        if (lgAvatar) {
+            if (savedPhoto) {
+                lgAvatar.textContent = '';
+                lgAvatar.style.backgroundImage = `url(${savedPhoto})`;
+                lgAvatar.style.backgroundSize = 'cover';
+                lgAvatar.style.backgroundPosition = 'center';
+            } else {
+                lgAvatar.style.backgroundImage = '';
+                lgAvatar.textContent = initial;
+            }
+        }
+
+        refreshProfileStorage();
+    }
+
     function refreshUserUI() {
         const user = API.getUser();
         if (user) {
@@ -126,6 +188,23 @@ const App = (() => {
             if (un) un.textContent = user.username || user.email;
             const ur = document.getElementById('user-role');
             if (ur) ur.textContent = user.role;
+
+            const greeting = document.getElementById('profile-greeting');
+            if (greeting) greeting.textContent = `Hi, ${profileDisplayName(user)}!`;
+            const emailEl = document.getElementById('profile-email');
+            if (emailEl) emailEl.textContent = user.email || '';
+            const lgAvatar = document.getElementById('profile-avatar-lg');
+            if (lgAvatar) {
+                if (savedPhoto) {
+                    lgAvatar.textContent = '';
+                    lgAvatar.style.backgroundImage = `url(${savedPhoto})`;
+                    lgAvatar.style.backgroundSize = 'cover';
+                    lgAvatar.style.backgroundPosition = 'center';
+                } else {
+                    lgAvatar.style.backgroundImage = '';
+                    lgAvatar.textContent = initial;
+                }
+            }
         }
         syncAdminBtnVisibility();
     }
@@ -172,27 +251,6 @@ const App = (() => {
             </div>`
             : '';
 
-        let needsRecovery = false;
-        if (window.CryptoSync?.detectNeedsRecovery) {
-            try {
-                needsRecovery = await CryptoSync.detectNeedsRecovery();
-            } catch { /* ignore */ }
-        }
-        const recoveryBanner = needsRecovery
-            ? `<div id="settings-crypto-recovery-banner" style="margin-bottom:12px;padding:12px 14px;border-radius:8px;background:#fce8e6;color:#c5221f;font-size:13px;line-height:1.45;">
-                Server lost encryption account data, but encrypted file keys are still on the server. Enter your recovery code below to restore access.
-            </div>`
-            : '';
-        const recoverySection = needsRecovery
-            ? `<div id="settings-crypto-recovery-section" style="margin-bottom:12px;">
-                <input id="settings-crypto-recovery-input" type="text" placeholder="xxxx-xxxx-..."
-                    style="width:100%;height:40px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
-                <button type="button" class="btn btn-secondary" id="settings-crypto-recovery-restore-btn" style="margin-top:8px;">
-                    Restore encryption
-                </button>
-            </div>`
-            : '';
-
         Components.showModal('Settings', `
             <div class="drive-settings-modal" style="padding: 8px 0;">
                 <div class="drive-settings-profile" style="margin-bottom: 24px;">
@@ -226,43 +284,14 @@ const App = (() => {
                     </label>
                     <button type="button" class="btn btn-secondary drive-settings-confirm-btn" id="settings-send-email-confirm">Confirm</button>
                     ${pendingBanner}
-                    <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e8eaed;">
-                        <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:6px;">Encryption</div>
-                        ${recoveryBanner}
-                        <p style="margin:0 0 8px;font-size:12px;color:#5f6368;line-height:1.45;">
-                            Status: <strong id="settings-crypto-status">${window.CryptoSync?.isUnlocked?.() ? 'Active' : 'Inactive'}</strong>
-                            — encryption unlocks automatically when you sign in. Keys sync across your devices.
-                        </p>
-                        ${recoverySection}
-                        <details style="font-size:13px;color:#5f6368;margin-bottom:12px;">
-                            <summary style="cursor:pointer;">Advanced: rotate encryption key</summary>
-                            <button type="button" class="btn btn-secondary" id="settings-crypto-rotate-btn" style="margin-top:8px;">
-                                Rotate encryption key
-                            </button>
-                        </details>
-                        <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:6px;">Manual backup (optional)</div>
+                    <div style="margin-top:8px;padding-top:20px;border-top:1px solid #e8eaed;">
+                        <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:8px;">Keyboard shortcuts</div>
                         <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
-                            Export/import below only if you need to move keys manually between browsers.
+                            View keyboard shortcuts for navigating and managing files.
                         </p>
-                        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                            <button type="button" class="btn btn-secondary" id="settings-export-keys-btn">Export encryption keys</button>
-                            <button type="button" class="btn btn-secondary" id="settings-import-keys-btn">Import encryption keys</button>
-                        </div>
-                        <input type="file" id="settings-import-keys-input" accept="application/json,.json" hidden>
-                    </div>
-                    <div style="margin-top:20px;padding-top:20px;border-top:1px solid #e8eaed;">
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
-                            <div style="font-size:13px;font-weight:500;color:#5f6368;">Devices</div>
-                            <button type="button" class="btn btn-secondary" id="settings-revoke-others-btn" style="font-size:12px;height:32px;">
-                                Sign out other devices
-                            </button>
-                        </div>
-                        <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
-                            Devices currently signed in to your account. Signing out a device forces it to log in again.
-                        </p>
-                        <div id="settings-sessions-list" style="display:flex;flex-direction:column;gap:8px;">
-                            <div style="font-size:13px;color:#5f6368;">Loading devices…</div>
-                        </div>
+                        <button type="button" class="btn btn-secondary" id="settings-keyboard-shortcuts-btn">
+                            Keyboard shortcuts
+                        </button>
                     </div>
                 </div>
                 <input id="settings-avatar-input" type="file" accept="image/*" hidden>
@@ -337,171 +366,6 @@ const App = (() => {
             if (fileInput) fileInput.value = '';
         });
 
-        document.getElementById('settings-export-keys-btn')?.addEventListener('click', async () => {
-            try {
-                if (!CryptoModule.canEncrypt()) {
-                    Components.toast('Encryption is not available in this browser session', 'error');
-                    return;
-                }
-                const exportData = await CryptoModule.exportAllKeys();
-                const count = Object.keys(exportData.keys || {}).length;
-                if (count === 0) {
-                    Components.toast('No encryption keys found in this browser', 'info');
-                    return;
-                }
-                CryptoModule.downloadKeyExport(exportData);
-                Components.toast(`Exported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
-            } catch (err) {
-                Components.toast(err?.message || 'Failed to export encryption keys', 'error');
-            }
-        });
-
-        const importKeysInput = document.getElementById('settings-import-keys-input');
-        document.getElementById('settings-import-keys-btn')?.addEventListener('click', () => {
-            importKeysInput?.click();
-        });
-        importKeysInput?.addEventListener('change', async () => {
-            const file = importKeysInput.files?.[0];
-            importKeysInput.value = '';
-            if (!file) return;
-            try {
-                if (!CryptoModule.canEncrypt()) {
-                    Components.toast('Encryption is not available in this browser session', 'error');
-                    return;
-                }
-                const text = await file.text();
-                const exportData = CryptoModule.parseKeyExportFile(text);
-                const count = await CryptoModule.importAllKeys(exportData);
-                if (count === 0) {
-                    Components.toast('No valid keys found in import file', 'info');
-                    return;
-                }
-                Components.toast(`Imported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
-            } catch (err) {
-                Components.toast(err?.message || 'Failed to import encryption keys', 'error');
-            }
-        });
-
-        document.getElementById('settings-crypto-recovery-restore-btn')?.addEventListener('click', async () => {
-            const recovery = String(document.getElementById('settings-crypto-recovery-input')?.value || '').trim();
-            if (!recovery) {
-                Components.toast('Enter your recovery code', 'error');
-                return;
-            }
-            try {
-                await CryptoSync.restoreWithRecoveryCode(recovery);
-                const statusEl = document.getElementById('settings-crypto-status');
-                if (statusEl) statusEl.textContent = 'Active';
-                document.getElementById('settings-crypto-recovery-banner')?.remove();
-                document.getElementById('settings-crypto-recovery-section')?.remove();
-                Components.toast('Encryption restored', 'success');
-            } catch (err) {
-                Components.toast(err?.message || 'Recovery failed', 'error');
-            }
-        });
-
-        document.getElementById('settings-crypto-rotate-btn')?.addEventListener('click', async () => {
-            if (!window.CryptoSync?.rotateAccountKey) return;
-            const password = window.prompt('Enter your password to rotate your encryption key:');
-            if (!password) return;
-            try {
-                const result = await CryptoSync.rotateAccountKey(password);
-                if (result?.recoveryCode && CryptoSync.showRecoverySetupModal) {
-                    await CryptoSync.showRecoverySetupModal(result.recoveryCode);
-                }
-                const statusEl = document.getElementById('settings-crypto-status');
-                if (statusEl) statusEl.textContent = 'Active';
-                Components.toast('Encryption key rotated', 'success');
-            } catch (err) {
-                Components.toast(err?.message || 'Key rotation failed', 'error');
-            }
-        });
-
-        const sessionsListEl = document.getElementById('settings-sessions-list');
-        const formatSessionTime = (iso) => {
-            if (!iso) return 'Unknown';
-            const ts = new Date(iso).getTime();
-            if (Number.isNaN(ts)) return 'Unknown';
-            const mins = Math.floor((Date.now() - ts) / 60000);
-            if (mins < 1) return 'Just now';
-            if (mins < 60) return `${mins} min ago`;
-            const hours = Math.floor(mins / 60);
-            if (hours < 24) return `${hours}h ago`;
-            const days = Math.floor(hours / 24);
-            if (days < 14) return `${days}d ago`;
-            return new Date(iso).toLocaleDateString();
-        };
-
-        const renderSessions = async () => {
-            if (!sessionsListEl) return;
-            sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">Loading devices…</div>';
-            try {
-                const data = await API.auth.getSessions();
-                const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
-                if (!sessions.length) {
-                    sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">No active devices.</div>';
-                    return;
-                }
-                sessionsListEl.innerHTML = sessions.map((s) => {
-                    const icon = s.device_type === 'desktop'
-                        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10H3V6a1 1 0 0 1 1-1zm-1 13h18v2H3v-2z"/></svg>'
-                        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5v2h2v2H7v-2h2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v7h16V6H4z"/></svg>';
-                    const badge = s.current
-                        ? '<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#e6f4ea;color:#137333;font-size:11px;font-weight:600;">This device</span>'
-                        : '';
-                    const revokeBtn = s.current
-                        ? ''
-                        : `<button type="button" class="btn btn-secondary settings-revoke-session-btn" data-session-id="${esc(s.id)}" style="font-size:12px;height:30px;">Sign out</button>`;
-                    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #e8eaed;border-radius:10px;background:#fff;">
-                        <div style="display:flex;align-items:flex-start;gap:12px;min-width:0;">
-                            <div style="color:#5f6368;margin-top:2px;">${icon}</div>
-                            <div style="min-width:0;">
-                                <div style="font-size:14px;font-weight:500;color:#202124;">${esc(s.device_name || 'Unknown device')}${badge}</div>
-                                <div style="font-size:12px;color:#5f6368;margin-top:2px;">${esc(s.ip_address || '—')} · Last active ${esc(formatSessionTime(s.last_seen_at))}</div>
-                            </div>
-                        </div>
-                        ${revokeBtn}
-                    </div>`;
-                }).join('');
-
-                sessionsListEl.querySelectorAll('.settings-revoke-session-btn').forEach((btn) => {
-                    btn.addEventListener('click', async () => {
-                        const id = btn.getAttribute('data-session-id');
-                        if (!id) return;
-                        if (!window.confirm('Sign out this device? It will need to log in again.')) return;
-                        btn.disabled = true;
-                        try {
-                            await API.auth.revokeSession(id);
-                            Components.toast('Device signed out', 'success');
-                            await renderSessions();
-                        } catch (err) {
-                            btn.disabled = false;
-                            Components.toast(err?.message || 'Failed to sign out device', 'error');
-                        }
-                    });
-                });
-            } catch (err) {
-                sessionsListEl.innerHTML = `<div style="font-size:13px;color:#c5221f;">${esc(err?.message || 'Failed to load devices')}</div>`;
-            }
-        };
-
-        document.getElementById('settings-revoke-others-btn')?.addEventListener('click', async () => {
-            if (!window.confirm('Sign out all other devices? They will need to log in again.')) return;
-            const btn = document.getElementById('settings-revoke-others-btn');
-            if (btn) btn.disabled = true;
-            try {
-                await API.auth.revokeOtherSessions();
-                Components.toast('Other devices signed out', 'success');
-                await renderSessions();
-            } catch (err) {
-                Components.toast(err?.message || 'Failed to sign out other devices', 'error');
-            } finally {
-                if (btn) btn.disabled = false;
-            }
-        });
-
-        renderSessions();
-
         const emailInput = document.getElementById('settings-email');
         const passwordWrap = document.getElementById('settings-email-password-wrap');
         const passwordInput = document.getElementById('settings-email-password');
@@ -549,6 +413,11 @@ const App = (() => {
                 sendConfirmBtn.textContent = prevLabel;
             }
         });
+
+        document.getElementById('settings-keyboard-shortcuts-btn')?.addEventListener('click', () => {
+            Components.hideModal();
+            FileManager.showShortcuts?.();
+        });
     }
 
     async function openSecurityCenter() {
@@ -566,8 +435,29 @@ const App = (() => {
             ? '<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Your administrator requires email two-factor authentication for all accounts.</p>'
             : '<p style="margin:12px 0 0;font-size:12px;color:#5f6368;line-height:1.45;">When enabled, you will receive a 6-digit code by email each time you sign in.</p>';
 
+        let needsRecovery = false;
+        if (window.CryptoSync?.detectNeedsRecovery) {
+            try {
+                needsRecovery = await CryptoSync.detectNeedsRecovery();
+            } catch { /* ignore */ }
+        }
+        const recoveryBanner = needsRecovery
+            ? `<div id="security-crypto-recovery-banner" style="margin-bottom:12px;padding:12px 14px;border-radius:8px;background:#fce8e6;color:#c5221f;font-size:13px;line-height:1.45;">
+                Server lost encryption account data, but encrypted file keys are still on the server. Enter your recovery code below to restore access.
+            </div>`
+            : '';
+        const recoverySection = needsRecovery
+            ? `<div id="security-crypto-recovery-section" style="margin-bottom:12px;">
+                <input id="security-crypto-recovery-input" type="text" placeholder="xxxx-xxxx-..."
+                    style="width:100%;height:40px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
+                <button type="button" class="btn btn-secondary" id="security-crypto-recovery-restore-btn" style="margin-top:8px;">
+                    Restore encryption
+                </button>
+            </div>`
+            : '';
+
         Components.showModal('Security', `
-            <div class="drive-settings-modal" style="padding:8px 0;">
+            <div class="drive-settings-modal" style="padding:8px 0;display:flex;flex-direction:column;gap:16px;">
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
                         <div>
@@ -579,6 +469,44 @@ const App = (() => {
                         </label>
                     </div>
                     ${requiredNote}
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
+                        <div style="font-size:15px;font-weight:600;color:#202124;">Devices</div>
+                        <button type="button" class="btn btn-secondary" id="security-revoke-others-btn" style="font-size:12px;height:32px;">
+                            Sign out other devices
+                        </button>
+                    </div>
+                    <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
+                        Devices currently signed in to your account. Signing out a device forces it to log in again.
+                    </p>
+                    <div id="security-sessions-list" style="display:flex;flex-direction:column;gap:8px;">
+                        <div style="font-size:13px;color:#5f6368;">Loading devices…</div>
+                    </div>
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:8px;">Encryption</div>
+                    ${recoveryBanner}
+                    <p style="margin:0 0 8px;font-size:12px;color:#5f6368;line-height:1.45;">
+                        Status: <strong id="security-crypto-status">${window.CryptoSync?.isUnlocked?.() ? 'Active' : 'Inactive'}</strong>
+                        — encryption unlocks automatically when you sign in. Keys sync across your devices.
+                    </p>
+                    ${recoverySection}
+                    <details style="font-size:13px;color:#5f6368;margin-bottom:12px;">
+                        <summary style="cursor:pointer;">Advanced: rotate encryption key</summary>
+                        <button type="button" class="btn btn-secondary" id="security-crypto-rotate-btn" style="margin-top:8px;">
+                            Rotate encryption key
+                        </button>
+                    </details>
+                    <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:6px;">Manual backup (optional)</div>
+                    <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
+                        Export/import below only if you need to move keys manually between browsers.
+                    </p>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <button type="button" class="btn btn-secondary" id="security-export-keys-btn">Export encryption keys</button>
+                        <button type="button" class="btn btn-secondary" id="security-import-keys-btn">Import encryption keys</button>
+                    </div>
+                    <input type="file" id="security-import-keys-input" accept="application/json,.json" hidden>
                 </div>
             </div>
         `, [{ text: 'Close' }]);
@@ -599,6 +527,171 @@ const App = (() => {
             } catch (err) {
                 toggle.checked = prev;
                 Components.toast(err?.message || 'Failed to update security setting', 'error');
+            }
+        });
+
+        const sessionsListEl = document.getElementById('security-sessions-list');
+        const formatSessionTime = (iso) => {
+            if (!iso) return 'Unknown';
+            const ts = new Date(iso).getTime();
+            if (Number.isNaN(ts)) return 'Unknown';
+            const mins = Math.floor((Date.now() - ts) / 60000);
+            if (mins < 1) return 'Just now';
+            if (mins < 60) return `${mins} min ago`;
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            if (days < 14) return `${days}d ago`;
+            return new Date(iso).toLocaleDateString();
+        };
+
+        const renderSessions = async () => {
+            if (!sessionsListEl) return;
+            sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">Loading devices…</div>';
+            try {
+                const data = await API.auth.getSessions();
+                const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+                if (!sessions.length) {
+                    sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">No active devices.</div>';
+                    return;
+                }
+                sessionsListEl.innerHTML = sessions.map((s) => {
+                    const icon = s.device_type === 'desktop'
+                        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10H3V6a1 1 0 0 1 1-1zm-1 13h18v2H3v-2z"/></svg>'
+                        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5v2h2v2H7v-2h2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v7h16V6H4z"/></svg>';
+                    const badge = s.current
+                        ? '<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#e6f4ea;color:#137333;font-size:11px;font-weight:600;">This device</span>'
+                        : '';
+                    const revokeBtn = s.current
+                        ? ''
+                        : `<button type="button" class="btn btn-secondary security-revoke-session-btn" data-session-id="${esc(s.id)}" style="font-size:12px;height:30px;">Sign out</button>`;
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #e8eaed;border-radius:10px;background:#fff;">
+                        <div style="display:flex;align-items:flex-start;gap:12px;min-width:0;">
+                            <div style="color:#5f6368;margin-top:2px;">${icon}</div>
+                            <div style="min-width:0;">
+                                <div style="font-size:14px;font-weight:500;color:#202124;">${esc(s.device_name || 'Unknown device')}${badge}</div>
+                                <div style="font-size:12px;color:#5f6368;margin-top:2px;">${esc(s.ip_address || '—')} · Last active ${esc(formatSessionTime(s.last_seen_at))}</div>
+                            </div>
+                        </div>
+                        ${revokeBtn}
+                    </div>`;
+                }).join('');
+
+                sessionsListEl.querySelectorAll('.security-revoke-session-btn').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-session-id');
+                        if (!id) return;
+                        if (!window.confirm('Sign out this device? It will need to log in again.')) return;
+                        btn.disabled = true;
+                        try {
+                            await API.auth.revokeSession(id);
+                            Components.toast('Device signed out', 'success');
+                            await renderSessions();
+                        } catch (err) {
+                            btn.disabled = false;
+                            Components.toast(err?.message || 'Failed to sign out device', 'error');
+                        }
+                    });
+                });
+            } catch (err) {
+                sessionsListEl.innerHTML = `<div style="font-size:13px;color:#c5221f;">${esc(err?.message || 'Failed to load devices')}</div>`;
+            }
+        };
+
+        document.getElementById('security-revoke-others-btn')?.addEventListener('click', async () => {
+            if (!window.confirm('Sign out all other devices? They will need to log in again.')) return;
+            const btn = document.getElementById('security-revoke-others-btn');
+            if (btn) btn.disabled = true;
+            try {
+                await API.auth.revokeOtherSessions();
+                Components.toast('Other devices signed out', 'success');
+                await renderSessions();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to sign out other devices', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
+
+        renderSessions();
+
+        document.getElementById('security-export-keys-btn')?.addEventListener('click', async () => {
+            try {
+                if (!CryptoModule.canEncrypt()) {
+                    Components.toast('Encryption is not available in this browser session', 'error');
+                    return;
+                }
+                const exportData = await CryptoModule.exportAllKeys();
+                const count = Object.keys(exportData.keys || {}).length;
+                if (count === 0) {
+                    Components.toast('No encryption keys found in this browser', 'info');
+                    return;
+                }
+                CryptoModule.downloadKeyExport(exportData);
+                Components.toast(`Exported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to export encryption keys', 'error');
+            }
+        });
+
+        const importKeysInput = document.getElementById('security-import-keys-input');
+        document.getElementById('security-import-keys-btn')?.addEventListener('click', () => {
+            importKeysInput?.click();
+        });
+        importKeysInput?.addEventListener('change', async () => {
+            const file = importKeysInput.files?.[0];
+            importKeysInput.value = '';
+            if (!file) return;
+            try {
+                if (!CryptoModule.canEncrypt()) {
+                    Components.toast('Encryption is not available in this browser session', 'error');
+                    return;
+                }
+                const text = await file.text();
+                const exportData = CryptoModule.parseKeyExportFile(text);
+                const count = await CryptoModule.importAllKeys(exportData);
+                if (count === 0) {
+                    Components.toast('No valid keys found in import file', 'info');
+                    return;
+                }
+                Components.toast(`Imported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to import encryption keys', 'error');
+            }
+        });
+
+        document.getElementById('security-crypto-recovery-restore-btn')?.addEventListener('click', async () => {
+            const recovery = String(document.getElementById('security-crypto-recovery-input')?.value || '').trim();
+            if (!recovery) {
+                Components.toast('Enter your recovery code', 'error');
+                return;
+            }
+            try {
+                await CryptoSync.restoreWithRecoveryCode(recovery);
+                const statusEl = document.getElementById('security-crypto-status');
+                if (statusEl) statusEl.textContent = 'Active';
+                document.getElementById('security-crypto-recovery-banner')?.remove();
+                document.getElementById('security-crypto-recovery-section')?.remove();
+                Components.toast('Encryption restored', 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Recovery failed', 'error');
+            }
+        });
+
+        document.getElementById('security-crypto-rotate-btn')?.addEventListener('click', async () => {
+            if (!window.CryptoSync?.rotateAccountKey) return;
+            const password = window.prompt('Enter your password to rotate your encryption key:');
+            if (!password) return;
+            try {
+                const result = await CryptoSync.rotateAccountKey(password);
+                if (result?.recoveryCode && CryptoSync.showRecoverySetupModal) {
+                    await CryptoSync.showRecoverySetupModal(result.recoveryCode);
+                }
+                const statusEl = document.getElementById('security-crypto-status');
+                if (statusEl) statusEl.textContent = 'Active';
+                Components.toast('Encryption key rotated', 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Key rotation failed', 'error');
             }
         });
     }
@@ -940,101 +1033,25 @@ const App = (() => {
         profileBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
             closeTransientPanels();
+            const opening = profileDropdown?.classList.contains('hidden');
             profileDropdown?.classList.toggle('hidden');
-            // Populate user info
-            const user = API.getUser?.() || JSON.parse(localStorage.getItem('fd_user') || '{}');
-            const displayName = String(
-                user.username
-                || user.name
-                || (user.email ? String(user.email).split('@')[0] : '')
-                || 'User'
-            ).trim();
-            document.getElementById('profile-name').textContent = displayName;
-            if (user.email) document.getElementById('profile-email').textContent = user.email;
-            
-            const initial = Components.initials(displayName || user.email || 'U');
-            const lgAvatar = document.getElementById('profile-avatar-lg');
-            const prefs = getUserPrefs();
-            const savedPhoto = prefs.profileAvatar || localStorage.getItem('fd_profile_photo');
-            
-            if (lgAvatar) {
-                if (savedPhoto) {
-                    lgAvatar.innerHTML = '';
-                    lgAvatar.style.backgroundImage = `url(${savedPhoto})`;
-                    lgAvatar.style.backgroundSize = 'cover';
-                    lgAvatar.style.backgroundPosition = 'center';
-                } else {
-                    lgAvatar.style.backgroundImage = '';
-                    lgAvatar.textContent = initial;
-                }
-            }
+            if (opening) populateProfileDropdown();
+        });
+
+        document.getElementById('profile-dropdown-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdown?.classList.add('hidden');
+        });
+
+        document.getElementById('profile-manage-storage')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdown?.classList.add('hidden');
+            window.location.hash = '#/storage';
         });
 
         document.addEventListener('click', (e) => {
             if (!e.target.closest('#profile-dropdown, #profile-avatar-btn')) {
                 profileDropdown?.classList.add('hidden');
-            }
-        });
-
-        // ── Change profile photo ──
-        document.getElementById('profile-change-photo')?.addEventListener('click', () => {
-            document.getElementById('profile-photo-input')?.click();
-        });
-
-        document.getElementById('profile-photo-input')?.addEventListener('change', async (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (ev) => {
-                try {
-                    const result = await resizeAvatarDataURL(String(ev.target?.result || ''));
-                    const updated = await API.updateMe({ avatar_url: result });
-                    API.setUser(updated);
-                    syncAvatarCache(updated.avatar_url || result);
-                    refreshUserUI();
-
-                    const lgAvatar = document.getElementById('profile-avatar-lg');
-                    if (lgAvatar) {
-                        lgAvatar.innerHTML = '';
-                        lgAvatar.style.backgroundImage = `url(${updated.avatar_url || result})`;
-                        lgAvatar.style.backgroundSize = 'cover';
-                        lgAvatar.style.backgroundPosition = 'center';
-                    }
-
-                    Components.toast('Profile photo updated', 'success');
-                } catch (err) {
-                    Components.toast(err?.message || 'Failed to update profile photo', 'error');
-                }
-            };
-            reader.readAsDataURL(file);
-            profileDropdown?.classList.add('hidden');
-            e.target.value = '';
-        });
-
-        // ── Keyboard shortcuts ──
-        document.getElementById('profile-keyboard-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            FileManager.showShortcuts?.();
-        });
-
-        document.getElementById('profile-settings-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            openDriveSettings();
-        });
-
-        document.getElementById('profile-security-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            openSecurityCenter();
-        });
-
-        document.getElementById('profile-toggle-view-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            const gridBtn = document.getElementById('topbar-view-grid');
-            const listBtn = document.getElementById('topbar-view-list');
-            if (gridBtn?.classList.contains('active')) {
-                listBtn?.click();
-            } else {
-                gridBtn?.click();
             }
         });
 
