@@ -166,9 +166,10 @@ FreeDrive is ideal for:
 
 ### 10. Activity Logging
 
-- File/folder actions are recorded in activity logs
+- File/folder actions are recorded in activity logs (visible in each user's Activity page)
 - Login and failed-login events with client IP
-- User and admin activity listing endpoints
+- User endpoint: `GET /activity` (current user's full activity, including file names)
+- Admin endpoint: `GET /admin/activity` returns **authentication events only** (`login` / `failed_login`) — not file uploads, deletes, or filenames
 
 ### 11. Embedded App Delivery
 
@@ -181,7 +182,13 @@ FreeDrive is ideal for:
 
 Admin routes are role-protected and available under `/api/v1/admin/*`.
 
-In the Drive UI, users with the `admin` role see a shield icon in the top bar (next to Security) on every tab; it opens the admin panel at `/admin/dashboard`. The icon is hidden in admin-panel mode and for non-admin accounts.
+In the Drive UI, users with the `admin` role see a Security-style shield icon in the top bar (next to Security) on every tab; it opens the admin panel at `/admin/dashboard`. The icon is hidden in admin-panel mode and for non-admin accounts.
+
+Admin chrome:
+
+- Top bar title **Admin Panel**; the in-page header shows the active section name (Dashboard, Manage Users, Storage, …)
+- Sidebar matches Drive nav styling; **Back to Drive** at the bottom returns to `/#/files`
+- Security nav icon matches the top-bar Security icon
 
 ### User Management
 
@@ -205,11 +212,12 @@ In the Drive UI, users with the `admin` role see a shield icon in the top bar (n
 ### Operational Controls
 
 - View aggregate stats (`total_users`, `total_used`, `total_quota`)
-- View global activity feed
+- View authentication activity (`login` / `failed_login` only — no per-file operations)
 - Save/retrieve admin settings (persisted to `data/settings.json`)
 - Run backup snapshot for admin settings
 - Scheduled settings backup (daily / weekly / monthly)
 - Storage tools: purge trash (files + folders), list/purge duplicate blobs, wipe all data (danger zone)
+- Storage type breakdown across the instance (`images` / `videos` / `documents` / `audio` / `archives` / `other` by encrypted size); optional `?user_id=` for a single user
 - Trash auto-empty scheduler (`storage.trash_auto_empty`: 7 / 30 / 90 days or never)
 
 ### Security & Access Policy
@@ -629,7 +637,7 @@ For encrypted payloads **> 32 MiB**, clients open a session and send **8 MiB
 - `POST /admin/invites/resend`
 - `GET /admin/invites`
 - `DELETE /admin/invites/{id}`
-- `GET /admin/activity`
+- `GET /admin/activity` — authentication events only (`login` / `failed_login`)
 - `GET /admin/settings`
 - `POST /admin/settings`
 - `POST /admin/test-email`
@@ -638,6 +646,7 @@ For encrypted payloads **> 32 MiB**, clients open a session and send **8 MiB
 - `GET /admin/backup/download/{filename}`
 - `POST /admin/backup/restore`
 - `DELETE /admin/backup/{filename}`
+- `GET /admin/storage/breakdown` — instance-wide (or `?user_id=`) file-type size breakdown
 - `POST /admin/storage/purge-trash?days=30` — permanently delete trashed files (blobs + rows) and folder rows older than N days; `days=0` purges all trash. Response: `{ removed_files, removed_folders, freed_bytes }`. Background auto-empty uses the `storage.trash_auto_empty` setting (7 / 30 / 90 / never).
 - `GET /admin/storage/duplicates`
 - `POST /admin/storage/duplicates/purge`

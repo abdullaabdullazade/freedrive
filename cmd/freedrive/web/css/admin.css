@@ -997,13 +997,17 @@
 
 .app.admin-mode .sidebar .admin-nav-item.nav-divider {
     display: block !important;
-    height: 1px;
-    width: 100%;
-    margin: 8px 0;
-    background: #e8eaed;
-    border: none;
-    padding: 0;
-    min-height: 0;
+    height: 1px !important;
+    min-height: 1px !important;
+    max-height: 1px !important;
+    width: auto !important;
+    margin: 8px 16px !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    background: #e8eaed !important;
+    border: none !important;
+    gap: 0 !important;
+    pointer-events: none !important;
 }
 
 /* Topbar list/grid toggle — same pill as Drive */
