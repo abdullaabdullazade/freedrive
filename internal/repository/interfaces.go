@@ -159,6 +159,8 @@ type ActivityRepository interface {
 	Create(ctx context.Context, log *domain.ActivityLog) error
 	List(ctx context.Context, userID string, page, pageSize int) ([]domain.ActivityLog, int, error)
 	ListAll(ctx context.Context, page, pageSize int) ([]domain.ActivityLog, int, error)
+	// ListAllAuth returns only authentication events (login / failed_login) for the admin activity log.
+	ListAllAuth(ctx context.Context, page, pageSize int) ([]domain.ActivityLog, int, error)
 	DeleteAll(ctx context.Context) error
 }
 

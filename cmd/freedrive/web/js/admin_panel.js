@@ -281,6 +281,10 @@ const AdminPanel = (() => {
             const raw = JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}');
             if (raw.activityFilters && typeof raw.activityFilters === 'object') {
                 state.activityFilters = { ...state.activityFilters, ...raw.activityFilters };
+                const allowed = new Set(['all', 'login', 'failed_login']);
+                if (!allowed.has(String(state.activityFilters.action || ''))) {
+                    state.activityFilters.action = 'all';
+                }
             }
             if (raw.usersFilter) state.usersFilter = raw.usersFilter;
             if (raw.usersPerPage) state.usersPerPage = asNumber(raw.usersPerPage, state.usersPerPage);
@@ -618,7 +622,7 @@ const AdminPanel = (() => {
             return `${b.color} ${start.toFixed(2)}deg ${angle.toFixed(2)}deg`;
         }).join(', ');
 
-        const recent = (state.activities || []).slice(0, 5);
+        const recent = (state.activities || []).filter((a) => isAuthActivity(a.action)).slice(0, 5);
 
         return `
             <div class="gd-storage-container">
@@ -866,7 +870,10 @@ const AdminPanel = (() => {
         const global2FA = Boolean(state.settings?.security?.require_2fa);
         const breakdown = estimateFileTypeBuckets();
         const bItems = Object.entries(breakdown).slice(0, 4);
-        const recent = state.activities.filter((a) => (a.user_id || '') === u.id || (a.username || '') === (u.username || '')).slice(0, 5);
+        const recent = (state.activities || [])
+            .filter((a) => isAuthActivity(a.action))
+            .filter((a) => (a.user_id || '') === u.id || (a.username || '') === (u.username || ''))
+            .slice(0, 5);
 
         return `
             <div class="gd-drawer-header">
@@ -1168,11 +1175,17 @@ const AdminPanel = (() => {
         };
     }
 
+    function isAuthActivity(action) {
+        const a = String(action || '').toLowerCase();
+        return a === 'login' || a === 'failed_login';
+    }
+
     function filteredActivityList() {
         const filters = state.activityFilters;
         return state.activities
             .map(decorateActivity)
             .filter((a) => {
+                if (!isAuthActivity(a.action)) return false;
                 if (filters.users.length && !filters.users.includes(String(a.user_id || a.username || ''))) return false;
                 if (filters.action !== 'all' && String(a.action || '').toLowerCase() !== filters.action) return false;
                 if (filters.from) {
@@ -1217,7 +1230,7 @@ const AdminPanel = (() => {
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
                     <h2 class="gd-storage-hero-title">Activity log</h2>
-                    <p class="gd-storage-hero-subtitle">Monitor user activity and system events in real-time.</p>
+                    <p class="gd-storage-hero-subtitle">Authentication and sign-in events across all users.</p>
                 </div>
 
                 <div class="gd-card" style="margin-bottom: 24px; padding: 16px 24px;">
@@ -1231,7 +1244,11 @@ const AdminPanel = (() => {
                         <div class="gd-input-group">
                             <label>Action type</label>
                             <select class="gd-input" id="admin-activity-action">
-                                ${['all', 'upload', 'download', 'delete', 'share', 'login'].map((a) => `<option value="${a}" ${state.activityFilters.action === a ? 'selected' : ''}>${a[0].toUpperCase()}${a.slice(1)}</option>`).join('')}
+                                ${[
+                                    ['all', 'All'],
+                                    ['login', 'Login'],
+                                    ['failed_login', 'Failed login'],
+                                ].map(([value, label]) => `<option value="${value}" ${state.activityFilters.action === value ? 'selected' : ''}>${label}</option>`).join('')}
                             </select>
                         </div>
                         <div class="gd-input-group">
@@ -1246,7 +1263,7 @@ const AdminPanel = (() => {
 
                     <div class="activity-filter-row">
                         <div class="activity-active-filters">
-                            ${state.activityFilters.action !== 'all' ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="action">${esc(state.activityFilters.action)} ×</button>` : ''}
+                            ${state.activityFilters.action !== 'all' ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="action">${esc(state.activityFilters.action === 'failed_login' ? 'Failed login' : state.activityFilters.action)} ×</button>` : ''}
                             ${state.activityFilters.from ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="from">From ${esc(state.activityFilters.from)} ×</button>` : ''}
                             ${state.activityFilters.to ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="to">To ${esc(state.activityFilters.to)} ×</button>` : ''}
                         </div>
@@ -2463,7 +2480,8 @@ const AdminPanel = (() => {
                     const select = document.getElementById('admin-activity-users');
                     const selected = Array.from(select?.selectedOptions || []).map((o) => o.value);
                     state.activityFilters.users = selected;
-                    state.activityFilters.action = String(document.getElementById('admin-activity-action')?.value || 'all');
+                    const nextAction = String(document.getElementById('admin-activity-action')?.value || 'all');
+                    state.activityFilters.action = ['all', 'login', 'failed_login'].includes(nextAction) ? nextAction : 'all';
                     state.activityFilters.from = String(document.getElementById('admin-activity-from')?.value || '');
                     state.activityFilters.to = String(document.getElementById('admin-activity-to')?.value || '');
                     state.activityPage = 1;

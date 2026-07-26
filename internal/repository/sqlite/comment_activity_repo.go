@@ -126,6 +126,16 @@ func (r *ActivityRepo) List(ctx context.Context, userID string, page, pageSize i
 }
 
 func (r *ActivityRepo) ListAll(ctx context.Context, page, pageSize int) ([]domain.ActivityLog, int, error) {
+	return r.listAllFiltered(ctx, page, pageSize, "")
+}
+
+// ListAllAuth returns login / failed_login events for the admin activity log.
+func (r *ActivityRepo) ListAllAuth(ctx context.Context, page, pageSize int) ([]domain.ActivityLog, int, error) {
+	return r.listAllFiltered(ctx, page, pageSize,
+		"a.action IN ('login', 'failed_login')")
+}
+
+func (r *ActivityRepo) listAllFiltered(ctx context.Context, page, pageSize int, whereClause string) ([]domain.ActivityLog, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -133,17 +143,21 @@ func (r *ActivityRepo) ListAll(ctx context.Context, page, pageSize int) ([]domai
 		pageSize = 20
 	}
 
+	countSQL := "SELECT COUNT(*) FROM activity_log"
+	listSQL := `SELECT a.id, a.user_id, u.username, a.action, a.target_type, a.target_id, a.target_name, a.metadata, a.ip_address, a.created_at
+		 FROM activity_log a LEFT JOIN users u ON a.user_id = u.id`
+	if whereClause != "" {
+		countSQL += " WHERE action IN ('login', 'failed_login')"
+		listSQL += " WHERE " + whereClause
+	}
+	listSQL += " ORDER BY a.created_at DESC LIMIT ? OFFSET ?"
+
 	var total int
-	if err := r.reader.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM activity_log").Scan(&total); err != nil {
+	if err := r.reader.QueryRowContext(ctx, countSQL).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	rows, err := r.reader.QueryContext(ctx,
-		`SELECT a.id, a.user_id, u.username, a.action, a.target_type, a.target_id, a.target_name, a.metadata, a.ip_address, a.created_at
-		 FROM activity_log a LEFT JOIN users u ON a.user_id = u.id
-		 ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
-		pageSize, (page-1)*pageSize)
+	rows, err := r.reader.QueryContext(ctx, listSQL, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}

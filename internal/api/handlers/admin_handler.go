@@ -616,14 +616,14 @@ func (h *AdminHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"invites": invites})
 }
 
-// Activity handles GET /api/v1/admin/activity
+// Activity handles GET /api/v1/admin/activity (authentication events only).
 func (h *AdminHandler) Activity(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 
-	logs, total, err := h.activityRepo.ListAll(r.Context(), page, pageSize)
+	logs, total, err := h.activityRepo.ListAllAuth(r.Context(), page, pageSize)
 	if err != nil {
-		log.Printf("activity list error (ListAll): %v", err)
+		log.Printf("activity list error (ListAllAuth): %v", err)
 		writeError(w, "failed to list activity", http.StatusInternalServerError)
 		return
 	}
