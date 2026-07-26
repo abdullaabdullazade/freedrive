@@ -477,7 +477,12 @@ export function FilePreviewScreen({ route, navigation }: Props) {
             const loading = !!loadingIds[item.id];
             const error = errorById[item.id];
             return (
-              <View style={[styles.page, { width: pageWidth }]}>
+              <View
+                style={[
+                  styles.page,
+                  { width: pageWidth, paddingBottom: insets.bottom },
+                ]}
+              >
                 {uri ? (
                   <Image source={{ uri }} style={styles.image} resizeMode="contain" />
                 ) : loading ? (
@@ -491,7 +496,7 @@ export function FilePreviewScreen({ route, navigation }: Props) {
             );
           }}
         />
-        <Text style={styles.counter}>
+        <Text style={[styles.counter, { bottom: spacing.lg + insets.bottom }]}>
           {pageIndex + 1} / {gallery.length}
         </Text>
       </View>
@@ -500,7 +505,7 @@ export function FilePreviewScreen({ route, navigation }: Props) {
 
   if (mode === "image") {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { paddingBottom: insets.bottom, width: "100%" }]}>
         {currentUri ? (
           <Image source={{ uri: currentUri }} style={styles.image} resizeMode="contain" />
         ) : (
@@ -587,10 +592,13 @@ export function FilePreviewScreen({ route, navigation }: Props) {
   }
 
   if (mode === "text") {
+    const textBottomPad = {
+      paddingBottom: spacing.lg + insets.bottom,
+    };
     if (editing) {
       return (
         <TextInput
-          style={[styles.safe, styles.textPad, styles.editor]}
+          style={[styles.safe, styles.textPad, styles.editor, textBottomPad]}
           value={draft}
           onChangeText={setDraft}
           multiline
@@ -600,7 +608,10 @@ export function FilePreviewScreen({ route, navigation }: Props) {
       );
     }
     return (
-      <ScrollView style={styles.safe} contentContainerStyle={styles.textPad}>
+      <ScrollView
+        style={styles.safe}
+        contentContainerStyle={[styles.textPad, textBottomPad]}
+      >
         <Text style={styles.text}>{savedText}</Text>
       </ScrollView>
     );
@@ -626,7 +637,7 @@ export function FilePreviewScreen({ route, navigation }: Props) {
   }
 
   return (
-    <View style={styles.center}>
+    <View style={[styles.center, { paddingBottom: insets.bottom }]}>
       <Text style={styles.hint}>PDF preview uses your device apps.</Text>
       <Pressable
         style={styles.btn}

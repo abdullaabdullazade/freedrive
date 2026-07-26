@@ -28,8 +28,9 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **In-app preview** — images, video (native-controls player via `expo-video`), plain text (Markdown/JSON), spreadsheets (`.xlsx` / `.xls` / `.csv`), and PDF (open with another app)
 - **Large media limit** — images/videos **over 100 MiB** are not opened in the in-app player (avoids crashes); tapping shows Save / Share / Cancel instead
 - **Spreadsheet editor** — SheetJS grid with formula bar and sheet tabs; Edit / Save re-encrypts and uploads via `POST /api/v1/files/{id}/content` (same path as text)
-- **Image gallery** — swipe left/right between photos in the same loaded list (Folder / Files / Starred / Home); counter shows position; neighbors decrypt in the background (skips files over the preview size limit)
+- **Image gallery** — swipe left/right between photos in the same loaded list (Folder / Files / Starred / Home); counter shows position; neighbors decrypt in the background (skips files over the preview size limit); bottom counter and image pad above the Android system nav bar
 - **Video gallery** — same swipe between videos in the loaded list; only the active page mounts the player; bottom controls respect Android safe-area insets
+- **Text / spreadsheet / PDF** — FilePreview text editor, sheet tabs, and PDF actions also pad for the system nav bar
 - **Text edit** — Edit / Save on text previews; content is re-encrypted and uploaded via the same native multipart helper (`POST /api/v1/files/{id}/content`)
 - **Image rotate** — Rotate (90°) in the preview header, then Save to replace the file on the server (same content endpoint)
 - **Share a copy** — opens the Android share sheet with the decrypted file

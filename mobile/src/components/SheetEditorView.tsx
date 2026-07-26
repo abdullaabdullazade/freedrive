@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, spacing } from "../theme";
 import {
   columnName,
@@ -59,6 +60,7 @@ export function SheetEditorView({
   loadError,
   onLoadError,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(!parsed);
   const [selected, setSelected] = useState<{ row: number; col: number }>({
     row: 0,
@@ -151,9 +153,15 @@ export function SheetEditorView({
   }
 
   const address = `${columnName(selected.col)}${selected.row + 1}`;
+  const hasSheetTabs = parsed.sheetNames.length > 1;
 
   return (
-    <View style={styles.root}>
+    <View
+      style={[
+        styles.root,
+        !hasSheetTabs ? { paddingBottom: insets.bottom } : null,
+      ]}
+    >
       <View style={styles.formulaBar}>
         <Text style={styles.address}>{address}</Text>
         <Text style={styles.fx}>fx</Text>
@@ -226,10 +234,10 @@ export function SheetEditorView({
         </ScrollView>
       </ScrollView>
 
-      {parsed.sheetNames.length > 1 ? (
+      {hasSheetTabs ? (
         <ScrollView
           horizontal
-          style={styles.tabs}
+          style={[styles.tabs, { paddingBottom: insets.bottom, maxHeight: 44 + insets.bottom }]}
           contentContainerStyle={styles.tabsInner}
           showsHorizontalScrollIndicator={false}
         >

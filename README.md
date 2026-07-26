@@ -760,8 +760,9 @@ The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app
 - **In-app preview** — images, video (native-controls player via `expo-video`), plain text (Markdown/JSON), spreadsheets (`.xlsx` / `.xls` / `.csv`), PDF (open with another app)
 - **Large media** — images/videos over **100 MiB** are not opened in-app (Save / Share / Cancel instead) to avoid OOM crashes; smaller files may decrypt via native AES-GCM on disk
 - **Spreadsheet editor** — SheetJS grid with formula bar and sheet tabs; Edit / Save uploads via `POST /api/v1/files/{id}/content`
-- **Image gallery** — swipe between photos in the same loaded list; background decrypt for neighbors
+- **Image gallery** — swipe between photos in the same loaded list; background decrypt for neighbors; counter and image content pad above the Android system nav bar (same pattern as video)
 - **Video gallery** — swipe between videos in the same loaded list (active player only; safe-area padding above the system nav bar)
+- **Text / spreadsheet / PDF preview** — FilePreview editors also reserve bottom safe-area so controls and last lines are not covered by the system nav bar
 - **Edit & save** — text Edit/Save, sheet Edit/Save, and image Rotate/Save re-encrypt and upload via the same native multipart path to `POST /api/v1/files/{id}/content`
 - **Android downloads** — native `FreeDriveDownloads` module (Expo config plugin under `mobile/plugins/with-freedrive-downloads/`) writes into the shared Downloads collection via MediaStore; shows an ongoing “Downloading…” status notification, then a tappable “Download complete” notification that opens the file (Android 13+ may ask for notification permission)
 - **Status notifications** — no persistent “app running” foreground notification; status-bar icons only for downloads and while video is playing
