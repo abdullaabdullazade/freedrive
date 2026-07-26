@@ -12,6 +12,7 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Background sync** — uploads local changes, polls for remote changes; skips `.git`, `node_modules`, and `.svn` folders during scan; skips Office lock files (`~$…`), `desktop.ini`, `Thumbs.db`, and `*.tmp` in computer sync folders and My Drive; large encrypted uploads (>32 MiB) use resumable chunked API (Cloudflare-safe); each scan creates/restores remote folders for local subdirectories before uploading files
 - **Transient errors retry** — local `error` rows are retried on the next scan (permanent `rejected` only are skipped); Home/Sync activity show a Drive-style progress ring around ↑ during upload
 - **Local deletes → server trash** — removing a file from a sync folder (including Explorer Delete, which moves it out of the tree) soft-deletes the matching server file; periodic verify (~5 min) and post-upload same-name cleanup catch missed events and avoid live duplicates without deleting the only good copy before an upload succeeds
+- **Duplicate event safe** — version **0.1.7** serializes uploads per local path, so browser download Create/Write/Rename bursts produce one remote file; only the current remote mapping may clean up older same-name copies
 - **Server restart safe** — before a scan, Desktop checks `/health` and the authenticated session; while the server is offline/restarting it shows **Waiting for server** and does not enter scan/delete/upload reconciliation. Version **0.1.6** also preserves newer `sync_state` mappings when delayed delete journal entries recover
 - **Server restores → local download** — a file restored from the Bin (or created from the web) is downloaded into the sync folder, also when the restore happened while the app was closed. Only items this computer previously synced (`sync_state` / folder mappings) can trigger a server delete, so untracked remote files are never re-trashed while waiting to download
 - **Silent background verify** — on restart, verifies files in the background without a full UI rescan; if initial sync was never completed, startup resumes full sync with a “Resuming sync…” status
@@ -139,6 +140,11 @@ Desktop releases use tags **`desktop-v*`** (e.g. `desktop-v0.1.0`). Server relea
 - Soft-delete on the server can take a few seconds (journal). Look for `Removed from cloud` in Sync activity or `file_delete` lines in `sync.log`.
 - Explorer Delete moves the file out of the sync tree; the client treats that as a local delete. If an event was missed, the next periodic verify (~5 min) or app restart should soft-delete orphans.
 - Re-uploading the same name after a missed delete used to leave two live files; the client now uploads first, stores the new remote ID, then trashes only older same-name siblings.
+
+### New downloaded file appears multiple times in Bin
+
+- Fixed in **0.1.7**. Browsers can emit Create, Write, and Rename events for one completed download; earlier builds could upload all events concurrently, then each upload worker trashed the other fresh copies.
+- Uploads are now serialized per canonical local path. A duplicate event waits for the first upload, sees matching `sync_state`, and exits unchanged. Same-name cleanup also runs only if that upload still owns the current remote mapping.
 
 ### Restored from Bin but the file goes back to the Bin
 

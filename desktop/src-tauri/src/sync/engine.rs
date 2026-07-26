@@ -123,6 +123,7 @@ pub struct SyncEngine {
     initial_sync_running: AtomicBool,
     upload_semaphore: Arc<Semaphore>,
     download_semaphore: Arc<Semaphore>,
+    upload_path_locks: Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
     pending_paths: Mutex<VecDeque<PathBuf>>,
     pending_removals: Mutex<VecDeque<PathBuf>>,
     status: RwLock<SyncStatus>,
@@ -145,6 +146,7 @@ impl SyncEngine {
             initial_sync_running: AtomicBool::new(false),
             upload_semaphore: Arc::new(Semaphore::new(UPLOAD_CONCURRENCY)),
             download_semaphore: Arc::new(Semaphore::new(DOWNLOAD_CONCURRENCY)),
+            upload_path_locks: Mutex::new(HashMap::new()),
             pending_paths: Mutex::new(VecDeque::new()),
             pending_removals: Mutex::new(VecDeque::new()),
             status: RwLock::new(SyncStatus {
@@ -238,6 +240,18 @@ impl SyncEngine {
             .and_then(|n| n.to_str())
             .unwrap_or("file");
         if should_skip_file(file_name) {
+            return;
+        }
+
+        if self.is_initial_sync_running() {
+            let canonical = path.canonicalize().unwrap_or(path.clone());
+            let mut queue = self.pending_paths.lock();
+            if !queue
+                .iter()
+                .any(|queued| queued.canonicalize().unwrap_or(queued.clone()) == canonical)
+            {
+                queue.push_back(path);
+            }
             return;
         }
 
@@ -411,14 +425,9 @@ impl SyncEngine {
                 let _ = join_set.join_next().await;
             }
 
-            let permit = match self.upload_semaphore.clone().acquire_owned().await {
-                Ok(permit) => permit,
-                Err(_) => break,
-            };
             let engine = Arc::clone(self);
             join_set.spawn(async move {
-                let _permit = permit;
-                let _ = engine.sync_file_path_unlocked(&path).await;
+                let _ = engine.sync_file_path(&path).await;
             });
         }
 
@@ -1281,6 +1290,11 @@ impl SyncEngine {
         file_name: &str,
         keep_remote_id: &str,
     ) -> AppResult<()> {
+        let current_remote_id = {
+            let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+            get_sync_state(&conn, sync_folder_id, relative)?
+                .and_then(|state| state.0)
+        };
         let contents = match self.api.get_folder_contents(remote_folder_id).await {
             Ok(c) => c,
             Err(e) => {
@@ -1293,7 +1307,10 @@ impl SyncEngine {
         };
         let mut queued = 0u32;
         for f in contents.files {
-            if f.name != file_name || f.id == keep_remote_id {
+            if f.name != file_name
+                || f.id == keep_remote_id
+                || current_remote_id.as_deref() == Some(f.id.as_str())
+            {
                 continue;
             }
             if self.queue_file_delete_if_needed(sync_folder_id, relative, &f.id)? {
@@ -1971,6 +1988,52 @@ impl SyncEngine {
         _retried: bool,
         show_ui: bool,
     ) -> AppResult<FileSyncOutcome> {
+        let path_key = file_path
+            .canonicalize()
+            .unwrap_or_else(|_| file_path.to_path_buf());
+        let path_lock = {
+            let mut locks = self.upload_path_locks.lock();
+            Arc::clone(
+                locks
+                    .entry(path_key.clone())
+                    .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+            )
+        };
+        let path_guard = path_lock.lock().await;
+        let result = self
+            .sync_one_file_locked(
+                sync_folder_id,
+                local_root,
+                file_path,
+                remote_root_id,
+                processed,
+                total,
+                show_ui,
+            )
+            .await;
+        drop(path_guard);
+
+        let mut locks = self.upload_path_locks.lock();
+        if Arc::strong_count(&path_lock) == 2
+            && locks
+                .get(&path_key)
+                .is_some_and(|current| Arc::ptr_eq(current, &path_lock))
+        {
+            locks.remove(&path_key);
+        }
+        result
+    }
+
+    async fn sync_one_file_locked(
+        &self,
+        sync_folder_id: i64,
+        local_root: &Path,
+        file_path: &Path,
+        remote_root_id: &str,
+        processed: u64,
+        total: u64,
+        show_ui: bool,
+    ) -> AppResult<FileSyncOutcome> {
         let file_name = file_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -2358,19 +2421,31 @@ impl SyncEngine {
                         );
                     }
                 }
-                if let Err(error) = self
-                    .trash_same_name_remote_siblings(
-                        sync_folder_id,
-                        &relative_str,
-                        &remote_folder_id,
-                        file_name,
-                        &rec.id,
-                    )
-                    .await
-                {
+                let owns_remote_mapping = {
+                    let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+                    let state = get_sync_state(&conn, sync_folder_id, &relative_str)?;
+                    sync_state_remote_matches(state.as_ref(), &rec.id)
+                };
+                if owns_remote_mapping {
+                    if let Err(error) = self
+                        .trash_same_name_remote_siblings(
+                            sync_folder_id,
+                            &relative_str,
+                            &remote_folder_id,
+                            file_name,
+                            &rec.id,
+                        )
+                        .await
+                    {
+                        sync_log(format!(
+                            "post-upload same-name cleanup failed for {}: {}",
+                            relative_str, error
+                        ));
+                    }
+                } else {
                     sync_log(format!(
-                        "post-upload same-name cleanup failed for {}: {}",
-                        relative_str, error
+                        "post-upload cleanup skipped for {}: newer remote mapping won",
+                        relative_str
                     ));
                 }
                 Ok(SyncAttemptResult::Done(FileSyncOutcome::Synced))
@@ -2848,6 +2923,15 @@ fn file_looks_unchanged(
     }
 }
 
+fn sync_state_remote_matches(
+    state: Option<&(Option<String>, Option<String>, Option<i64>, String)>,
+    remote_id: &str,
+) -> bool {
+    state
+        .and_then(|value| value.0.as_deref())
+        .is_some_and(|current| current == remote_id)
+}
+
 fn is_permanent_sync_error(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     lower.contains("file type not allowed")
@@ -2919,7 +3003,7 @@ pub fn set_sync_mode(db: &DbHandle, mode: &str) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_remote_folder_lookup, should_skip_file};
+    use super::{classify_remote_folder_lookup, should_skip_file, sync_state_remote_matches};
     use crate::error::AppError;
 
     #[test]
@@ -2932,6 +3016,19 @@ mod tests {
         assert!(should_skip_file("notes.tmp"));
         assert!(!should_skip_file("Najpowszechniejsze atrybuty S.M.A.R.T.rtf"));
         assert!(!should_skip_file("report.docx"));
+    }
+
+    #[test]
+    fn only_current_remote_mapping_may_cleanup_same_name_files() {
+        let state = (
+            Some("remote-new".to_string()),
+            Some("hash".to_string()),
+            Some(1),
+            "synced".to_string(),
+        );
+        assert!(sync_state_remote_matches(Some(&state), "remote-new"));
+        assert!(!sync_state_remote_matches(Some(&state), "remote-old"));
+        assert!(!sync_state_remote_matches(None, "remote-new"));
     }
 
     #[test]
