@@ -28,6 +28,17 @@ fn desktop_device_name() -> String {
         .unwrap_or_else(|| "Desktop".to_string())
 }
 
+fn http_api_error(status: reqwest::StatusCode, text: &str) -> AppError {
+    let code = status.as_u16();
+    if let Ok(err) = serde_json::from_str::<ApiError>(text) {
+        return AppError::http(code, err.error);
+    }
+    if text.trim().is_empty() {
+        return AppError::http(code, format!("request failed ({code})"));
+    }
+    AppError::http(code, text.to_string())
+}
+
 fn desktop_device_id() -> String {
     crate::auth_store::device_id().unwrap_or_else(|_| uuid::Uuid::new_v4().to_string())
 }
@@ -237,15 +248,7 @@ impl ApiClient {
         let text = res.text().await?;
 
         if !status.is_success() {
-
-            if let Ok(err) = serde_json::from_str::<ApiError>(&text) {
-
-                return Err(AppError::msg(err.error));
-
-            }
-
-            return Err(AppError::msg(format!("request failed ({})", status)));
-
+            return Err(http_api_error(status, &text));
         }
 
 
@@ -674,8 +677,7 @@ impl ApiClient {
         {
             Ok(_) => Ok(()),
             Err(e) => {
-                let msg = e.to_string().to_lowercase();
-                if msg.contains("404") || msg.contains("not found") {
+                if e.is_not_found() {
                     Ok(())
                 } else {
                     Err(e)
@@ -702,8 +704,7 @@ impl ApiClient {
         {
             Ok(_) => Ok(()),
             Err(e) => {
-                let msg = e.to_string().to_lowercase();
-                if msg.contains("404") || msg.contains("not found") {
+                if e.is_not_found() {
                     Ok(())
                 } else {
                     Err(e)
@@ -854,10 +855,7 @@ impl ApiClient {
             }
             return Ok(serde_json::from_str(&text)?);
         }
-        if let Ok(err) = serde_json::from_str::<ApiError>(&text) {
-            return Err(AppError::msg(format!("{} ({})", err.error, status)));
-        }
-        Err(AppError::msg(format!("HTTP {}: {}", status, text)))
+        Err(http_api_error(status, &text))
     }
 
 

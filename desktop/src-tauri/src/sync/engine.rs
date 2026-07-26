@@ -771,7 +771,7 @@ impl SyncEngine {
     }
 
     async fn ensure_sync_folder_remote(&self, sf: &SyncFolderRow) -> AppResult<String> {
-        if self.remote_folder_exists(&sf.remote_folder_id).await {
+        if self.remote_folder_exists(&sf.remote_folder_id).await? {
             return Ok(sf.remote_folder_id.clone());
         }
 
@@ -1380,7 +1380,7 @@ impl SyncEngine {
     }
 
     async fn prepare_sync_folder_for_scan(&self, sf: &SyncFolderRow) -> AppResult<String> {
-        if self.remote_folder_exists(&sf.remote_folder_id).await {
+        if self.remote_folder_exists(&sf.remote_folder_id).await? {
             return Ok(sf.remote_folder_id.clone());
         }
 
@@ -1430,10 +1430,12 @@ impl SyncEngine {
         Ok(new_root)
     }
 
-    async fn remote_folder_exists(&self, folder_id: &str) -> bool {
+    async fn remote_folder_exists(&self, folder_id: &str) -> AppResult<bool> {
         match self.api.get_folder_contents(folder_id).await {
-            Ok(contents) => !contents.folder.as_ref().is_some_and(|f| f.is_trashed),
-            Err(_) => false,
+            Ok(contents) => {
+                Ok(!contents.folder.as_ref().is_some_and(|f| f.is_trashed))
+            }
+            Err(e) => classify_remote_folder_lookup(Err(e)),
         }
     }
 
@@ -2333,7 +2335,7 @@ impl SyncEngine {
                 get_folder_mapping(&conn, sync_folder_id, relative_dir)?
             };
             if let Some(id) = cached_id {
-                if self.remote_folder_exists(&id).await {
+                if self.remote_folder_exists(&id).await? {
                     return Ok(id);
                 }
                 let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
@@ -2357,7 +2359,7 @@ impl SyncEngine {
             };
 
             if let Some(id) = cached_id {
-                if self.remote_folder_exists(&id).await {
+                if self.remote_folder_exists(&id).await? {
                     current_parent = id;
                     continue;
                 }
@@ -2587,6 +2589,16 @@ fn is_stale_remote_ref(err: &str) -> bool {
         || lower.contains("787")
         || lower.contains("not found")
         || lower.contains("folder not found")
+}
+
+/// Classify a remote folder probe: confirmed missing (404) → `Ok(false)`,
+/// transport / 5xx / auth errors → `Err` (do not trash or recreate).
+fn classify_remote_folder_lookup(result: AppResult<bool>) -> AppResult<bool> {
+    match result {
+        Ok(exists) => Ok(exists),
+        Err(e) if e.is_not_found() => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 fn is_my_drive_path(path: &Path) -> bool {
@@ -2825,7 +2837,8 @@ pub fn set_sync_mode(db: &DbHandle, mode: &str) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::should_skip_file;
+    use super::{classify_remote_folder_lookup, should_skip_file};
+    use crate::error::AppError;
 
     #[test]
     fn skips_office_lock_and_junk_files() {
@@ -2837,5 +2850,45 @@ mod tests {
         assert!(should_skip_file("notes.tmp"));
         assert!(!should_skip_file("Najpowszechniejsze atrybuty S.M.A.R.T.rtf"));
         assert!(!should_skip_file("report.docx"));
+    }
+
+    #[test]
+    fn remote_folder_probe_exists() {
+        assert_eq!(classify_remote_folder_lookup(Ok(true)).unwrap(), true);
+    }
+
+    #[test]
+    fn remote_folder_probe_trashed_or_missing_contents() {
+        assert_eq!(classify_remote_folder_lookup(Ok(false)).unwrap(), false);
+    }
+
+    #[test]
+    fn remote_folder_probe_http_404_is_missing() {
+        let err = AppError::http(404, "folder not found");
+        assert_eq!(classify_remote_folder_lookup(Err(err)).unwrap(), false);
+    }
+
+    #[test]
+    fn remote_folder_probe_network_is_unavailable() {
+        let err = AppError::msg("connection refused");
+        assert!(classify_remote_folder_lookup(Err(err)).is_err());
+    }
+
+    #[test]
+    fn remote_folder_probe_http_5xx_is_unavailable() {
+        let err = AppError::http(500, "internal server error");
+        assert!(classify_remote_folder_lookup(Err(err)).is_err());
+    }
+
+    #[test]
+    fn remote_folder_probe_http_401_is_unavailable() {
+        let err = AppError::http(401, "unauthorized");
+        assert!(classify_remote_folder_lookup(Err(err)).is_err());
+    }
+
+    #[test]
+    fn remote_folder_probe_http_429_is_unavailable() {
+        let err = AppError::http(429, "rate limit exceeded");
+        assert!(classify_remote_folder_lookup(Err(err)).is_err());
     }
 }

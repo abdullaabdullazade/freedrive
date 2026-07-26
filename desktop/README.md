@@ -12,6 +12,7 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Background sync** — uploads local changes, polls for remote changes; skips `.git`, `node_modules`, and `.svn` folders during scan; skips Office lock files (`~$…`), `desktop.ini`, `Thumbs.db`, and `*.tmp` in computer sync folders and My Drive; large encrypted uploads (>32 MiB) use resumable chunked API (Cloudflare-safe); each scan creates/restores remote folders for local subdirectories before uploading files
 - **Transient errors retry** — local `error` rows are retried on the next scan (permanent `rejected` only are skipped); Home/Sync activity show a Drive-style progress ring around ↑ during upload
 - **Local deletes → server trash** — removing a file from a sync folder (including Explorer Delete, which moves it out of the tree) soft-deletes the matching server file; periodic verify (~5 min) and pre-upload same-name cleanup catch missed events and avoid live duplicates
+- **Server restart safe** — if the FreeDrive server is offline or restarting, sync folder probes treat connection/5xx errors as temporary and **do not** queue mass deletes. Fixed in **0.1.5** (earlier builds could fill Trash after a server update while Desktop stayed running)
 - **Server restores → local download** — a file restored from the Bin (or created from the web) is downloaded into the sync folder, also when the restore happened while the app was closed. Only items this computer previously synced (`sync_state` / folder mappings) can trigger a server delete, so untracked remote files are never re-trashed while waiting to download
 - **Silent background verify** — on restart, verifies files in the background without a full UI rescan; if initial sync was never completed, startup resumes full sync with a “Resuming sync…” status
 - **Home & Sync activity** — status dashboard inspired by Google Drive for desktop
@@ -144,6 +145,12 @@ Desktop releases use tags **`desktop-v*`** (e.g. `desktop-v0.1.0`). Server relea
 - Fixed in **0.1.4**. Earlier builds treated “on the server but missing locally” as a local delete, so a file restored while the app was closed was soft-deleted again on the next launch (`missing locally, queued server delete` in `sync.log`).
 - Now a server delete is queued only for paths this computer already tracks. Restored or web-created files have no `sync_state` row yet, so they are downloaded instead — look for `restored, downloading` and `applied remote file` in `sync.log`, plus a `Restored from cloud` row in Sync activity.
 - If you are on an older build, update with the new setup (see [Updating an existing install](#updating-an-existing-install)) before retesting.
+
+### Server restarted while Desktop was running — files appeared in Trash
+
+- Fixed in **0.1.5**. Earlier builds treated any error listing a sync folder (including connection refused / timeout while the server was down for an update) as “remote folder gone”, queued durable deletes for every tracked file, and drained them as soon as the server came back.
+- Now only a confirmed HTTP **404** or a trashed folder metadata response counts as missing. Network and 5xx errors abort the scan without journaling deletes.
+- Update Desktop to **0.1.5+** before testing another server restart.
 
 ### Encryption notes
 
