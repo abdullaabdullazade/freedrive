@@ -36,6 +36,7 @@ func runMigrations(db *sql.DB) error {
 		{13, migrationV13},
 		{14, migrationV14},
 		{15, migrationV15},
+		{16, migrationV16},
 	}
 
 	for _, m := range migrations {
@@ -395,4 +396,21 @@ CREATE TABLE IF NOT EXISTS upload_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_upload_sessions_user ON upload_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at);
+`
+
+const migrationV16 = `
+ALTER TABLE users ADD COLUMN totp_secret TEXT;
+ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN totp_enrolled_at DATETIME;
+
+ALTER TABLE email_2fa_challenges ADD COLUMN method TEXT NOT NULL DEFAULT 'email';
+
+CREATE TABLE IF NOT EXISTS totp_backup_codes (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   TEXT NOT NULL,
+    used_at     DATETIME,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_totp_backup_user ON totp_backup_codes(user_id);
 `

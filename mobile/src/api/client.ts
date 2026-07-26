@@ -19,6 +19,7 @@ import type {
   FolderItem,
   LoginResult,
   LoginSuccess,
+  Login2FAChallenge,
   SharedItem,
   ShareLink,
   SortDir,
@@ -424,6 +425,15 @@ export const api = {
       "POST",
       "/auth/verify-2fa",
       { challenge_id, code },
+      { auth: false },
+    );
+  },
+
+  send2FAEmail: async (challenge_id: string) => {
+    return request<Login2FAChallenge>(
+      "POST",
+      "/auth/2fa/send-email",
+      { challenge_id },
       { auth: false },
     );
   },

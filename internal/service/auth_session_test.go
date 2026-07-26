@@ -28,7 +28,7 @@ func newTestAuth(t *testing.T) (*service.AuthService, *sqlite.UserRepo, *sqlite.
 		t.Fatalf("migrate: %v", err)
 	}
 	userRepo := sqlite.NewUserRepo(db)
-	auth := service.NewAuthService(userRepo, sqlite.NewEmail2FARepo(db), sqlite.NewSessionRepo(db), "test-secret-key-at-least-32-bytes!!")
+	auth := service.NewAuthService(userRepo, sqlite.NewEmail2FARepo(db), sqlite.NewTotpBackupRepo(db), sqlite.NewSessionRepo(db), "test-secret-key-at-least-32-bytes!!")
 	return auth, userRepo, db
 }
 

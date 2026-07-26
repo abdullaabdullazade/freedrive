@@ -153,9 +153,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if service.Needs2FA(user) {
-		challenge, err := h.authService.StartEmail2FA(r.Context(), user)
+		challenge, err := h.authService.StartLogin2FA(r.Context(), user)
 		if err == service.Err2FAUnavailable {
 			writeError(w, "email two-factor authentication is unavailable; contact your administrator", http.StatusServiceUnavailable)
+			return
+		}
+		if err == service.ErrEnable2FAFirst {
+			writeError(w, "enable two-factor authentication in Security before signing in", http.StatusServiceUnavailable)
 			return
 		}
 		if err != nil {
@@ -163,9 +167,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"requires_2fa":  true,
-			"challenge_id":  challenge.ChallengeID,
-			"email_masked":  challenge.EmailMasked,
+			"requires_2fa":       true,
+			"challenge_id":       challenge.ChallengeID,
+			"method":             challenge.Method,
+			"methods_available":  challenge.MethodsAvailable,
+			"email_masked":       challenge.EmailMasked,
 		})
 		return
 	}
@@ -217,6 +223,44 @@ func (h *AuthHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"tokens": tokens,
 		"user":   user,
+	})
+}
+
+// Send2FAEmail handles POST /api/v1/auth/2fa/send-email — email fallback for TOTP challenges.
+func (h *AuthHandler) Send2FAEmail(w http.ResponseWriter, r *http.Request) {
+	if !h.checkIP(w, r) {
+		return
+	}
+
+	var req struct {
+		ChallengeID string `json:"challenge_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	challenge, err := h.authService.SendEmail2FAFallback(r.Context(), req.ChallengeID)
+	if err != nil {
+		switch err {
+		case service.ErrInvalid2FACode:
+			writeError(w, "invalid or expired verification challenge", http.StatusBadRequest)
+		case service.Err2FAUnavailable:
+			writeError(w, "email two-factor authentication is unavailable; contact your administrator", http.StatusServiceUnavailable)
+		case service.ErrAccountSuspended:
+			writeError(w, "account suspended", http.StatusForbidden)
+		default:
+			writeError(w, "failed to send verification code", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"requires_2fa":      true,
+		"challenge_id":      challenge.ChallengeID,
+		"method":            challenge.Method,
+		"methods_available": challenge.MethodsAvailable,
+		"email_masked":      challenge.EmailMasked,
 	})
 }
 

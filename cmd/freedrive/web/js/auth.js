@@ -35,7 +35,7 @@ const Auth = (() => {
         return raw || 'Something went wrong. Please try again.';
     }
 
-    function showTwoFAForm(challengeId, emailMasked) {
+    function showTwoFAForm(challengeId, emailMasked, method, methodsAvailable) {
         document.getElementById('login-form')?.classList.add('hidden');
         document.getElementById('register-form')?.classList.add('hidden');
         document.getElementById('reset-form')?.classList.add('hidden');
@@ -50,11 +50,26 @@ const Auth = (() => {
         if (titleEl) titleEl.textContent = 'Verify sign-in';
         if (subtitleEl) subtitleEl.textContent = 'two-factor authentication';
 
+        const activeMethod = method === 'totp' ? 'totp' : 'email';
+        const methods = Array.isArray(methodsAvailable) ? methodsAvailable : [];
+        const methodInput = document.getElementById('twofa-method');
+        if (methodInput) methodInput.value = activeMethod;
+
         const messageEl = document.getElementById('twofa-message');
         if (messageEl) {
-            messageEl.textContent = emailMasked
-                ? `Enter the 6-digit code sent to ${emailMasked}.`
-                : 'Enter the 6-digit code sent to your email.';
+            if (activeMethod === 'totp') {
+                messageEl.textContent = 'Enter the 6-digit code from your authenticator app (or a backup code).';
+            } else {
+                messageEl.textContent = emailMasked
+                    ? `Enter the 6-digit code sent to ${emailMasked}.`
+                    : 'Enter the 6-digit code sent to your email.';
+            }
+        }
+
+        const sendEmailBtn = document.getElementById('twofa-send-email-btn');
+        if (sendEmailBtn) {
+            const canFallback = activeMethod === 'totp' && methods.includes('email');
+            sendEmailBtn.classList.toggle('hidden', !canFallback);
         }
 
         const challengeInput = document.getElementById('twofa-challenge-id');
@@ -63,6 +78,7 @@ const Auth = (() => {
         const codeInput = document.getElementById('twofa-code');
         if (codeInput) {
             codeInput.value = '';
+            codeInput.placeholder = activeMethod === 'totp' ? 'Authenticator or backup code' : '6-digit code';
             codeInput.focus();
         }
         clearFormError('twofa-error');
@@ -174,15 +190,38 @@ const Auth = (() => {
             showLoginForm();
         });
 
+        document.getElementById('twofa-send-email-btn')?.addEventListener('click', async () => {
+            const challengeId = String(document.getElementById('twofa-challenge-id')?.value || '').trim();
+            const btn = document.getElementById('twofa-send-email-btn');
+            clearFormError('twofa-error');
+            if (!challengeId) return;
+            try {
+                if (btn) btn.disabled = true;
+                const data = await API.auth.send2FAEmail(challengeId);
+                showTwoFAForm(data.challenge_id, data.email_masked, data.method, data.methods_available);
+                Components.toast('Verification code sent by email', 'success');
+            } catch (err) {
+                const msg = friendlyAuthError(err);
+                setFormError('twofa-error', msg);
+                Components.toast(msg, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
+
         document.getElementById('twofa-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const challengeId = String(document.getElementById('twofa-challenge-id')?.value || '').trim();
             const code = String(document.getElementById('twofa-code')?.value || '').trim();
+            const method = String(document.getElementById('twofa-method')?.value || 'email');
             const btn = document.getElementById('twofa-btn');
             clearFormError('twofa-error');
 
-            if (!challengeId || code.length !== 6) {
-                const msg = 'Enter the 6-digit verification code';
+            const minLen = method === 'totp' ? 6 : 6;
+            if (!challengeId || code.length < minLen) {
+                const msg = method === 'totp'
+                    ? 'Enter an authenticator code or backup code'
+                    : 'Enter the 6-digit verification code';
                 setFormError('twofa-error', msg);
                 Components.toast(msg, 'error');
                 return;
@@ -371,7 +410,7 @@ const Auth = (() => {
                 const data = await API.auth.login(email, password);
                 if (data?.requires_2fa) {
                     pendingLoginPassword = password;
-                    showTwoFAForm(data.challenge_id, data.email_masked);
+                    showTwoFAForm(data.challenge_id, data.email_masked, data.method, data.methods_available);
                     return;
                 }
                 await completeLogin(data, password);
@@ -407,7 +446,7 @@ const Auth = (() => {
                 const data = await API.auth.login(email, password);
                 if (data?.requires_2fa) {
                     pendingLoginPassword = password;
-                    showTwoFAForm(data.challenge_id, data.email_masked);
+                    showTwoFAForm(data.challenge_id, data.email_masked, data.method, data.methods_available);
                     return;
                 }
                 await completeLogin(data, password);

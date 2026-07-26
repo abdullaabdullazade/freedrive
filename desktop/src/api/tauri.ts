@@ -33,6 +33,10 @@ export const api = {
     invoke<User>("verify_2fa", {
       req: { server_url, challenge_id, code, password },
     }),
+  send2FAEmail: (server_url: string, challenge_id: string) =>
+    invoke<LoginResult>("send_2fa_email", {
+      req: { server_url, challenge_id },
+    }),
   logout: () => invoke<void>("logout"),
   getSystemFolders: () => invoke<SystemFolder[]>("get_system_folders"),
   pickFolder: () => invoke<string | null>("pick_folder"),

@@ -44,12 +44,20 @@ type EmailChangeRepository interface {
 	DeleteByID(ctx context.Context, id string) error
 }
 
-// Email2FARepository defines data access for email 2FA challenges.
+// Email2FARepository defines data access for login 2FA challenges.
 type Email2FARepository interface {
 	Create(ctx context.Context, challenge *domain.Email2FAChallenge) error
 	GetByID(ctx context.Context, id string) (*domain.Email2FAChallenge, error)
+	Update(ctx context.Context, challenge *domain.Email2FAChallenge) error
 	DeleteByUserID(ctx context.Context, userID string) error
 	DeleteByID(ctx context.Context, id string) error
+}
+
+// TotpBackupRepository defines data access for TOTP backup codes.
+type TotpBackupRepository interface {
+	ReplaceAll(ctx context.Context, userID string, codeHashes []string) error
+	ConsumeUnused(ctx context.Context, userID, codeHash string) (bool, error)
+	DeleteByUserID(ctx context.Context, userID string) error
 }
 
 // FileRepository defines data access for files.

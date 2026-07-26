@@ -438,6 +438,25 @@ impl ApiClient {
 
     }
 
+    pub async fn send_2fa_email(challenge_id: &str, server_url: &str) -> AppResult<serde_json::Value> {
+        let base = server_url.trim_end_matches('/');
+        let http = reqwest::Client::new();
+        let res = apply_device_headers(http.post(format!("{}/api/v1/auth/2fa/send-email", base)))
+            .json(&serde_json::json!({ "challenge_id": challenge_id }))
+            .send()
+            .await?;
+
+        let status = res.status();
+        let text = res.text().await?;
+        if !status.is_success() {
+            if let Ok(err) = serde_json::from_str::<ApiError>(&text) {
+                return Err(AppError::msg(err.error));
+            }
+            return Err(AppError::msg("failed to send verification code"));
+        }
+        serde_json::from_str(&text).map_err(Into::into)
+    }
+
 
 
     pub async fn get_me(&self) -> AppResult<User> {

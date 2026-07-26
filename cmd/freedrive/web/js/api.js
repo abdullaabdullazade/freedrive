@@ -93,6 +93,7 @@ const API = (() => {
             || path === '/auth/reset-password'
             || path === '/auth/confirm-email'
             || path === '/auth/verify-2fa'
+            || path === '/auth/2fa/send-email'
             || path === '/auth/forgot-password';
         if (res.status === 401 && !isRetry && refreshToken && !isPublicAuth) {
             const refreshed = await tryRefresh();
@@ -271,6 +272,7 @@ const API = (() => {
     const auth = {
         login: (email, password) => request('POST', '/auth/login', { email, password }),
         verify2FA: (challenge_id, code) => request('POST', '/auth/verify-2fa', { challenge_id, code }),
+        send2FAEmail: (challenge_id) => request('POST', '/auth/2fa/send-email', { challenge_id }),
         register: (email, username, password, invite_code) => request('POST', '/auth/register', { email, username, password, invite_code }),
         logout: () => request('POST', '/auth/logout', { refresh_token: refreshToken }),
         resetPassword: (token, email, new_password, crypto_update) => request('POST', '/auth/reset-password', {
@@ -382,6 +384,9 @@ const API = (() => {
     const myStorage = () => request('GET', '/me/storage');
     const me = () => request('GET', '/me');
     const updateMe = (payload) => request('PATCH', '/me', payload);
+    const totpSetup = () => request('POST', '/me/totp/setup');
+    const totpConfirm = (code) => request('POST', '/me/totp/confirm', { code });
+    const totpDisable = (payload) => request('POST', '/me/totp/disable', payload || {});
     const requestEmailChange = (new_email, password) => request('POST', '/me/email-change/request', { new_email, password });
     const emailChangeStatus = () => request('GET', '/me/email-change/status');
 
@@ -486,6 +491,9 @@ const API = (() => {
         myStorage,
         me,
         updateMe,
+        totpSetup,
+        totpConfirm,
+        totpDisable,
         requestEmailChange,
         emailChangeStatus,
         request,

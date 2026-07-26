@@ -19,7 +19,12 @@ export type MainTabParamList = {
 
 export type RootStackParamList = {
   Login: undefined;
-  TwoFactor: { challengeId: string; emailMasked: string };
+  TwoFactor: {
+    challengeId: string;
+    emailMasked: string;
+    method?: string;
+    methodsAvailable?: string[];
+  };
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Search: { query: string };
   Recent: undefined;

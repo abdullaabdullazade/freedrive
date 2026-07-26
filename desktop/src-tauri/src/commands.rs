@@ -37,7 +37,12 @@ pub struct LoginRequest {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LoginResult {
     Success { user: User },
-    TwoFactor { challenge_id: String, email_masked: String },
+    TwoFactor {
+        challenge_id: String,
+        email_masked: String,
+        method: String,
+        methods_available: Vec<String>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +51,12 @@ pub struct TwoFactorRequest {
     pub challenge_id: String,
     pub code: String,
     pub password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Send2FAEmailRequest {
+    pub server_url: String,
+    pub challenge_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -369,6 +380,15 @@ pub async fn login(
 
     if let Some(requires) = data.get("requires_2fa").and_then(|v| v.as_bool()) {
         if requires {
+            let methods = data
+                .get("methods_available")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             return Ok(LoginResult::TwoFactor {
                 challenge_id: data["challenge_id"]
                     .as_str()
@@ -378,6 +398,12 @@ pub async fn login(
                     .as_str()
                     .unwrap_or_default()
                     .to_string(),
+                method: data
+                    .get("method")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("email")
+                    .to_string(),
+                methods_available: methods,
             });
         }
     }
@@ -407,6 +433,38 @@ pub async fn verify_2fa(
     )
     .await?;
     Ok(success.user)
+}
+
+#[tauri::command]
+pub async fn send_2fa_email(req: Send2FAEmailRequest) -> Result<LoginResult, String> {
+    let data = ApiClient::send_2fa_email(&req.challenge_id, &req.server_url)
+        .await
+        .map_err(|e: crate::error::AppError| e.to_string())?;
+    let methods = data
+        .get("methods_available")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| vec!["email".to_string()]);
+    Ok(LoginResult::TwoFactor {
+        challenge_id: data["challenge_id"]
+            .as_str()
+            .unwrap_or(&req.challenge_id)
+            .to_string(),
+        email_masked: data["email_masked"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        method: data
+            .get("method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("email")
+            .to_string(),
+        methods_available: methods,
+    })
 }
 
 async fn finish_login(

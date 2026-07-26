@@ -14,6 +14,8 @@ export interface User {
   avatar_url?: string;
   suspended: boolean;
   email_2fa_enabled: boolean;
+  totp_enabled?: boolean;
+  totp_enrolled_at?: string;
   two_factor_required?: boolean;
   created_at: string;
   updated_at: string;
@@ -36,6 +38,8 @@ export interface Login2FAChallenge {
   requires_2fa: true;
   challenge_id: string;
   email_masked: string;
+  method?: string;
+  methods_available?: string[];
 }
 
 export type LoginResult = LoginSuccess | Login2FAChallenge;

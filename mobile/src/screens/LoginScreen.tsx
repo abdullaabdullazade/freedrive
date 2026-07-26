@@ -41,6 +41,8 @@ export function LoginScreen({ navigation }: Props) {
         navigation.navigate("TwoFactor", {
           challengeId: result.challenge_id,
           emailMasked: result.email_masked,
+          method: result.method,
+          methodsAvailable: result.methods_available,
         });
       }
     } catch (err) {

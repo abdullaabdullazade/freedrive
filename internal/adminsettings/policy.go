@@ -50,7 +50,7 @@ func SecurityAllowlist() []string {
 	return securityIPList("allowlist")
 }
 
-// Require2FA returns true when admin forces email 2FA for all users.
+// Require2FA returns true when admin forces 2FA (authenticator or email) for all users.
 func Require2FA() bool {
 	return asBool(security(load())["require_2fa"], false)
 }

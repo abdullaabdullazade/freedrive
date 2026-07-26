@@ -16,6 +16,8 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
   const [twoFactor, setTwoFactor] = useState<{
     challenge_id: string;
     email_masked: string;
+    method: string;
+    methods_available: string[];
   } | null>(null);
   const [code, setCode] = useState("");
 
@@ -29,7 +31,10 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
         setTwoFactor({
           challenge_id: result.challenge_id,
           email_masked: result.email_masked,
+          method: result.method || "email",
+          methods_available: result.methods_available || [],
         });
+        setCode("");
       } else {
         onSuccess();
       }
@@ -55,10 +60,37 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
     }
   };
 
+  const handleSendEmail = async () => {
+    if (!twoFactor) return;
+    setError("");
+    setLoading(true);
+    try {
+      const result = await api.send2FAEmail(serverUrl, twoFactor.challenge_id);
+      if (result.type === "two_factor") {
+        setTwoFactor({
+          challenge_id: result.challenge_id,
+          email_masked: result.email_masked,
+          method: result.method || "email",
+          methods_available: result.methods_available || [],
+        });
+        setCode("");
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openRegister = () => {
     const base = serverUrl.replace(/\/$/, "");
     window.open(`${base}/#/register`, "_blank");
   };
+
+  const isTotp = twoFactor?.method === "totp";
+  const canEmailFallback = Boolean(
+    twoFactor && isTotp && twoFactor.methods_available.includes("email"),
+  );
 
   return (
     <div className="signin-layout">
@@ -121,16 +153,18 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
           <>
             <h1 className="signin-title">Two-factor authentication</h1>
             <p className="signin-subtitle">
-              Enter the code sent to {twoFactor.email_masked}
+              {isTotp
+                ? "Enter the code from your authenticator app (or a backup code)."
+                : `Enter the code sent to ${twoFactor.email_masked}`}
             </p>
             {error && <div className="error-banner">{error}</div>}
             <form onSubmit={handle2FA}>
               <div className="form-group">
-                <label htmlFor="code">Verification code</label>
+                <label htmlFor="code">{isTotp ? "Authenticator code" : "Email code"}</label>
                 <input
                   id="code"
                   type="text"
-                  inputMode="numeric"
+                  inputMode={isTotp ? "text" : "numeric"}
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   required
@@ -140,6 +174,16 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
                 <button type="submit" className="btn-primary" disabled={loading}>
                   Verify
                 </button>
+                {canEmailFallback ? (
+                  <button
+                    type="button"
+                    className="btn-text"
+                    onClick={handleSendEmail}
+                    disabled={loading}
+                  >
+                    Send code by email
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn-text"

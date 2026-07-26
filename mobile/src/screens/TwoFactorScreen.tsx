@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ApiError } from "../api/client";
+import { ApiError, api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { RootStackParamList } from "../navigation/types";
 import { colors, radii, spacing } from "../theme";
@@ -20,20 +20,44 @@ type Props = NativeStackScreenProps<RootStackParamList, "TwoFactor">;
 
 export function TwoFactorScreen({ route, navigation }: Props) {
   const { verify2FA } = useAuth();
-  const { challengeId, emailMasked } = route.params;
+  const { challengeId, emailMasked, method: initialMethod, methodsAvailable } = route.params;
+  const [challenge, setChallenge] = useState(challengeId);
+  const [method, setMethod] = useState(initialMethod || "email");
+  const [masked, setMasked] = useState(emailMasked || "");
+  const [available, setAvailable] = useState(methodsAvailable || []);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const isTotp = method === "totp";
+  const canEmailFallback = isTotp && available.includes("email");
+
   const onSubmit = async () => {
     setError("");
     if (code.trim().length < 6) {
-      setError("Enter the 6-digit code from your email");
+      setError(isTotp ? "Enter an authenticator or backup code" : "Enter the 6-digit code from your email");
       return;
     }
     setLoading(true);
     try {
-      await verify2FA(challengeId, code.trim());
+      await verify2FA(challenge, code.trim());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSendEmail = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const result = await api.send2FAEmail(challenge);
+      setChallenge(result.challenge_id);
+      setMethod(result.method || "email");
+      setMasked(result.email_masked || "");
+      setAvailable(result.methods_available || ["email"]);
+      setCode("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));
     } finally {
@@ -53,17 +77,20 @@ export function TwoFactorScreen({ route, navigation }: Props) {
           </Pressable>
           <Text style={styles.title}>Two-factor authentication</Text>
           <Text style={styles.subtitle}>
-            Enter the 6-digit code sent to {emailMasked || "your email"}
+            {isTotp
+              ? "Enter the 6-digit code from your authenticator app (or a backup code)."
+              : `Enter the 6-digit code sent to ${masked || "your email"}`}
           </Text>
           <TextInput
             style={styles.input}
             value={code}
             onChangeText={setCode}
-            keyboardType="number-pad"
-            maxLength={8}
-            placeholder="000000"
+            keyboardType={isTotp ? "default" : "number-pad"}
+            maxLength={16}
+            placeholder={isTotp ? "Code" : "000000"}
             placeholderTextColor={colors.textSecondary}
             autoFocus
+            autoCapitalize="characters"
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
@@ -77,6 +104,15 @@ export function TwoFactorScreen({ route, navigation }: Props) {
               <Text style={styles.buttonText}>Verify</Text>
             )}
           </Pressable>
+          {canEmailFallback ? (
+            <Pressable
+              style={[styles.linkBtn, loading && styles.buttonDisabled]}
+              onPress={onSendEmail}
+              disabled={loading}
+            >
+              <Text style={styles.linkText}>Send code by email</Text>
+            </Pressable>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -136,5 +172,15 @@ const styles = StyleSheet.create({
     color: "#0B1C2C",
     fontWeight: "700",
     fontSize: 16,
+  },
+  linkBtn: {
+    marginTop: spacing.lg,
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+  },
+  linkText: {
+    color: colors.accent,
+    fontSize: 15,
+    fontWeight: "600",
   },
 });

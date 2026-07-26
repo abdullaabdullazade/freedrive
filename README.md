@@ -56,6 +56,7 @@ What makes it practical:
 - Local disk storage backend
 - Session-backed JWT access + rotating refresh-token authentication
 - Optional email-based two-factor authentication (2FA)
+- Optional authenticator-app (TOTP) 2FA with email fallback
 - User profile settings and secure email change flow
 - User and admin workspaces in one application
 - Simple deployment with direct binary run or `systemd`
@@ -135,8 +136,9 @@ FreeDrive is ideal for:
 - **Key rotation** — re-wrap account and file keys with a new password-derived key under Advanced (web: Security center → Encryption; desktop: Settings)
 - Password reset can re-wrap the account key when crypto metadata is supplied
 - Secure email change with confirmation link sent to the new address
-- **Security center** groups account protection in the web profile menu: per-user email 2FA toggle, logged-in devices, and encryption (status, recovery, key rotation, manual key export/import). The Settings modal keeps only profile fields (name, avatar, email)
-- When admin enables global `require_2fa`, all users must verify a 6-digit code at sign-in
+- **Security center** groups account protection in the web profile menu: authenticator app (TOTP) setup with backup codes, per-user email 2FA toggle, logged-in devices, and encryption (status, recovery, key rotation, manual key export/import). The Settings modal keeps only profile fields (name, avatar, email)
+- When admin enables global `require_2fa`, all users must complete a second factor at sign-in (authenticator app or email). If both are enabled, authenticator is preferred with “Send code by email” as fallback
+- Authenticator enrollment (QR) is available in the web Security center; desktop and mobile clients support TOTP verification at login
 - **Logged-in devices** — the web Security center and desktop app list active web and desktop sessions with device name, IP address, and last activity; re-login from the same browser/app overwrites that device's session instead of creating a duplicate
 - **Instant remote logout** — revoke one device or every other device; server middleware rejects the revoked session immediately
 
@@ -225,7 +227,7 @@ Admin chrome:
 Admin settings are enforced at runtime (not UI-only):
 
 - **IP blocklist / allowlist** — applied on login, register, refresh, reset-password, and 2FA verification
-- **Require 2FA for all users** — forces email verification at sign-in (no admin exemption)
+- **Require 2FA for all users** — forces authenticator or email verification at sign-in (no admin exemption)
 - **Versioning** — enable/disable file versioning and set `keep_versions`
 - **Total capacity** — server-wide storage cap blocks uploads and content updates when exceeded
 - **Allowed file types** — extension whitelist in General settings; enable **Without limits** to accept any file type
@@ -238,6 +240,7 @@ Security panel also surfaces suspicious logins, active sessions, and session rev
 - Password reset email dispatch
 - Email change confirmation links
 - Email 2FA sign-in codes
+- Authenticator (TOTP) sign-in codes and backup codes
 - 2FA reminder batch emails
 - Configurable sender and TLS behavior
 
@@ -276,7 +279,8 @@ Admin settings are read from `data/settings.json` via the `adminsettings` packag
 - Logout and remote device removal revoke the session immediately
 - Active sessions record device type/name, user agent, IP address, creation time, and last activity
 - Optional **email 2FA**: 6-digit code sent via SMTP after password verification
-- Global `require_2fa` admin setting forces 2FA for every account
+- Optional **authenticator (TOTP) 2FA**: Google Authenticator / Authy / 1Password; preferred when both methods are enabled, with email as fallback
+- Global `require_2fa` admin setting forces 2FA for every account (satisfied by TOTP or email)
 
 ### Authorization
 
@@ -519,8 +523,9 @@ Base path: `/api/v1`
 ### Public Auth
 
 - `POST /auth/register`
-- `POST /auth/login` — returns tokens, or `{ requires_2fa, challenge_id, email_masked }` when 2FA is required
-- `POST /auth/verify-2fa` — complete login with `{ challenge_id, code }`
+- `POST /auth/login` — returns tokens, or `{ requires_2fa, challenge_id, method, methods_available, email_masked }` when 2FA is required (`method` is `totp` or `email`)
+- `POST /auth/verify-2fa` — complete login with `{ challenge_id, code }` (TOTP, backup code, or email code)
+- `POST /auth/2fa/send-email` — switch a TOTP challenge to email and send a code (`{ challenge_id }`)
 - `POST /auth/refresh`
 - `POST /auth/logout`
 - `POST /auth/forgot-password` — `{ email }` — sends reset link if account exists (requires SMTP); generic response either way
@@ -530,8 +535,11 @@ Base path: `/api/v1`
 
 ### Protected (Authenticated)
 
-- `GET /me` — current user profile
+- `GET /me` — current user profile (includes `email_2fa_enabled`, `totp_enabled`)
 - `PATCH /me` — update username, avatar, or `email_2fa_enabled`
+- `POST /me/totp/setup` — start authenticator enrollment (`secret`, `otpauth_url`, `qr`)
+- `POST /me/totp/confirm` — `{ code }` — enable TOTP and return one-time `backup_codes`
+- `POST /me/totp/disable` — `{ code }` or `{ password }` — disable authenticator
 - `POST /me/email-change/request` — start secure email change (confirmation link to new address)
 - `GET /me/email-change/status` — pending email change status
 - `GET /me/storage`
@@ -732,7 +740,7 @@ To update an existing install, run the new `FreeDrive_*_x64-setup.exe` (in-place
 
 The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app (Expo / React Native). It connects to the same REST API as the web UI and desktop client.
 
-- **Sign in** with server URL, email, password, and email 2FA when enabled
+- **Sign in** with server URL, email, password, and 2FA (authenticator or email) when enabled
 - **Drive-like dark UI** — bottom tabs (Home, Starred, Shared, Files) on portrait; pill search bar, list/grid toggle, sort chip
 - **Landscape NavRail** — when width > height (phone rotate / tablet landscape): narrow left rail with menu ≡, Create, and vertically centered primary tabs; portrait (including tablet) keeps phone chrome; Create uses rail `+` in landscape and FAB in portrait
 - **Navigation drawer** — hamburger opens a slide-in drawer (Recent, Bin, Settings, Help) with storage usage from `GET /api/v1/me/storage` (portrait and landscape)
@@ -893,11 +901,11 @@ curl -s http://localhost:8080/api/v1/health
 - Ensure reverse proxy request body limits are aligned
 - Check admin `total_capacity_gb` if uploads fail with a capacity error
 
-### Email 2FA unavailable at sign-in
+### Email / authenticator 2FA unavailable at sign-in
 
-- Admin must configure SMTP under Admin → Settings → Email
-- Global `require_2fa` cannot be satisfied without working outbound email
-- Users can enable personal 2FA from Security in the profile menu
+- Admin must configure SMTP under Admin → Settings → Email when email 2FA (or email fallback) is used
+- Global `require_2fa` with neither TOTP nor SMTP configured returns an error asking users to enable 2FA in Security
+- Users can enable authenticator or email 2FA from Security in the profile menu (web)
 
 ### SMTP test/reset mail fails
 

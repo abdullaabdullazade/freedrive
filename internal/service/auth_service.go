@@ -30,24 +30,27 @@ var (
 
 // AuthService handles authentication and authorization.
 type AuthService struct {
-	userRepo     repository.UserRepository
-	email2faRepo repository.Email2FARepository
-	sessionRepo  repository.SessionRepository
-	jwtSecret    []byte
+	userRepo       repository.UserRepository
+	email2faRepo   repository.Email2FARepository
+	totpBackupRepo repository.TotpBackupRepository
+	sessionRepo    repository.SessionRepository
+	jwtSecret      []byte
 }
 
 // NewAuthService creates a new auth service.
 func NewAuthService(
 	userRepo repository.UserRepository,
 	email2faRepo repository.Email2FARepository,
+	totpBackupRepo repository.TotpBackupRepository,
 	sessionRepo repository.SessionRepository,
 	jwtSecret string,
 ) *AuthService {
 	return &AuthService{
-		userRepo:     userRepo,
-		email2faRepo: email2faRepo,
-		sessionRepo:  sessionRepo,
-		jwtSecret:    []byte(jwtSecret),
+		userRepo:       userRepo,
+		email2faRepo:   email2faRepo,
+		totpBackupRepo: totpBackupRepo,
+		sessionRepo:    sessionRepo,
+		jwtSecret:      []byte(jwtSecret),
 	}
 }
 

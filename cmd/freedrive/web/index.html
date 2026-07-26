@@ -62,10 +62,12 @@
             </form>
             <form id="twofa-form" class="auth-form hidden">
                 <p id="twofa-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;">Enter the 6-digit code sent to your email.</p>
-                <div class="form-group"><input type="text" id="twofa-code" placeholder="6-digit code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></div>
+                <div class="form-group"><input type="text" id="twofa-code" placeholder="Verification code" inputmode="text" maxlength="16" autocomplete="one-time-code" required></div>
                 <input type="hidden" id="twofa-challenge-id" value="">
+                <input type="hidden" id="twofa-method" value="email">
                 <div class="auth-error" id="twofa-error" role="alert" aria-live="polite"></div>
                 <button type="submit" class="btn btn-primary btn-full" id="twofa-btn"><span>Verify</span><div class="btn-loader hidden"></div></button>
+                <button type="button" class="auth-link-btn hidden" id="twofa-send-email-btn">Send code by email</button>
                 <button type="button" class="auth-link-btn" id="twofa-back-btn">Back to sign in</button>
             </form>
             <div class="auth-footer">

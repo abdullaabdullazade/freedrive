@@ -76,6 +76,7 @@ func NewRouter(
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
 			r.Post("/verify-2fa", authHandler.Verify2FA)
+			r.Post("/2fa/send-email", authHandler.Send2FAEmail)
 			r.Post("/refresh", authHandler.Refresh)
 			r.Post("/logout", authHandler.Logout)
 			r.Post("/forgot-password", authHandler.ForgotPassword)
@@ -97,6 +98,9 @@ func NewRouter(
 			r.Get("/me", userHandler.GetMe)
 			r.Patch("/me", userHandler.UpdateMe)
 			r.Get("/me/storage", userHandler.MyStorage)
+			r.Post("/me/totp/setup", userHandler.SetupTOTP)
+			r.Post("/me/totp/confirm", userHandler.ConfirmTOTP)
+			r.Post("/me/totp/disable", userHandler.DisableTOTP)
 			r.Post("/me/email-change/request", userHandler.RequestEmailChange)
 			r.Get("/me/email-change/status", userHandler.EmailChangeStatus)
 

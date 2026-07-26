@@ -429,10 +429,11 @@ const App = (() => {
         } catch { /* use cached */ }
 
         const required = Boolean(profile.two_factor_required);
-        const enabled = Boolean(profile.email_2fa_enabled) || required;
-        const toggleDisabled = required ? 'disabled' : '';
+        const emailEnabled = Boolean(profile.email_2fa_enabled);
+        const totpEnabled = Boolean(profile.totp_enabled);
+        const emailToggleDisabled = required && !totpEnabled ? 'disabled' : '';
         const requiredNote = required
-            ? '<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Your administrator requires email two-factor authentication for all accounts.</p>'
+            ? '<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Your administrator requires two-factor authentication (authenticator app or email).</p>'
             : '<p style="margin:12px 0 0;font-size:12px;color:#5f6368;line-height:1.45;">When enabled, you will receive a 6-digit code by email each time you sign in.</p>';
 
         let needsRecovery = false;
@@ -456,8 +457,20 @@ const App = (() => {
             </div>`
             : '';
 
+        const totpBody = totpEnabled
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Authenticator app is enabled${profile.totp_enrolled_at ? ` (since ${esc(new Date(profile.totp_enrolled_at).toLocaleDateString())})` : ''}.</p>
+               <button type="button" class="btn btn-secondary" id="security-totp-disable-btn" style="margin-top:12px;">Disable authenticator</button>`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">Use Google Authenticator, Authy, or 1Password for sign-in codes. Preferred when both methods are enabled.</p>
+               <button type="button" class="btn btn-primary" id="security-totp-setup-btn">Set up authenticator</button>
+               <div id="security-totp-setup-panel" class="hidden" style="margin-top:14px;"></div>`;
+
         Components.showModal('Security', `
             <div class="drive-settings-modal" style="padding:8px 0;display:flex;flex-direction:column;gap:16px;">
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Authenticator app</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Protect your account with a time-based code from an authenticator app.</div>
+                    ${totpBody}
+                </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
                     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
                         <div>
@@ -465,7 +478,7 @@ const App = (() => {
                             <div style="font-size:13px;color:#5f6368;line-height:1.45;">Protect your account with a verification code sent to ${esc(profile.email || 'your email')}.</div>
                         </div>
                         <label class="live-toggle" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-                            <input type="checkbox" id="security-2fa-toggle" ${enabled ? 'checked' : ''} ${toggleDisabled}>
+                            <input type="checkbox" id="security-2fa-toggle" ${emailEnabled ? 'checked' : ''} ${emailToggleDisabled}>
                         </label>
                     </div>
                     ${requiredNote}
@@ -513,7 +526,7 @@ const App = (() => {
 
         const toggle = document.getElementById('security-2fa-toggle');
         toggle?.addEventListener('change', async () => {
-            if (required) {
+            if (required && !totpEnabled && !toggle.checked) {
                 toggle.checked = true;
                 Components.toast('Two-factor authentication is required by your administrator', 'info');
                 return;
@@ -527,6 +540,79 @@ const App = (() => {
             } catch (err) {
                 toggle.checked = prev;
                 Components.toast(err?.message || 'Failed to update security setting', 'error');
+            }
+        });
+
+        const showBackupCodes = (codes) => {
+            const list = (codes || []).map((c) => `<code style="display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;background:#f1f3f4;border-radius:6px;">${esc(c)}</code>`).join('');
+            Components.showModal('Backup codes', `
+                <p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">
+                    Save these one-time backup codes somewhere safe. Each code can be used once if you lose access to your authenticator.
+                </p>
+                <div style="line-height:1.8;">${list || 'No codes returned.'}</div>
+            `, [{ text: 'Done', class: 'btn-primary', action: () => openSecurityCenter() }]);
+        };
+
+        document.getElementById('security-totp-setup-btn')?.addEventListener('click', async () => {
+            const panel = document.getElementById('security-totp-setup-panel');
+            const btn = document.getElementById('security-totp-setup-btn');
+            if (!panel) return;
+            try {
+                if (btn) btn.disabled = true;
+                const setup = await API.totpSetup();
+                panel.classList.remove('hidden');
+                panel.innerHTML = `
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+                        <img src="${esc(setup.qr)}" alt="Authenticator QR code" width="160" height="160" style="border:1px solid #e8eaed;border-radius:8px;">
+                        <div style="flex:1;min-width:180px;">
+                            <p style="margin:0 0 8px;font-size:13px;color:#5f6368;line-height:1.45;">Scan this QR code, or enter the secret manually:</p>
+                            <code style="display:block;word-break:break-all;padding:8px 10px;background:#f1f3f4;border-radius:8px;font-size:12px;">${esc(setup.secret)}</code>
+                            <input id="security-totp-confirm-code" type="text" inputmode="numeric" maxlength="8" placeholder="6-digit code"
+                                style="width:100%;height:40px;margin-top:12px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
+                            <button type="button" class="btn btn-primary" id="security-totp-confirm-btn" style="margin-top:8px;">Confirm</button>
+                        </div>
+                    </div>`;
+                document.getElementById('security-totp-confirm-btn')?.addEventListener('click', async () => {
+                    const code = String(document.getElementById('security-totp-confirm-code')?.value || '').trim();
+                    if (code.length < 6) {
+                        Components.toast('Enter the 6-digit code from your authenticator', 'error');
+                        return;
+                    }
+                    try {
+                        const result = await API.totpConfirm(code);
+                        const updated = await API.me();
+                        API.setUser(updated);
+                        Components.toast('Authenticator app enabled', 'success');
+                        showBackupCodes(result?.backup_codes || []);
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to confirm authenticator', 'error');
+                    }
+                });
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to start authenticator setup', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
+
+        document.getElementById('security-totp-disable-btn')?.addEventListener('click', async () => {
+            const code = window.prompt('Enter a current authenticator code (or leave blank and enter password next):') || '';
+            let password = '';
+            if (!String(code).trim()) {
+                password = window.prompt('Enter your account password to disable authenticator:') || '';
+            }
+            if (!String(code).trim() && !String(password).trim()) return;
+            try {
+                const updated = await API.totpDisable({ code: String(code).trim(), password: String(password) });
+                if (updated?.id) API.setUser(updated);
+                else {
+                    const me = await API.me();
+                    API.setUser(me);
+                }
+                Components.toast('Authenticator app disabled', 'success');
+                openSecurityCenter();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to disable authenticator', 'error');
             }
         });
 

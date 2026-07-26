@@ -60,7 +60,13 @@ export interface AuthState {
 
 export type LoginResult =
   | { type: "success"; user: User }
-  | { type: "two_factor"; challenge_id: string; email_masked: string };
+  | {
+      type: "two_factor";
+      challenge_id: string;
+      email_masked: string;
+      method?: string;
+      methods_available?: string[];
+    };
 
 export interface SystemFolder {
   label: string;

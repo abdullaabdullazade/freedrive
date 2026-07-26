@@ -75,6 +75,7 @@ pub fn run() {
             commands::get_auth_state,
             commands::login,
             commands::verify_2fa,
+            commands::send_2fa_email,
             commands::logout,
             commands::get_system_folders,
             commands::pick_folder,

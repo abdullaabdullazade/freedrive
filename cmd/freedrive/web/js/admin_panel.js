@@ -432,7 +432,7 @@ const AdminPanel = (() => {
                 state.userMeta[u.id] = {
                     status: u.suspended ? 'suspended' : 'active',
                     last_active: u.last_login_at || u.updated_at || u.created_at || nowISO(),
-                    twofa: Boolean(u.email_2fa_enabled),
+                    twofa: Boolean(u.email_2fa_enabled) || Boolean(u.totp_enabled),
                     files_count: userFiles.length,
                     bandwidth_month: asNumber(state.userMeta[u.id]?.bandwidth_month, 0),
                 };
@@ -440,6 +440,7 @@ const AdminPanel = (() => {
                 state.userMeta[u.id].last_active = state.userMeta[u.id].last_active || u.last_login_at || u.updated_at || u.created_at || nowISO();
                 state.userMeta[u.id].files_count = userFiles.length;
                 state.userMeta[u.id].bandwidth_month = asNumber(state.userMeta[u.id].bandwidth_month, 0);
+                state.userMeta[u.id].twofa = Boolean(u.email_2fa_enabled) || Boolean(u.totp_enabled);
             }
         });
     }
@@ -865,7 +866,12 @@ const AdminPanel = (() => {
         const meta = state.userMeta[u.id] || {};
         const status = meta.status || 'active';
         const twofaEnabled = Boolean(u.email_2fa_enabled);
+        const totpEnabled = Boolean(u.totp_enabled);
         const global2FA = Boolean(state.settings?.security?.require_2fa);
+        const email2faDisabled = global2FA && !totpEnabled ? 'disabled' : '';
+        const email2faHint = global2FA && !totpEnabled
+            ? 'Required for all users (enable authenticator to turn email off)'
+            : (global2FA ? 'Optional when authenticator is enabled' : 'Require email code at sign-in');
         const breakdown = estimateFileTypeBuckets(state.drawerBreakdown);
         const bItems = Object.entries(breakdown).slice(0, 4);
         const recent = (state.activities || [])
@@ -918,10 +924,14 @@ const AdminPanel = (() => {
                             <select class="gd-input" id="drawer-quota">${quotaOptionsHtml(Math.max(1, Math.round(asNumber(u.quota_bytes, 0) / (1024 ** 3))))}</select>
                         </div>
                         <div class="gd-input-group">
+                            <label>Authenticator app (TOTP)</label>
+                            <span style="font-size:13px;color:${totpEnabled ? '#137333' : '#5f6368'};">${totpEnabled ? 'Enabled' : 'Not enabled'} — users set this up in Security</span>
+                        </div>
+                        <div class="gd-input-group">
                             <label>Email two-factor authentication</label>
                             <label class="live-toggle" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-                                <input type="checkbox" id="drawer-2fa" ${twofaEnabled || global2FA ? 'checked' : ''} ${global2FA ? 'disabled' : ''}>
-                                <span style="font-size:13px;color:#5f6368;">${global2FA ? 'Required for all users' : 'Require code at sign-in'}</span>
+                                <input type="checkbox" id="drawer-2fa" ${twofaEnabled ? 'checked' : ''} ${email2faDisabled}>
+                                <span style="font-size:13px;color:#5f6368;">${email2faHint}</span>
                             </label>
                         </div>
                         <div style="display:flex; justify-content: flex-end;">
@@ -1393,10 +1403,10 @@ const AdminPanel = (() => {
 
                 <div class="gd-card" style="padding:24px;margin-bottom:24px;">
                     <h3 style="margin:0 0 8px;font-size:16px;">Two-factor authentication</h3>
-                    <p style="margin:0 0 16px;color:#5f6368;font-size:14px;">Require a 6-digit email code at sign-in for every user (including admins).</p>
+                    <p style="margin:0 0 16px;color:#5f6368;font-size:14px;">Require a second factor at sign-in for every user (authenticator app or email code).</p>
                     <label class="live-toggle" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;">
                         <input type="checkbox" data-admin-action="toggle-require-2fa" ${require2FA ? 'checked' : ''}>
-                        <span style="font-weight:500;color:#3c4043;">Require email 2FA for all users</span>
+                        <span style="font-weight:500;color:#3c4043;">Require 2FA for all users</span>
                     </label>
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;">
                         <button class="gd-btn-outline" data-admin-action="send-2fa-reminder">Remind users without 2FA</button>

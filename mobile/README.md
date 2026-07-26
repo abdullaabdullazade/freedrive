@@ -6,7 +6,7 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 
 ## Features
 
-- **Sign in** — server URL, email, password, and email 2FA when enabled
+- **Sign in** — server URL, email, password, and 2FA (authenticator or email) when enabled
 - **Secure session** — tokens in SecureStore, profile cache in AsyncStorage (supports large avatar data-URLs), auto-refresh on 401
 - **Bottom tabs** — Home, Starred, Shared, Files (with active pill indicator) on phone portrait (and tablet portrait)
 - **Landscape NavRail** — when width > height: narrow left rail (menu ≡, Create `+`, then Home / Starred / Shared / Files vertically centered like Google Drive); bottom tabs hidden; Create FAB hidden (rail `+` → Upload / Folder); hamburger on the rail, not in the search bar
@@ -58,7 +58,7 @@ Scan the QR code with Expo Go.
 
 1. Enter your FreeDrive server URL (e.g. `https://drive.example.com` or `http://192.168.x.x:8080`)
 2. Email + password
-3. Complete email 2FA if enabled
+3. Complete 2FA if enabled (authenticator code, backup code, or email code)
 
 ## Scripts
 

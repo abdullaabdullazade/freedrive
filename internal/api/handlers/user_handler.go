@@ -112,7 +112,7 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Email2FAEnabled != nil {
-		if err := service.CanSetEmail2FA(*req.Email2FAEnabled); err != nil {
+		if err := service.CanSetEmail2FA(user, *req.Email2FAEnabled); err != nil {
 			writeError(w, "two-factor authentication is required by administrator", http.StatusForbidden)
 			return
 		}
@@ -170,6 +170,94 @@ func (h *UserHandler) MyStorage(w http.ResponseWriter, r *http.Request) {
 		"breakdown":   breakdown,
 		"file_count":  fileCount,
 	})
+}
+
+// SetupTOTP handles POST /api/v1/me/totp/setup
+func (h *UserHandler) SetupTOTP(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	if userID == "" {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	result, err := h.authService.SetupTOTP(r.Context(), userID)
+	if err != nil {
+		switch err {
+		case service.ErrTOTPAlreadyOn:
+			writeError(w, "authenticator app is already enabled", http.StatusConflict)
+		default:
+			writeError(w, "failed to start authenticator setup", http.StatusInternalServerError)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// ConfirmTOTP handles POST /api/v1/me/totp/confirm
+func (h *UserHandler) ConfirmTOTP(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	if userID == "" {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	result, err := h.authService.ConfirmTOTP(r.Context(), userID, req.Code)
+	if err != nil {
+		switch err {
+		case service.ErrTOTPAlreadyOn:
+			writeError(w, "authenticator app is already enabled", http.StatusConflict)
+		case service.ErrTOTPNotPending:
+			writeError(w, "authenticator setup has not been started", http.StatusBadRequest)
+		case service.ErrInvalidTOTPCode:
+			writeError(w, "invalid authenticator code", http.StatusBadRequest)
+		default:
+			writeError(w, "failed to confirm authenticator", http.StatusInternalServerError)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// DisableTOTP handles POST /api/v1/me/totp/disable
+func (h *UserHandler) DisableTOTP(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	if userID == "" {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Code     string `json:"code"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := h.authService.DisableTOTP(r.Context(), userID, req.Code, req.Password); err != nil {
+		switch err {
+		case service.ErrTOTPNotEnabled:
+			writeError(w, "authenticator app is not enabled", http.StatusBadRequest)
+		case service.ErrCannotDisable2FA:
+			writeError(w, "two-factor authentication is required by administrator", http.StatusForbidden)
+		case service.ErrInvalidTOTPCode:
+			writeError(w, "invalid authenticator code or password", http.StatusBadRequest)
+		default:
+			writeError(w, "failed to disable authenticator", http.StatusInternalServerError)
+		}
+		return
+	}
+	user, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil || user == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+		return
+	}
+	user.TwoFactorRequired = adminsettings.Require2FA()
+	writeJSON(w, http.StatusOK, user)
 }
 
 // storageCategory maps a file to one of four storage buckets (images, videos,

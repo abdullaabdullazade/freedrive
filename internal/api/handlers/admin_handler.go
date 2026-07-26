@@ -203,7 +203,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if req.Email2FAEnabled != nil {
-		if !*req.Email2FAEnabled && adminsettings.Require2FA() {
+		if !*req.Email2FAEnabled && adminsettings.Require2FA() && !user.TotpEnabled {
 			writeError(w, "cannot disable two-factor authentication while it is required globally", http.StatusBadRequest)
 			return
 		}
@@ -240,12 +240,12 @@ func (h *AdminHandler) Send2FAReminder(w http.ResponseWriter, r *http.Request) {
 
 	sent := 0
 	for _, user := range users {
-		if user.Suspended || user.Email2FAEnabled || strings.TrimSpace(user.Email) == "" {
+		if user.Suspended || service.HasConfigured2FA(&user) || strings.TrimSpace(user.Email) == "" {
 			continue
 		}
 		subject := "Enable two-factor authentication on FreeDrive"
 		body := fmt.Sprintf(
-			"Hello %s,\n\nYour FreeDrive administrator recommends enabling email two-factor authentication for your account.\n\nSign in to FreeDrive, open Security from your profile menu, and turn on email two-factor authentication.\n",
+			"Hello %s,\n\nYour FreeDrive administrator recommends enabling two-factor authentication for your account (authenticator app or email codes).\n\nSign in to FreeDrive, open Security from your profile menu, and set up an authenticator app or turn on email two-factor authentication.\n",
 			chooseReminderName(user.Username, user.Email),
 		)
 		if err := email.SendFromSettings(user.Email, subject, body); err != nil {

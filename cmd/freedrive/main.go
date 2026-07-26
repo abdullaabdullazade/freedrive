@@ -55,6 +55,7 @@ func main() {
 	approvalRepo := sqlite.NewApprovalRepo(db)
 	emailChangeRepo := sqlite.NewEmailChangeRepo(db)
 	email2faRepo := sqlite.NewEmail2FARepo(db)
+	totpBackupRepo := sqlite.NewTotpBackupRepo(db)
 	shareRepo := sqlite.NewShareRepo(db)
 	commentRepo := sqlite.NewCommentRepo(db)
 	passwordResetRepo := sqlite.NewPasswordResetRepo(db)
@@ -70,7 +71,7 @@ func main() {
 	syncChangeService := service.NewSyncChangeService(syncChangeRepo, computerRepo)
 	syncFeedService := service.NewSyncFeedService(syncChangeRepo, computerRepo, folderRepo, fileRepo)
 
-	authService := service.NewAuthService(userRepo, email2faRepo, sessionRepo, cfg.JWTSecret)
+	authService := service.NewAuthService(userRepo, email2faRepo, totpBackupRepo, sessionRepo, cfg.JWTSecret)
 	fileService := service.NewFileService(fileRepo, userRepo, diskStorage, activityRepo, accessService, folderRepo, syncChangeService)
 	computerService := service.NewComputerService(computerRepo, folderRepo)
 	folderService := service.NewFolderService(folderRepo, fileRepo, userRepo, diskStorage, activityRepo, computerRepo, accessService, syncChangeService)
