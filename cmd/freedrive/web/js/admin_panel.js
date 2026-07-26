@@ -1786,11 +1786,9 @@ const AdminPanel = (() => {
                     <div class="admin-header-left">
                         <div class="admin-breadcrumb">
                             <h2>Admin Panel</h2>
-                            <span class="admin-header-badge">Admin</span>
                         </div>
                     </div>
                     <div class="admin-head-actions">
-                        <button class="gd-btn-outline admin-exit-btn" data-admin-action="exit-admin">Back to Drive</button>
                         <div class="admin-profile-wrap">
                             <button class="admin-profile-btn" data-admin-action="toggle-admin-profile-menu">
                                 <span class="admin-profile-pill-avatar">${avatarHtml}</span>
@@ -2229,12 +2227,6 @@ const AdminPanel = (() => {
                 e.preventDefault();
                 const action = btn.getAttribute('data-admin-action');
                 const userId = btn.getAttribute('data-user-id') || '';
-
-                if (action === 'exit-admin') {
-                    history.pushState(null, '', '/#/files');
-                    window.dispatchEvent(new Event('popstate'));
-                    return;
-                }
 
                 if (action === 'users-filter') {
                     state.usersFilter = btn.getAttribute('data-filter') || 'all';

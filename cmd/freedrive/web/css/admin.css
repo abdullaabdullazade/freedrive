@@ -924,48 +924,69 @@
 .gd-settings-pane .admin-form-group label { display: block; font-weight: 500; margin-bottom: 8px; color: var(--text, #202124); }
 .gd-settings-pane .admin-subtext { font-size: 12px; color: #5F6368; display: block; margin-top: 4px; }
 
-/* Sidebar Overrides for Admin Panel to match Google Drive perfectly */
+/* Sidebar Overrides for Admin Panel to match Drive chrome */
 .app.admin-mode .sidebar {
     background-color: var(--bg-primary, #ffffff) !important;
     border-right: none !important;
-    padding-top: 12px !important;
+    padding-top: 0 !important;
+}
+
+.app.admin-mode .sidebar-header {
+    padding: 10px 14px 8px !important;
+}
+
+.app.admin-mode .logo-text {
+    font-family: "Roboto", Arial, sans-serif !important;
+    font-size: 20px !important;
+    color: #3c4043 !important;
+    font-weight: 500 !important;
+    letter-spacing: -0.2px;
+}
+
+.app.admin-mode .sidebar-nav {
+    gap: 4px !important;
+    padding: 0 12px !important;
 }
 
 .app.admin-mode .sidebar .admin-nav-item {
     display: flex !important;
     align-items: center;
-    color: var(--text, #3c4043) !important;
+    width: 100% !important;
+    max-width: none !important;
+    color: #3c4043 !important;
     border-radius: 999px !important;
-    margin: 0 12px 2px 12px !important;
-    padding: 0 16px !important;
+    margin: 0 !important;
+    padding: 0 16px 0 24px !important;
     height: 40px !important;
     font-size: 14px !important;
     font-weight: 500 !important;
-    font-family: 'Google Sans', 'Roboto', sans-serif !important;
+    font-family: "Roboto", Arial, sans-serif !important;
     text-decoration: none !important;
     transition: background-color 0.2s, color 0.2s !important;
     border: none !important;
+    gap: 14px !important;
 }
 
 .app.admin-mode .sidebar .admin-nav-item svg {
-    width: 20px !important;
-    height: 20px !important;
-    margin-right: 16px !important;
+    width: 19px !important;
+    height: 19px !important;
+    min-width: 19px !important;
+    margin-right: 0 !important;
     fill: currentColor !important;
     color: #5f6368 !important;
 }
 
 .app.admin-mode .sidebar .admin-nav-item:hover {
     background-color: var(--bg-hover, #f1f3f4) !important;
-    color: var(--text, #202124) !important;
+    color: #202124 !important;
 }
 
 .app.admin-mode .sidebar .admin-nav-item:hover svg {
-    color: var(--text, #202124) !important;
+    color: #202124 !important;
 }
 
 .app.admin-mode .sidebar .admin-nav-item.active {
-    background-color: #c2e7ff !important; /* Material 3 Drive light blue active */
+    background-color: #c2e7ff !important;
     color: #001d35 !important;
     font-weight: 600 !important;
 }
@@ -975,18 +996,32 @@
 }
 
 .app.admin-mode .sidebar .admin-nav-item.nav-divider {
-    display: block !important;
-    margin: 8px 0 !important;
-    border-top: 1px solid var(--border-light, #dadce0) !important;
-    height: 0 !important;
-    padding: 0 !important;
+    display: none !important;
 }
 
-.app.admin-mode .logo-text {
-    color: var(--text, #202124) !important;
+/* Topbar list/grid toggle — same pill as Drive */
+.app.admin-mode .topbar-view-toggle {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
+    background: #f1f3f4;
+    height: 40px;
 }
 
-/* Fix Admin Page Background and Header */
+.app.admin-mode .topbar-view-toggle .btn-icon {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+}
+
+.app.admin-mode .topbar-view-toggle .btn-icon.active {
+    background: #c2e7ff !important;
+    color: #001d35 !important;
+}
+
 /* Fix Admin Page Background and Header */
 .app.admin-mode .admin-page-header {
     background: transparent !important;
