@@ -27,6 +27,7 @@ export function PreferencesApp() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileAnchor, setProfileAnchor] = useState<DOMRect | null>(null);
   const [launchOnLogin, setLaunchOnLogin] = useState(false);
+  const [startMinimized, setStartMinimized] = useState(false);
   const [bootstrapError, setBootstrapError] = useState("");
 
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
@@ -53,6 +54,8 @@ export function PreferencesApp() {
       api.getProfile().then(setUser).catch(() => {});
       const launch = await api.getLaunchOnLogin().catch(() => false);
       setLaunchOnLogin(launch);
+      const minimized = await api.getStartMinimized().catch(() => false);
+      setStartMinimized(minimized);
       await refreshCryptoStatus();
     } catch (err) {
       setBootstrapError(String(err));
@@ -123,6 +126,15 @@ export function PreferencesApp() {
     }
   };
 
+  const handleStartMinimizedChange = async (enabled: boolean) => {
+    try {
+      await api.setStartMinimized(enabled);
+      setStartMinimized(enabled);
+    } catch (err) {
+      setSettingsError(String(err));
+    }
+  };
+
   const handleOpenSettings = () => {
     setPreferencesView("settings");
   };
@@ -186,8 +198,10 @@ export function PreferencesApp() {
             <PreferencesSettingsPage
               serverUrl={serverUrl}
               launchOnLogin={launchOnLogin}
+              startMinimized={startMinimized}
               onBackToSync={handleBackToSync}
               onLaunchOnLoginChange={handleLaunchOnLoginChange}
+              onStartMinimizedChange={handleStartMinimizedChange}
               encryption={encryption}
             />
           </main>

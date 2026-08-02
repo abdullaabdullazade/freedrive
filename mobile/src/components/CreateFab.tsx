@@ -53,26 +53,6 @@ export function CreateFab({
               style={styles.pill}
               onPress={() => {
                 close();
-                onUpload();
-              }}
-            >
-              <Icon name="upload" size={20} color={colors.text} />
-              <Text style={styles.pillText}>Upload</Text>
-            </Pressable>
-            <Pressable
-              style={styles.pill}
-              onPress={() => {
-                close();
-                onFolder();
-              }}
-            >
-              <Icon name="folder" size={20} color={colors.text} />
-              <Text style={styles.pillText}>Folder</Text>
-            </Pressable>
-            <Pressable
-              style={styles.pill}
-              onPress={() => {
-                close();
                 onDocument();
               }}
             >
@@ -88,6 +68,26 @@ export function CreateFab({
             >
               <Icon name="sheet" size={20} color={colors.text} />
               <Text style={styles.pillText}>Spreadsheet</Text>
+            </Pressable>
+            <Pressable
+              style={styles.pill}
+              onPress={() => {
+                close();
+                onUpload();
+              }}
+            >
+              <Icon name="upload" size={20} color={colors.text} />
+              <Text style={styles.pillText}>Upload</Text>
+            </Pressable>
+            <Pressable
+              style={styles.pill}
+              onPress={() => {
+                close();
+                onFolder();
+              }}
+            >
+              <Icon name="folder" size={20} color={colors.text} />
+              <Text style={styles.pillText}>Folder</Text>
             </Pressable>
           </>
         ) : null}
@@ -151,7 +151,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.pill,
-    minWidth: 132,
   },
   pillText: {
     color: colors.text,

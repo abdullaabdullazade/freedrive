@@ -897,6 +897,28 @@ pub fn set_launch_on_login(app: AppHandle, enabled: bool) -> Result<(), String> 
     }
 }
 
+const START_MINIMIZED_KEY: &str = "start_minimized";
+
+#[tauri::command]
+pub fn get_start_minimized(state: State<'_, AppState>) -> Result<bool, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    Ok(config_get(&conn, START_MINIMIZED_KEY)
+        .map_err(|e: AppError| e.to_string())?
+        .as_deref()
+        == Some("true"))
+}
+
+#[tauri::command]
+pub fn set_start_minimized(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    config_set(
+        &conn,
+        START_MINIMIZED_KEY,
+        if enabled { "true" } else { "false" },
+    )
+    .map_err(|e: AppError| e.to_string())
+}
+
 #[tauri::command]
 pub async fn open_sync_log_folder(app: AppHandle) -> Result<(), String> {
     let dir = crate::auth_store::data_dir().map_err(|e: AppError| e.to_string())?;

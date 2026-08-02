@@ -56,6 +56,9 @@ export const api = {
   getLaunchOnLogin: () => invoke<boolean>("get_launch_on_login"),
   setLaunchOnLogin: (enabled: boolean) =>
     invoke<void>("set_launch_on_login", { enabled }),
+  getStartMinimized: () => invoke<boolean>("get_start_minimized"),
+  setStartMinimized: (enabled: boolean) =>
+    invoke<void>("set_start_minimized", { enabled }),
   openSyncLogFolder: () => invoke<void>("open_sync_log_folder"),
   pauseSync: () => invoke<void>("pause_sync"),
   resumeSync: () => invoke<void>("resume_sync"),

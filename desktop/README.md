@@ -13,6 +13,7 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Transient errors retry** — local `error` rows are retried on the next scan (permanent `rejected` only are skipped); Home/Sync activity show a Drive-style progress ring around ↑ during upload
 - **Local deletes → server trash** — removing a file from a sync folder (including Explorer Delete, which moves it out of the tree) soft-deletes the matching server file; periodic verify (~5 min) and post-upload same-name cleanup catch missed events and avoid live duplicates without deleting the only good copy before an upload succeeds
 - **Authenticator 2FA** — version **0.1.8** accepts TOTP / backup codes at sign-in (setup stays in the web Security center) and can fall back to “Send code by email” when available
+- **Start minimized** — version **0.1.9** can hide the main window to the system tray on cold start (Preferences → Launch); tray click / second instance still open the window
 - **Duplicate event safe** — version **0.1.7** serializes uploads per local path, so browser download Create/Write/Rename bursts produce one remote file; only the current remote mapping may clean up older same-name copies
 - **Server restart safe** — before a scan, Desktop checks `/health` and the authenticated session; while the server is offline/restarting it shows **Waiting for server** and does not enter scan/delete/upload reconciliation. Version **0.1.6** also preserves newer `sync_state` mappings when delayed delete journal entries recover
 - **Server restores → local download** — a file restored from the Bin (or created from the web) is downloaded into the sync folder, also when the restore happened while the app was closed. Only items this computer previously synced (`sync_state` / folder mappings) can trigger a server delete, so untracked remote files are never re-trashed while waiting to download
@@ -22,7 +23,7 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Drive-like scrollbar** — transparent track, thin thumb only
 - **Fixed window size** — main 1100×720 and Preferences 960×640 are not resizable
 - **Help** — top bar, Settings menu, and Preferences header open [github.com/marcinx98x/freedrive](https://github.com/marcinx98x/freedrive)
-- **Preferences window** — dedicated window opened from the gear icon: **My computer** (manage sync folders), **FreeDrive** (Windows Explorer / CfAPI status), **Settings** (encryption, launch on login, open sync log)
+- **Preferences window** — dedicated window opened from the gear icon: **My computer** (manage sync folders), **FreeDrive** (Windows Explorer / CfAPI status), **Settings** (encryption, launch on login, start minimized to tray, open sync log)
 - **Notifications** — alerts for sync errors, paused sync, and storage warnings
 - **Profile menu** — server avatar, storage bar from `GET /api/v1/me/storage` (`{used} of {total} used`, same as web), Manage storage, Sign out
 - **Sign out** — stops CfAPI and clears contents of `%USERPROFILE%\FreeDrive\My Drive` (folder kept for next login)

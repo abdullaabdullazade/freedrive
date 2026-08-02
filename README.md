@@ -685,7 +685,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Settings menu** — the main-window gear opens **Preferences**, **Error list**, **About**, **Help** (opens the GitHub repo), and **Quit**
 - **Fixed window size** — main (1100×720) and Preferences (960×640) windows are not resizable
 - **Preferences window** — separate window with **My computer** (sync folders, add/remove), **FreeDrive** (My Drive stream/mirror mode), and a single scrollable Settings page
-- **Unified Settings page** — launch on login, diagnostics, encryption and keys, File Explorer integration, and server information are expanded in one view
+- **Unified Settings page** — launch on login, start minimized (tray), diagnostics, encryption and keys, File Explorer integration, and server information are expanded in one view
 - **Error list** — opens Sync activity filtered to failed items, with an All / Errors toggle
 - **About dialog** — displays the desktop app version and connected server
 - **Notifications** — alerts for sync errors, paused sync, and low storage (≥80% / ≥90%)
@@ -693,6 +693,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Sign out** — disconnects CfAPI and clears the contents of `%USERPROFILE%\FreeDrive\My Drive` (the folder itself remains for the next login)
 - **Device identification** — login, 2FA verification, and refresh requests report the desktop hostname so the app appears clearly in the account's logged-in-device list
 - **Authenticator 2FA (0.1.8+)** — sign-in accepts a TOTP code or backup code; when email 2FA is also available, **Send code by email** switches the challenge (enroll the app in web Security first)
+- **Start minimized (0.1.9+)** — Preferences → Launch can hide the main window to the system tray on cold start (same as Close); tray / second instance still open the window
 - **Non-blocking sign-in** — encryption unlock, sync restore, and Explorer (CfAPI) integration run in the background so the UI returns immediately after login
 - **Silent background sync** — on restart, background verification shows progress on Home (`Syncing…` / `Processing N/M`) without flooding Sync activity; if initial sync was interrupted, startup resumes the full sync instead of verify-only
 - **Queued changes during sync** — uploads and deletes that happen while initial sync or verify is running are queued and applied when that pass finishes
@@ -704,7 +705,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Explorer status** — desktop app exposes integration state (connected / registered / finalized) for diagnostics
 - **My Drive in Explorer** — `My Drive` subfolder with server folders/files; **Stream (default)** keeps cloud placeholders (download on open, upload on close, then free local space); **Mirror** keeps a full local copy; local edits upload on save, deletes sync to the server; remote changes polled every 20s (mirror downloads new/changed files); poll **removes** local placeholders after remote Move to bin so Explorer matches My Drive
 - **Uninstall (NSIS)** — setup uninstaller stops the app, unregisters the CfAPI sync root, removes Explorer NameSpace/SyncRootManager pins, removes `%USERPROFILE%\FreeDrive\My Drive`, and deletes app data under `%APPDATA%\FreeDrive` (sync.db, auth — not the Tauri BUNDLEID folder); prefer NSIS over MSI for this cleanup
-- Independent release tags: `desktop-v0.1.8` (server tags remain `v1.x.x`)
+- Independent release tags: `desktop-v0.1.9` (server tags remain `v1.x.x`)
 - See [`desktop/README.md`](desktop/README.md) for dev setup, Explorer troubleshooting, and [`docs/desktop-api.md`](docs/desktop-api.md) for API endpoints used by the client
 
 Quick start (from repo root):
@@ -747,7 +748,7 @@ The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app
 - **Navigation drawer** — hamburger opens a slide-in drawer (Recent, Bin, Settings, Help) with storage usage from `GET /api/v1/me/storage` (portrait and landscape)
 - **Files stack** — Files tab nests My Drive home and Folder screens; Shared can open a folder under that stack
 - **Files** — My Drive and Computers tabs, folder navigation, search by name, pull-to-refresh; large folders load in pages (`page_size` / `page_token`) with infinite scroll (`onEndReached`) so the first screen stays fast; grid view uses square tiles and more columns on wide screens
-- **Create FAB** — Upload, New folder, Document, and Spreadsheet on Files / Folder screens
+- **Create FAB** — on Files / Folder screens, actions nearest the `+` are Folder, then Upload, Spreadsheet, Document (camera stub reserved)
 - **Encrypted upload** — multi-file picker → AES-GCM → cache file → upload; payloads **> 32 MiB** use resumable chunked `PUT /uploads/sessions/{id}` (8 MiB chunks, Cloudflare-safe); smaller files use native multipart `POST /files/upload` / content replace
 - **New folder** — `POST /api/v1/folders` from the FAB dialog
 - **New Document / Spreadsheet** — creates encrypted `Document.txt` / `Spreadsheet.xlsx`; Document opens in the text editor; Spreadsheet opens the in-app sheet grid

@@ -13,7 +13,7 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **Files stack** — Files tab hosts My Drive home + nested Folder screens (Drive-like); Shared can deep-link into a folder under Files
 - **Files** — My Drive | Computers, folder navigation, list/grid, sort chip; folder listings use server pagination and load more on scroll (same contract as web/desktop)
 - **Grid tiles** — square previews (`aspectRatio: 1`); column count scales with content width so landscape tiles stay phone-sized
-- **Create FAB** — Upload, New folder, Document (`.txt`), and Spreadsheet (`.xlsx`) on Files / Folder (camera stub reserved); FAB respects safe-area insets
+- **Create FAB** — nearest the `+`: Folder, Upload, Spreadsheet (`.xlsx`), Document (`.txt`) on Files / Folder (camera stub reserved); FAB respects safe-area insets; landscape NavRail `+` uses the same order
 - **Upload** — multi-file picker; client-side AES-GCM encrypt, write ciphertext to cache, then upload (multipart under 32 MiB; resumable 8 MiB chunks above that for Cloudflare)
 - **New folder** — dialog → `POST /api/v1/folders` in the current folder (or My Drive root)
 - **New Document / Spreadsheet** — encrypted empty `Document.txt` / `Spreadsheet.xlsx`; Document opens in the text editor; Spreadsheet opens in the in-app sheet grid

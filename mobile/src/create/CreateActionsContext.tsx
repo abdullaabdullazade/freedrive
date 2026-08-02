@@ -110,26 +110,6 @@ export function CreateActionsProvider({ children, onNeedFilesTab }: ProviderProp
               style={styles.pill}
               onPress={() => {
                 close();
-                handlersRef.current?.onUpload();
-              }}
-            >
-              <Icon name="upload" size={20} color={colors.text} />
-              <Text style={styles.pillText}>Upload</Text>
-            </Pressable>
-            <Pressable
-              style={styles.pill}
-              onPress={() => {
-                close();
-                handlersRef.current?.onFolder();
-              }}
-            >
-              <Icon name="folder" size={20} color={colors.text} />
-              <Text style={styles.pillText}>Folder</Text>
-            </Pressable>
-            <Pressable
-              style={styles.pill}
-              onPress={() => {
-                close();
                 handlersRef.current?.onDocument();
               }}
             >
@@ -145,6 +125,26 @@ export function CreateActionsProvider({ children, onNeedFilesTab }: ProviderProp
             >
               <Icon name="sheet" size={20} color={colors.text} />
               <Text style={styles.pillText}>Spreadsheet</Text>
+            </Pressable>
+            <Pressable
+              style={styles.pill}
+              onPress={() => {
+                close();
+                handlersRef.current?.onUpload();
+              }}
+            >
+              <Icon name="upload" size={20} color={colors.text} />
+              <Text style={styles.pillText}>Upload</Text>
+            </Pressable>
+            <Pressable
+              style={styles.pill}
+              onPress={() => {
+                close();
+                handlersRef.current?.onFolder();
+              }}
+            >
+              <Icon name="folder" size={20} color={colors.text} />
+              <Text style={styles.pillText}>Folder</Text>
             </Pressable>
           </View>
         </View>

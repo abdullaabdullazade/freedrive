@@ -92,6 +92,8 @@ pub fn run() {
             commands::set_sync_mode,
             commands::get_launch_on_login,
             commands::set_launch_on_login,
+            commands::get_start_minimized,
+            commands::set_start_minimized,
             commands::open_sync_log_folder,
             commands::pause_sync,
             commands::resume_sync,
@@ -193,6 +195,23 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Cold start: hide main window when "Start minimized" is enabled (tray only).
+            {
+                let state = app.state::<AppState>();
+                let start_minimized = state
+                    .db
+                    .lock()
+                    .ok()
+                    .and_then(|conn| crate::db::config_get(&conn, "start_minimized").ok().flatten())
+                    .as_deref()
+                    == Some("true");
+                if start_minimized {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                }
+            }
 
             Ok(())
         })

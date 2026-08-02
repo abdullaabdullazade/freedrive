@@ -1688,6 +1688,10 @@ input {
   cursor: pointer;
 }
 
+.preferences-settings-checkbox-row + .preferences-settings-checkbox-row {
+  margin-top: 12px;
+}
+
 .preferences-settings-checkbox-row input {
   margin-top: 3px;
   accent-color: var(--fd-accent);
