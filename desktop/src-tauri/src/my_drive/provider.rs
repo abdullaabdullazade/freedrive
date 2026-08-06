@@ -13,6 +13,19 @@ pub const ROOT_FOLDER_CONFIG_KEY: &str = "my_drive_root_folder_id";
 /// Stored when GET /folders/root returns children without a folder object.
 pub const MY_DRIVE_CLOUD_ROOT_SENTINEL: &str = "cloud-root";
 
+/// Map desktop My Drive root sentinels to API `parent_id` / `folder_id`.
+/// Virtual root has no UUID — create/upload must send `null` and list via `/folders/root`.
+pub fn api_folder_parent_id(id: &str) -> Option<&str> {
+    if id.is_empty()
+        || id == MY_DRIVE_CLOUD_ROOT_SENTINEL
+        || id.eq_ignore_ascii_case("root")
+    {
+        None
+    } else {
+        Some(id)
+    }
+}
+
 pub fn ensure_my_drive_folder() -> AppResult<PathBuf> {
     crate::auth_store::my_drive_dir()
 }

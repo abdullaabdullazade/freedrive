@@ -24,7 +24,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
@@ -131,6 +131,8 @@ pub struct SyncEngine {
     computer_root_id: RwLock<Option<String>>,
     watcher_suppress: WatcherSuppress,
     shutdown: AtomicBool,
+    /// Nested My Drive transfers (poll + watcher uploads) currently in flight.
+    my_drive_busy_count: AtomicUsize,
     pub(crate) journal_drain_lock: tokio::sync::Mutex<()>,
     journal_retry_after: Mutex<Option<Instant>>,
     server_ready_until: Mutex<Option<Instant>>,
@@ -159,6 +161,7 @@ impl SyncEngine {
             computer_root_id: RwLock::new(None),
             watcher_suppress: WatcherSuppress::new(),
             shutdown: AtomicBool::new(false),
+            my_drive_busy_count: AtomicUsize::new(0),
             journal_drain_lock: tokio::sync::Mutex::new(()),
             journal_retry_after: Mutex::new(None),
             server_ready_until: Mutex::new(None),
@@ -270,6 +273,24 @@ impl SyncEngine {
             return;
         }
         if is_my_drive_path(&path) {
+            let engine = Arc::clone(self);
+            tauri::async_runtime::spawn(async move {
+                if engine.is_paused() || engine.is_initial_sync_running() {
+                    return;
+                }
+                engine.mark_my_drive_busy("Syncing My Drive…");
+                let result =
+                    crate::my_drive::ensure_my_drive_folder_path(&engine.api, &engine.db, &path)
+                        .await;
+                if let Err(e) = &result {
+                    sync_log(format!(
+                        "My Drive folder create failed {}: {}",
+                        path.display(),
+                        e
+                    ));
+                }
+                engine.release_my_drive_busy(result.is_err());
+            });
             return;
         }
         let engine = Arc::clone(self);
@@ -498,6 +519,46 @@ impl SyncEngine {
 
     pub fn set_sync_status(&self, kind: SyncStatusKind, message: impl Into<String>) {
         self.set_status(kind, message);
+    }
+
+    /// Mark My Drive as actively syncing (refcounted for overlapping poll/watcher work).
+    pub fn mark_my_drive_busy(&self, message: &str) {
+        self.my_drive_busy_count.fetch_add(1, Ordering::SeqCst);
+        if self.is_paused() {
+            return;
+        }
+        match self.get_status().status {
+            SyncStatusKind::Error | SyncStatusKind::Offline | SyncStatusKind::Paused => {}
+            _ => self.set_status(SyncStatusKind::Syncing, message),
+        }
+    }
+
+    /// Release one My Drive busy ref; when the last finishes, restore Up to date (or Error).
+    pub fn release_my_drive_busy(&self, had_error: bool) {
+        let prev = self.my_drive_busy_count.fetch_sub(1, Ordering::SeqCst);
+        if prev == 0 {
+            self.my_drive_busy_count.fetch_add(1, Ordering::SeqCst);
+            return;
+        }
+        if prev != 1 {
+            return;
+        }
+        if self.is_paused() || self.is_initial_sync_running() {
+            return;
+        }
+        match self.get_status().status {
+            SyncStatusKind::Syncing => {
+                if had_error {
+                    self.set_status(
+                        SyncStatusKind::Error,
+                        "My Drive sync had errors — see Sync activity",
+                    );
+                } else {
+                    self.set_status(SyncStatusKind::UpToDate, "Up to date");
+                }
+            }
+            _ => {}
+        }
     }
 
     fn set_status(&self, kind: SyncStatusKind, message: impl Into<String>) {
@@ -2379,7 +2440,7 @@ impl SyncEngine {
                         &self.db,
                         file_path,
                         file_name,
-                        &remote_folder_id,
+                        Some(&remote_folder_id),
                         Some(self.upload_progress_cb(file_name)),
                     )
                 },
@@ -2582,19 +2643,38 @@ impl SyncEngine {
         best.map(|(sf, rel, _)| (sf, rel))
     }
 
-    pub async fn poll_my_drive(&self) -> AppResult<()> {
+    pub async fn poll_my_drive(self: &Arc<Self>) -> AppResult<()> {
         if self.is_paused() || self.is_initial_sync_running() {
             return Ok(());
         }
         let mirror = sync_mode_is_mirror(&self.db);
-        crate::my_drive::poll_my_drive(
+        let eng = Arc::clone(self);
+        let started = Arc::new(AtomicBool::new(false));
+        let started_cb = Arc::clone(&started);
+        let on_busy: crate::my_drive::MyDriveBusyCb = Arc::new(move |msg: &str| {
+            if started_cb
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                eng.mark_my_drive_busy(msg);
+            }
+        });
+
+        let stats = crate::my_drive::poll_my_drive(
             &self.api,
             &self.db,
             mirror,
             Arc::clone(&self.download_semaphore),
+            Arc::clone(&self.upload_semaphore),
             Some(&self.watcher_suppress),
+            Some(on_busy),
         )
-        .await
+        .await?;
+
+        if started.load(Ordering::SeqCst) {
+            self.release_my_drive_busy(stats.errors > 0);
+        }
+        Ok(())
     }
 
     /// Bidirectional sync: drain journal, poll server change feed, apply locally.
@@ -2643,12 +2723,21 @@ impl SyncEngine {
         Ok(())
     }
 
-    pub async fn sync_my_drive_path(&self, path: &Path) -> AppResult<()> {
+    pub async fn sync_my_drive_path(self: &Arc<Self>, path: &Path) -> AppResult<()> {
         if self.is_paused() || self.is_initial_sync_running() {
             return Ok(());
         }
-        let _permit = self.acquire_upload_permit().await?;
-        crate::my_drive::upload_my_drive_path(&self.api, &self.db, path).await
+        self.mark_my_drive_busy("Syncing My Drive…");
+        let _permit = match self.acquire_upload_permit().await {
+            Ok(p) => p,
+            Err(e) => {
+                self.release_my_drive_busy(true);
+                return Err(e);
+            }
+        };
+        let result = crate::my_drive::upload_my_drive_path(&self.api, &self.db, path).await;
+        self.release_my_drive_busy(result.is_err());
+        result
     }
 
     pub async fn delete_remote_file(&self, path: &Path) -> AppResult<()> {

@@ -73,7 +73,7 @@ export function FreeDriveTab() {
               <li>Keep My Drive in the cloud only — no full folder download.</li>
               <li>Files appear as cloud placeholders in File Explorer.</li>
               <li>A file downloads when you open it, then frees disk space after you close it.</li>
-              <li>Edits upload back to the server when you save/close.</li>
+              <li>Edits and new local files or folders upload to the server automatically.</li>
             </ul>
           </div>
         </label>
@@ -93,6 +93,7 @@ export function FreeDriveTab() {
               <li>Keep a full local copy of My Drive under FreeDrive (uses disk space).</li>
               <li>Access My Drive files offline from your computer.</li>
               <li>New and changed files on the server download automatically.</li>
+              <li>New local files and folders upload to the server automatically.</li>
             </ul>
           </div>
         </label>
@@ -103,8 +104,9 @@ export function FreeDriveTab() {
           i
         </span>
         <p>
-          Stream works like Google Drive for desktop streaming: open to download, close to free
-          space. Choose Mirror only if you want the entire My Drive folder stored locally.
+          Both modes sync My Drive both ways, like Google Drive for desktop. Stream keeps most
+          files as cloud placeholders; choose Mirror only if you want the entire My Drive folder
+          stored locally.
         </p>
       </div>
     </div>

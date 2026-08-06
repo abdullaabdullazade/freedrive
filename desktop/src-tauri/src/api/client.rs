@@ -613,40 +613,28 @@ impl ApiClient {
 
 
     pub async fn create_or_resolve_folder(
-
         &self,
-
         name: &str,
-
         parent_id: Option<&str>,
-
     ) -> AppResult<Folder> {
-
         match self.create_folder(name, parent_id).await {
-
             Ok(folder) => Ok(folder),
-
             Err(e) => {
-
                 crate::sync::log::sync_log(format!(
                     "create_folder '{}' failed ({}), resolving by name",
                     name, e
                 ));
-
-                let parent = parent_id
-
-                    .ok_or_else(|| AppError::msg("parent folder required"))?;
-
-                self.resolve_folder_by_name(parent, name)
-
-                    .await?
-
+                let contents = match parent_id {
+                    Some(parent) => self.get_folder_contents(parent).await?,
+                    None => self.get_my_drive_root().await?,
+                };
+                contents
+                    .folders
+                    .into_iter()
+                    .find(|f| f.name == name)
                     .ok_or_else(|| AppError::msg(format!("folder not found: {}", name)))
-
             }
-
         }
-
     }
 
 
@@ -952,41 +940,23 @@ impl ApiClient {
 
 
     pub async fn upload_file(
-
         &self,
-
         db: &DbHandle,
-
         local_path: &Path,
-
         name: &str,
-
-        folder_id: &str,
-
+        folder_id: Option<&str>,
         on_progress: Option<UploadProgressCb>,
-
     ) -> AppResult<(FileRecord, [u8; 32])> {
-
         self.upload_multipart_with_retry(
-
             Some(db),
-
             "/files/upload",
-
             local_path,
-
             name,
-
-            Some(folder_id),
-
+            folder_id,
             None,
-
             on_progress,
-
         )
-
         .await
-
     }
 
 
