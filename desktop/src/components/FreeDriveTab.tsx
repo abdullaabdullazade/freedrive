@@ -73,6 +73,10 @@ export function FreeDriveTab() {
               <li>Keep My Drive in the cloud only — no full folder download.</li>
               <li>Files appear as cloud placeholders in File Explorer.</li>
               <li>A file downloads when you open it, then frees disk space after you close it.</li>
+              <li>
+                Right-click FreeDrive Free up space or Download (Stream only), like Google Drive
+                Online only / Available offline.
+              </li>
               <li>Edits and new local files or folders upload to the server automatically.</li>
             </ul>
           </div>
@@ -94,6 +98,9 @@ export function FreeDriveTab() {
               <li>Access My Drive files offline from your computer.</li>
               <li>New and changed files on the server download automatically.</li>
               <li>New local files and folders upload to the server automatically.</li>
+              <li>
+                No Free up space in Explorer — switch to Stream to reclaim disk (like Google Drive).
+              </li>
             </ul>
           </div>
         </label>
@@ -105,8 +112,10 @@ export function FreeDriveTab() {
         </span>
         <p>
           Both modes sync My Drive both ways, like Google Drive for desktop. Stream keeps most
-          files as cloud placeholders; choose Mirror only if you want the entire My Drive folder
-          stored locally.
+          files as cloud placeholders; Free up space and Download appear only in Stream. Choose
+          Mirror only if you want the entire My Drive folder stored locally. On Windows 11,
+          FreeDrive right-click options appear under <strong>Show more options</strong> (or
+          Shift+right-click).
         </p>
       </div>
     </div>

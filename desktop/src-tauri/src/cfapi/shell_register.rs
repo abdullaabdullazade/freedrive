@@ -429,9 +429,16 @@ pub fn ensure_shell_registered(db: &DbHandle, sync_root: &Path) -> AppResult<()>
     }
 
     ensure_namespace_pinned(sync_root)?;
+    refresh_offline_context_menu(db)?;
     mark_shell_registered(db)?;
     shell_log(&format!("shell registered id={}", sync_root_id));
     Ok(())
+}
+
+/// Stream: Free up + Download in Explorer. Mirror: no offline verbs (like Google Drive).
+pub fn refresh_offline_context_menu(db: &DbHandle) -> AppResult<()> {
+    let stream = crate::sync::engine::sync_mode_is_stream(db);
+    ensure_context_menu_registered(stream)
 }
 
 pub fn unregister_shell(db: &DbHandle) -> AppResult<()> {
@@ -441,6 +448,7 @@ pub fn unregister_shell(db: &DbHandle) -> AppResult<()> {
         delete_sync_root_registry(&sync_root_id)?;
     }
     delete_namespace_pin();
+    delete_context_menu_registration();
     clear_shell_registration_state(db)?;
     shell_log("shell unregistered");
     Ok(())
@@ -468,4 +476,132 @@ pub fn purge_all_freedrive_shell_entries() {
         }
     }
     delete_namespace_pin();
+    delete_context_menu_registration();
+}
+
+/// Explorer context menu: flat verbs with a direct `command` (cascade SubCommands=""
+/// often shows FreeDrive > but never launches the exe on Win11 classic menu).
+/// Only registered in Stream mode — Mirror has no Free up / Download (Google Drive parity).
+fn ensure_context_menu_registered(stream_mode: bool) -> AppResult<()> {
+    delete_context_menu_registration();
+
+    if !stream_mode {
+        shell_log("shell context menu FreeDrive offline verbs cleared (Mirror mode)");
+        return Ok(());
+    }
+
+    let exe = std::env::current_exe()
+        .map_err(|e| AppError::msg(format!("current_exe failed: {}", e)))?;
+    let exe_str = exe.to_string_lossy().replace('/', "\\");
+    let icon = icon_resource_path();
+    let hydrate_cmd = format!("\"{}\" --my-drive-hydrate \"%1\"", exe_str);
+    let free_cmd = format!("\"{}\" --my-drive-free-space \"%1\"", exe_str);
+
+    let verbs = [
+        (
+            r"Software\Classes\AllFilesystemObjects\shell\FreeDriveDownload",
+            "FreeDrive Download",
+            hydrate_cmd.as_str(),
+        ),
+        (
+            r"Software\Classes\AllFilesystemObjects\shell\FreeDriveFreeSpace",
+            "FreeDrive Free up space",
+            free_cmd.as_str(),
+        ),
+        (
+            r"Software\Classes\*\shell\FreeDriveDownload",
+            "FreeDrive Download file",
+            hydrate_cmd.as_str(),
+        ),
+        (
+            r"Software\Classes\*\shell\FreeDriveFreeSpace",
+            "FreeDrive Free up space",
+            free_cmd.as_str(),
+        ),
+        (
+            r"Software\Classes\Directory\shell\FreeDriveDownload",
+            "FreeDrive Download folder",
+            hydrate_cmd.as_str(),
+        ),
+        (
+            r"Software\Classes\Directory\shell\FreeDriveFreeSpace",
+            "FreeDrive Free up space",
+            free_cmd.as_str(),
+        ),
+    ];
+    for (key_path, label, command) in verbs {
+        register_flat_verb(key_path, label, &icon, command)?;
+    }
+
+    shell_log("shell context menu FreeDrive registered (Stream offline verbs)");
+    Ok(())
+}
+
+const COMMAND_STORE_SHELL: &str =
+    r"Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell";
+
+fn register_flat_verb(
+    key_path: &str,
+    label: &str,
+    icon: &str,
+    command: &str,
+) -> AppResult<()> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let root = hkcu
+        .create_subkey(key_path)
+        .map_err(|e| AppError::msg(format!("create {} failed: {}", key_path, e)))?
+        .0;
+    root.set_value("MUIVerb", &label)
+        .map_err(|e| AppError::msg(format!("set MUIVerb failed: {}", e)))?;
+    root.set_value("Icon", &icon)
+        .map_err(|e| AppError::msg(format!("set Icon failed: {}", e)))?;
+    let cmd_key = root
+        .create_subkey("command")
+        .map_err(|e| AppError::msg(format!("create {}\\command failed: {}", key_path, e)))?
+        .0;
+    cmd_key
+        .set_value("", &command)
+        .map_err(|e| AppError::msg(format!("set {} command failed: {}", key_path, e)))?;
+    Ok(())
+}
+
+fn delete_context_menu_registration() {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let class_paths = [
+        // Legacy cascade roots
+        r"Software\Classes\*\shell\FreeDrive",
+        r"Software\Classes\Directory\shell\FreeDrive",
+        r"Software\Classes\AllFilesystemObjects\shell\FreeDrive",
+        // Flat verbs
+        r"Software\Classes\*\shell\FreeDriveDownload",
+        r"Software\Classes\*\shell\FreeDriveFreeSpace",
+        r"Software\Classes\Directory\shell\FreeDriveDownload",
+        r"Software\Classes\Directory\shell\FreeDriveFreeSpace",
+        r"Software\Classes\AllFilesystemObjects\shell\FreeDriveDownload",
+        r"Software\Classes\AllFilesystemObjects\shell\FreeDriveFreeSpace",
+    ];
+    for path in class_paths {
+        match hkcu.delete_subkey_all(path) {
+            Ok(()) => shell_log(&format!("shell context menu removed {}", path)),
+            Err(e) => shell_log(&format!(
+                "shell context menu remove {} skipped: {}",
+                path, e
+            )),
+        }
+    }
+    for name in [
+        "FreeDrive.DownloadFile",
+        "FreeDrive.DownloadFolder",
+        "FreeDrive.FreeSpace",
+        "FreeDrive.Download",
+    ] {
+        let path = format!("{}\\{}", COMMAND_STORE_SHELL, name);
+        match hkcu.delete_subkey_all(&path) {
+            Ok(()) => shell_log(&format!("shell context menu removed {}", path)),
+            Err(e) => shell_log(&format!(
+                "shell context menu remove {} skipped: {}",
+                path, e
+            )),
+        }
+    }
 }

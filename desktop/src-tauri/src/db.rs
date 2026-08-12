@@ -254,6 +254,60 @@ pub fn mark_journal_retry(conn: &Connection, id: i64, attempts: i32) -> AppResul
     Ok(())
 }
 
+/// Mark high-attempt rename rows done and collapse duplicate pending file_delete rows.
+/// Returns (renames_marked_done, duplicate_deletes_removed).
+pub fn cleanup_stuck_journal(conn: &Connection) -> AppResult<(u32, u32)> {
+    // Poisoned renames that retried forever block head-of-line deletes.
+    let renames = conn.execute(
+        "UPDATE sync_journal SET status = 'done'
+         WHERE status = 'pending'
+           AND operation IN ('folder_rename', 'file_rename')
+           AND attempts >= 5",
+        [],
+    )? as u32;
+
+    // Keep the oldest pending file_delete per (sync_folder_id, remote_entity_id).
+    let deletes = conn.execute(
+        "UPDATE sync_journal SET status = 'done'
+         WHERE id IN (
+           SELECT j.id FROM sync_journal j
+           WHERE j.status = 'pending'
+             AND j.operation = 'file_delete'
+             AND j.remote_entity_id IS NOT NULL
+             AND j.remote_entity_id != ''
+             AND EXISTS (
+               SELECT 1 FROM sync_journal k
+               WHERE k.status = 'pending'
+                 AND k.operation = 'file_delete'
+                 AND k.sync_folder_id = j.sync_folder_id
+                 AND k.remote_entity_id = j.remote_entity_id
+                 AND k.id < j.id
+             )
+         )",
+        [],
+    )? as u32;
+
+    Ok((renames, deletes))
+}
+
+/// True if a pending file_delete already exists for this remote id.
+pub fn has_pending_file_delete_for_remote(
+    conn: &Connection,
+    sync_folder_id: i64,
+    remote_file_id: &str,
+) -> AppResult<bool> {
+    let mut stmt = conn.prepare(
+        "SELECT 1 FROM sync_journal
+         WHERE sync_folder_id = ?1
+           AND operation = 'file_delete'
+           AND remote_entity_id = ?2
+           AND status = 'pending'
+         LIMIT 1",
+    )?;
+    let mut rows = stmt.query(params![sync_folder_id, remote_file_id])?;
+    Ok(rows.next()?.is_some())
+}
+
 pub fn upsert_sync_state_with_version(
     conn: &Connection,
     sync_folder_id: i64,

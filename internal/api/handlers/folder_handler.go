@@ -162,7 +162,12 @@ func (h *FolderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "updated"})
+	folder, err := h.folderService.Get(r.Context(), folderID, userID)
+	if err != nil {
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, folder)
 }
 
 // Delete handles DELETE /api/v1/folders/{id}

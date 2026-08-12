@@ -49,6 +49,23 @@ pub struct SyncStatus {
     pub paused: bool,
 }
 
+/// Tray tooltip mirrors status (Google Drive–style) without opening the window.
+fn tray_tooltip_for_status(st: &SyncStatus) -> String {
+    let msg = st.message.trim();
+    let raw = if msg.is_empty() || msg.eq_ignore_ascii_case("up to date") {
+        "FreeDrive".to_string()
+    } else {
+        format!("FreeDrive — {}", msg)
+    };
+    // Windows tray tooltips truncate around ~128 chars.
+    if raw.chars().count() > 120 {
+        let truncated: String = raw.chars().take(117).collect();
+        format!("{}…", truncated)
+    } else {
+        raw
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SyncProgress {
     pub phase: String,
@@ -487,6 +504,10 @@ impl SyncEngine {
         } else {
             "Up to date".into()
         };
+        let tooltip = tray_tooltip_for_status(&st);
+        if let Some(tray) = self.app.tray_by_id("main") {
+            let _ = tray.set_tooltip(Some(&tooltip));
+        }
         let _ = self.app.emit("sync-status-changed", st.clone());
     }
 
@@ -572,6 +593,10 @@ impl SyncEngine {
             if let Ok(conn) = self.db.lock() {
                 let _ = config_set(&conn, "last_synced_at", &now);
             }
+        }
+        let tooltip = tray_tooltip_for_status(&st);
+        if let Some(tray) = self.app.tray_by_id("main") {
+            let _ = tray.set_tooltip(Some(&tooltip));
         }
         let _ = self.app.emit("sync-status-changed", st.clone());
     }
@@ -1335,8 +1360,12 @@ impl SyncEngine {
         if remote_id.is_empty() {
             return Ok(false);
         }
-        // Always enqueue — same relative path can have multiple remote ids (duplicates).
-        // Extra deletes are idempotent (404 = already gone).
+        {
+            let conn = self.db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+            if crate::db::has_pending_file_delete_for_remote(&conn, sync_folder_id, remote_id)? {
+                return Ok(false);
+            }
+        }
         enqueue_file_delete(&self.db, sync_folder_id, relative, remote_id)?;
         Ok(true)
     }
@@ -2647,6 +2676,10 @@ impl SyncEngine {
         if self.is_paused() || self.is_initial_sync_running() {
             return Ok(());
         }
+        if crate::my_drive::is_free_up_in_progress() {
+            sync_log("poll My Drive skipped — free-up in progress");
+            return Ok(());
+        }
         let mirror = sync_mode_is_mirror(&self.db);
         let eng = Arc::clone(self);
         let started = Arc::new(AtomicBool::new(false));
@@ -2738,6 +2771,53 @@ impl SyncEngine {
         let result = crate::my_drive::upload_my_drive_path(&self.api, &self.db, path).await;
         self.release_my_drive_busy(result.is_err());
         result
+    }
+
+    /// Explorer context menu: make My Drive path available offline (hydrate).
+    /// Returns `Ok(true)` if work ran, `Ok(false)` if skipped (paused / Mirror).
+    pub async fn hydrate_my_drive_path(self: &Arc<Self>, path: &Path) -> AppResult<bool> {
+        if self.is_paused() {
+            sync_log("My Drive hydrate skipped — sync paused");
+            return Ok(false);
+        }
+        if sync_mode_is_mirror(&self.db) {
+            sync_log("My Drive hydrate skipped — Mirror mode keeps a full local copy");
+            return Ok(false);
+        }
+        self.mark_my_drive_busy("Syncing My Drive…");
+        let result = crate::my_drive::hydrate_my_drive_path(&self.api, &self.db, path).await;
+        self.release_my_drive_busy(result.is_err());
+        result.map(|_| true)
+    }
+
+    /// Explorer context menu: free local disk (dehydrate). Stream only — Mirror keeps a
+    /// full local copy (Google Drive: no Online only / Free up in Mirror).
+    /// Returns `Ok(true)` if work ran, `Ok(false)` if skipped (paused / Mirror).
+    pub async fn free_up_my_drive_path(self: &Arc<Self>, path: &Path) -> AppResult<bool> {
+        if self.is_paused() {
+            sync_log("My Drive free up space skipped — sync paused");
+            return Ok(false);
+        }
+        if sync_mode_is_mirror(&self.db) {
+            let msg = "Free up space is only available in Stream mode (like Google Drive). Switch to Stream in Preferences.";
+            sync_log(format!("My Drive free up space skipped (Mirror) — {}", path.display()));
+            self.set_sync_status(SyncStatusKind::UpToDate, msg);
+            return Ok(false);
+        }
+        let label = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("My Drive");
+        self.mark_my_drive_busy(&format!("Freeing up space — {}…", label));
+        let eng = Arc::clone(self);
+        let on_progress: crate::my_drive::MyDriveBusyCb = Arc::new(move |msg: &str| {
+            eng.set_sync_status(SyncStatusKind::Syncing, msg);
+        });
+        let result =
+            crate::my_drive::free_up_my_drive_path(&self.api, &self.db, path, Some(on_progress))
+                .await;
+        self.release_my_drive_busy(result.is_err());
+        result.map(|_| true)
     }
 
     pub async fn delete_remote_file(&self, path: &Path) -> AppResult<()> {

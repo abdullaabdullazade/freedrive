@@ -2,9 +2,9 @@ use crate::api::ApiClient;
 use crate::cfapi::placeholders::{
     build_placeholder_infos, complete_fetch_placeholders, count_existing_children,
     create_named_folder_placeholder, dehydrate_placeholder_file, ensure_cloud_placeholder,
-    filter_new_entries, is_duplicate_placeholder_error, mark_directory_populated,
-    transfer_or_complete_fetch, transfer_placeholders_via_callback, PlaceholderEntry,
-    MY_DRIVE_FOLDER_NAME,
+    filter_new_entries, is_dehydrated_placeholder, is_duplicate_placeholder_error,
+    mark_directory_populated, transfer_or_complete_fetch, transfer_placeholders_via_callback,
+    PlaceholderEntry, MY_DRIVE_FOLDER_NAME,
 };
 use crate::cfapi::util::parse_file_identity;
 use crate::db::DbHandle;
@@ -12,15 +12,16 @@ use crate::error::AppResult;
 use crate::cfapi::util::{callback_full_path, cf_operation_param_size, notify_directory_updated};
 use crate::my_drive::{
     clear_hydrate_cache_for_file, ensure_hydrated_plaintext, fetch_folder_contents,
-    is_under_my_drive, relative_path_from_sync_root, resolve_folder_id_for_fetch,
-    resolve_my_drive_root_id, FolderIdSource,
+    is_path_under_active_free_up, is_under_my_drive, relative_path_from_sync_root,
+    resolve_folder_id_for_fetch, resolve_my_drive_root_id, FolderIdSource,
 };
 use crate::sync::log::sync_log;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use windows::Win32::Foundation::{NTSTATUS, STATUS_CLOUD_FILE_UNSUCCESSFUL, STATUS_SUCCESS};
 use windows::Win32::Storage::CloudFilters::{
@@ -33,6 +34,32 @@ const CALLBACK_TIMEOUT: Duration = Duration::from_secs(30);
 /// Large My Drive opens (download + decrypt) can take many minutes — do not use the
 /// short placeholder timeout. Google Drive for desktop likewise waits for full hydrate.
 const HYDRATE_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
+const CLOSE_DEBOUNCE: Duration = Duration::from_secs(3);
+
+static CLOSE_DEBOUNCE_MAP: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+
+fn close_debounce_map() -> &'static Mutex<HashMap<String, Instant>> {
+    CLOSE_DEBOUNCE_MAP.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Returns true if this close should be handled; false if it is a duplicate within debounce window.
+fn try_acquire_close_debounce(path: &Path) -> bool {
+    let key = path.to_string_lossy().to_ascii_lowercase();
+    let Ok(mut map) = close_debounce_map().lock() else {
+        return true;
+    };
+    let now = Instant::now();
+    if let Some(prev) = map.get(&key) {
+        if now.duration_since(*prev) < CLOSE_DEBOUNCE {
+            return false;
+        }
+    }
+    map.insert(key, now);
+    if map.len() > 2048 {
+        map.retain(|_, t| now.duration_since(*t) < Duration::from_secs(60));
+    }
+    true
+}
 
 struct CallbackContext {
     sync_root: PathBuf,
@@ -225,8 +252,14 @@ pub unsafe extern "system" fn fetch_data(
     match result {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
-            log_callback_error("FETCH_DATA", &e);
-            emit_hydrate_failed(&e, &file_id);
+            let mapped = map_fetch_data_error(&e);
+            let detail = if file_id.is_empty() {
+                mapped
+            } else {
+                format!("file={file_id}: {mapped}")
+            };
+            log_callback_error("FETCH_DATA", &detail);
+            emit_hydrate_failed(&detail, &file_id);
             if let Err(te) = fail_fetch_data(info, params) {
                 log_callback_error("TRANSFER_DATA", &te);
             }
@@ -237,6 +270,15 @@ pub unsafe extern "system" fn fetch_data(
                 log_callback_error("TRANSFER_DATA", &te);
             }
         }
+    }
+}
+
+fn map_fetch_data_error(error: &str) -> String {
+    let lower = error.to_ascii_lowercase();
+    if lower.contains("failed to read file") || lower.contains("blob missing") {
+        "cloud file missing on server (blob unreadable)".to_string()
+    } else {
+        error.to_string()
     }
 }
 
@@ -549,6 +591,26 @@ fn handle_notify_file_close(info: &CF_CALLBACK_INFO) -> Result<(), String> {
         return Ok(());
     }
 
+    if is_path_under_active_free_up(&full) {
+        cfapi_callback_log(&format!(
+            "NOTIFY_FILE_CLOSE skipped (free-up) {}",
+            full.display()
+        ));
+        return Ok(());
+    }
+
+    if is_dehydrated_placeholder(&full) {
+        cfapi_callback_log(&format!(
+            "NOTIFY_FILE_CLOSE skipped (dehydrated) {}",
+            full.display()
+        ));
+        return Ok(());
+    }
+
+    if !try_acquire_close_debounce(&full) {
+        return Ok(());
+    }
+
     let remote_id = unsafe {
         let identity = std::slice::from_raw_parts(
             info.FileIdentity as *const u8,
@@ -577,10 +639,15 @@ fn handle_notify_file_close(info: &CF_CALLBACK_INFO) -> Result<(), String> {
     ));
 
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::my_drive::upload_my_drive_path(&api, &db, &full).await {
-            cfapi_callback_log(&format!("NOTIFY_FILE_CLOSE upload failed: {}", e));
-        }
-        if !stream_mode {
+        let uploaded = match crate::my_drive::upload_my_drive_path(&api, &db, &full).await {
+            Ok(()) => true,
+            Err(e) => {
+                cfapi_callback_log(&format!("NOTIFY_FILE_CLOSE upload failed: {}", e));
+                false
+            }
+        };
+        // Only dehydrate after a successful upload — never after skip/failure (avoids loops).
+        if !stream_mode || !uploaded {
             return;
         }
         if let Some(ref id) = remote_id {
@@ -588,6 +655,9 @@ fn handle_notify_file_close(info: &CF_CALLBACK_INFO) -> Result<(), String> {
         }
         // Brief delay so editors release the handle before dehydrate.
         tokio::time::sleep(Duration::from_millis(400)).await;
+        if is_path_under_active_free_up(&full) || is_dehydrated_placeholder(&full) {
+            return;
+        }
         match dehydrate_placeholder_file(&full) {
             Ok(()) => cfapi_callback_log(&format!(
                 "NOTIFY_FILE_CLOSE dehydrated {}",

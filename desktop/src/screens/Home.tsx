@@ -59,7 +59,7 @@ export function Home({
     : isError
       ? syncStatus.message
       : isSyncing
-        ? "Syncing…"
+        ? syncStatus.message || "Syncing…"
         : isUpToDate
           ? "Up to date"
           : syncStatus.message;
@@ -67,7 +67,9 @@ export function Home({
   const statusSubtitle = isOffline
     ? syncStatus.message
     : isSyncing
-      ? formatFileCount(fileCount)
+      ? syncStatus.message.toLowerCase().includes("freeing up")
+        ? "Reclaiming local disk space"
+        : formatFileCount(fileCount)
       : `Synced ${formatRelativeTime(syncStatus.last_synced_at)}`;
 
   useEffect(() => {

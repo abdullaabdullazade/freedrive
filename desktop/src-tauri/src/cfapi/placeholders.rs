@@ -9,17 +9,21 @@ use windows::core::{HRESULT, PCWSTR};
 use windows::Win32::Foundation::{CloseHandle, NTSTATUS, STATUS_SUCCESS};
 use windows::Win32::Storage::CloudFilters::{
     CfConvertToPlaceholder, CfCreatePlaceholders, CfDehydratePlaceholder, CfExecute,
-    CfUpdatePlaceholder, CF_CALLBACK_INFO, CF_CONVERT_FLAG_FORCE_CONVERT_TO_CLOUD_FILE,
-    CF_CONVERT_FLAG_MARK_IN_SYNC, CF_CREATE_FLAG_NONE, CF_DEHYDRATE_FLAG_NONE, CF_FS_METADATA,
-    CF_OPERATION_INFO, CF_OPERATION_PARAMETERS, CF_OPERATION_PARAMETERS_0,
-    CF_OPERATION_PARAMETERS_0_7, CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION,
+    CfGetPlaceholderStateFromAttributeTag, CfUpdatePlaceholder, CF_CALLBACK_INFO,
+    CF_CONVERT_FLAG_FORCE_CONVERT_TO_CLOUD_FILE, CF_CONVERT_FLAG_MARK_IN_SYNC, CF_CREATE_FLAG_NONE,
+    CF_DEHYDRATE_FLAG_NONE, CF_FS_METADATA, CF_OPERATION_INFO, CF_OPERATION_PARAMETERS,
+    CF_OPERATION_PARAMETERS_0, CF_OPERATION_PARAMETERS_0_7,
+    CF_OPERATION_TRANSFER_PLACEHOLDERS_FLAG_DISABLE_ON_DEMAND_POPULATION,
     CF_OPERATION_TYPE_TRANSFER_PLACEHOLDERS, CF_PLACEHOLDER_CREATE_FLAG_DISABLE_ON_DEMAND_POPULATION,
     CF_PLACEHOLDER_CREATE_FLAG_MARK_IN_SYNC, CF_PLACEHOLDER_CREATE_FLAGS, CF_PLACEHOLDER_CREATE_INFO,
-    CF_UPDATE_FLAG_DISABLE_ON_DEMAND_POPULATION, CF_UPDATE_FLAG_ENABLE_ON_DEMAND_POPULATION,
+    CF_PLACEHOLDER_STATE_PARTIAL, CF_PLACEHOLDER_STATE_PARTIALLY_ON_DISK,
+    CF_PLACEHOLDER_STATE_PLACEHOLDER, CF_UPDATE_FLAG_DISABLE_ON_DEMAND_POPULATION,
+    CF_UPDATE_FLAG_ENABLE_ON_DEMAND_POPULATION,
 };
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
-    FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    CreateFileW, GetFileAttributesW, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    INVALID_FILE_ATTRIBUTES, OPEN_EXISTING,
 };
 
 pub const MY_DRIVE_FOLDER_NAME: &str = "My Drive";
@@ -260,6 +264,45 @@ pub fn convert_directory_to_placeholder(
     result
 }
 
+/// Convert a plain local file into a cloud placeholder so it can be dehydrated.
+pub fn convert_file_to_placeholder(path: &Path, remote_id: &str) -> AppResult<()> {
+    if !path.is_file() {
+        return Ok(());
+    }
+    let identity = file_identity("file", remote_id);
+    let wide = path_to_wide(path);
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(wide.as_ptr()),
+            (FILE_GENERIC_READ | FILE_GENERIC_WRITE).0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAG_OPEN_REPARSE_POINT,
+            None,
+        )
+        .map_err(|e| AppError::msg(format!("open file for CfConvertToPlaceholder: {}", e)))?
+    };
+
+    let flags = CF_CONVERT_FLAG_MARK_IN_SYNC | CF_CONVERT_FLAG_FORCE_CONVERT_TO_CLOUD_FILE;
+    let result = unsafe {
+        CfConvertToPlaceholder(
+            handle,
+            Some(identity.as_ptr() as *const _),
+            identity.len() as u32,
+            flags,
+            None,
+            None,
+        )
+        .map_err(|e| AppError::msg(format!("CfConvertToPlaceholder file: {}", e)))
+    };
+
+    unsafe {
+        let _ = CloseHandle(handle);
+    }
+    result
+}
+
 pub fn ensure_cloud_placeholder(dir: &Path, item_type: &str, remote_id: &str) -> AppResult<()> {
     if !dir.exists() {
         return Ok(());
@@ -324,6 +367,29 @@ pub fn dehydrate_placeholder_file(path: &Path) -> AppResult<()> {
         let _ = CloseHandle(handle);
     }
     result
+}
+
+/// True when the cloud file has no (or incomplete) local content — reading it would FETCH_DATA.
+pub fn is_dehydrated_placeholder(path: &Path) -> bool {
+    // FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS — content not fully present locally.
+    const RECALL_ON_DATA_ACCESS: u32 = 0x0040_0000;
+    let wide = path_to_wide(path);
+    let attrs = unsafe { GetFileAttributesW(PCWSTR(wide.as_ptr())) };
+    if attrs == INVALID_FILE_ATTRIBUTES {
+        return false;
+    }
+    if attrs & RECALL_ON_DATA_ACCESS != 0 {
+        return true;
+    }
+    // Fallback: placeholder marked partial / not fully on disk.
+    let state = unsafe { CfGetPlaceholderStateFromAttributeTag(attrs, 0) };
+    let is_placeholder = (state.0 & CF_PLACEHOLDER_STATE_PLACEHOLDER.0) != 0;
+    if !is_placeholder {
+        return false;
+    }
+    let partial = (state.0 & CF_PLACEHOLDER_STATE_PARTIAL.0) != 0;
+    let partially_on_disk = (state.0 & CF_PLACEHOLDER_STATE_PARTIALLY_ON_DISK.0) != 0;
+    partial && !partially_on_disk
 }
 
 /// Best-effort walk of My Drive: dehydrate every regular file so Stream mode reclaims disk.

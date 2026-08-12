@@ -1,6 +1,6 @@
 [package]
 name = "freedrive-desktop"
-version = "0.1.12"
+version = "0.1.26"
 description = "FreeDrive Desktop Sync Client"
 authors = ["marci"]
 edition = "2021"

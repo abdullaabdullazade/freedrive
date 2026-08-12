@@ -14,6 +14,9 @@ fn is_not_found(e: &AppError) -> bool {
     msg.contains("not found") || msg.contains("404")
 }
 
+/// After this many failed attempts, skip rename so deletes are not HOL-blocked.
+const RENAME_SKIP_AFTER_ATTEMPTS: i32 = 5;
+
 pub async fn process_journal_entry(
     engine: &SyncEngine,
     api: &ApiClient,
@@ -90,13 +93,30 @@ pub async fn process_journal_entry(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("file");
-            api.patch_file(
-                remote_id,
-                Some(new_name),
-                None,
-                Some(&entry.client_mutation_id),
-            )
-            .await?;
+            match api
+                .patch_file(
+                    remote_id,
+                    Some(new_name),
+                    None,
+                    Some(&entry.client_mutation_id),
+                )
+                .await
+            {
+                Ok(_) => {}
+                Err(e) if is_not_found(&e) => {
+                    sync_log(format!(
+                        "file rename {} already gone on server — marking done",
+                        remote_id
+                    ));
+                }
+                Err(e) if entry.attempts >= RENAME_SKIP_AFTER_ATTEMPTS => {
+                    sync_log(format!(
+                        "file rename {} skipped after {} attempts: {}",
+                        entry.id, entry.attempts, e
+                    ));
+                }
+                Err(e) => return Err(e),
+            }
             let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
             if let Some(old) = &entry.old_relative_path {
                 delete_sync_state_row(&conn, entry.sync_folder_id, old)?;
@@ -112,13 +132,30 @@ pub async fn process_journal_entry(
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("folder");
-            api.patch_folder(
-                remote_id,
-                Some(new_name),
-                None,
-                Some(&entry.client_mutation_id),
-            )
-            .await?;
+            match api
+                .patch_folder(
+                    remote_id,
+                    Some(new_name),
+                    None,
+                    Some(&entry.client_mutation_id),
+                )
+                .await
+            {
+                Ok(_) => {}
+                Err(e) if is_not_found(&e) => {
+                    sync_log(format!(
+                        "folder rename {} already gone on server — marking done",
+                        remote_id
+                    ));
+                }
+                Err(e) if entry.attempts >= RENAME_SKIP_AFTER_ATTEMPTS => {
+                    sync_log(format!(
+                        "folder rename {} skipped after {} attempts: {}",
+                        entry.id, entry.attempts, e
+                    ));
+                }
+                Err(e) => return Err(e),
+            }
             let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
             if let Some(old) = &entry.old_relative_path {
                 delete_folder_mapping(&conn, entry.sync_folder_id, old)?;
@@ -148,6 +185,25 @@ pub async fn drain_journal(engine: &SyncEngine, api: &ApiClient, db: &DbHandle) 
     let _drain_guard = engine.journal_drain_lock.lock().await;
     if engine.journal_backoff_active() {
         return Ok(0);
+    }
+
+    // Once per process: clear poisoned renames + collapse duplicate deletes.
+    {
+        static CLEANED: std::sync::Once = std::sync::Once::new();
+        CLEANED.call_once(|| {
+            if let Ok(conn) = db.lock() {
+                match crate::db::cleanup_stuck_journal(&conn) {
+                    Ok((renames, deletes)) if renames > 0 || deletes > 0 => {
+                        sync_log(format!(
+                            "journal cleanup — skipped {} stuck rename(s), deduped {} file_delete(s)",
+                            renames, deletes
+                        ));
+                    }
+                    Ok(_) => {}
+                    Err(e) => sync_log(format!("journal cleanup failed: {}", e)),
+                }
+            }
+        });
     }
 
     let entries = {
@@ -201,6 +257,9 @@ pub fn enqueue_file_delete(
 ) -> AppResult<()> {
     let mutation_id = uuid::Uuid::new_v4().to_string();
     let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+    if crate::db::has_pending_file_delete_for_remote(&conn, sync_folder_id, remote_file_id)? {
+        return Ok(());
+    }
     crate::db::insert_journal_entry(
         &conn,
         sync_folder_id,

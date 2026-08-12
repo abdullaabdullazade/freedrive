@@ -1186,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "freedrive-desktop"
-version = "0.1.12"
+version = "0.1.26"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

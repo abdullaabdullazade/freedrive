@@ -8,14 +8,17 @@ mod connection;
 mod placeholders;
 #[cfg(windows)]
 pub use placeholders::{
-    create_file_placeholder, create_named_folder_placeholder, dehydrate_my_drive_tree,
-    ensure_cloud_placeholder, is_duplicate_placeholder_error, mark_directory_partially_populated,
-    MY_DRIVE_FOLDER_NAME,
+    convert_file_to_placeholder, create_file_placeholder, create_named_folder_placeholder,
+    dehydrate_my_drive_tree, dehydrate_placeholder_file, ensure_cloud_placeholder,
+    is_dehydrated_placeholder, is_duplicate_placeholder_error, is_not_cloud_file_error,
+    mark_directory_partially_populated, MY_DRIVE_FOLDER_NAME,
 };
 #[cfg(windows)]
 mod register;
 #[cfg(windows)]
 mod shell_register;
+#[cfg(windows)]
+pub use shell_register::refresh_offline_context_menu;
 #[cfg(windows)]
 mod util;
 #[cfg(windows)]

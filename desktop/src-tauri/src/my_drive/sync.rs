@@ -1,9 +1,10 @@
 use crate::api::ApiClient;
 use crate::auth_store::sync_root_dir;
 use crate::cfapi::{
-    create_file_placeholder, create_named_folder_placeholder, ensure_cloud_placeholder,
-    is_duplicate_placeholder_error, mark_directory_partially_populated, notify_directory_updated,
-    MY_DRIVE_FOLDER_NAME,
+    convert_file_to_placeholder, create_file_placeholder, create_named_folder_placeholder,
+    dehydrate_placeholder_file, ensure_cloud_placeholder, is_dehydrated_placeholder,
+    is_duplicate_placeholder_error, is_not_cloud_file_error, mark_directory_partially_populated,
+    notify_directory_updated, MY_DRIVE_FOLDER_NAME,
 };
 use crate::crypto::key_to_b64url;
 use crate::db::{
@@ -13,8 +14,8 @@ use crate::db::{
 };
 use crate::error::{AppError, AppResult};
 use crate::my_drive::{
-    api_folder_parent_id, ensure_hydrated_plaintext, fetch_folder_contents, is_under_my_drive,
-    relative_path_from_sync_root, resolve_my_drive_root_id,
+    api_folder_parent_id, clear_hydrate_cache_for_file, ensure_hydrated_plaintext,
+    fetch_folder_contents, is_under_my_drive, relative_path_from_sync_root, resolve_my_drive_root_id,
 };
 use crate::sync::log::sync_log;
 use crate::sync::suppress::WatcherSuppress;
@@ -22,9 +23,81 @@ use crate::sync::{DOWNLOAD_CONCURRENCY, UPLOAD_CONCURRENCY};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
+
+/// At most one free-up tree walk at a time so FETCH_DATA downloads are not starved.
+static FREE_UP_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
+/// Root path of the in-progress free-up (NOTIFY_FILE_CLOSE must ignore under this tree).
+static FREE_UP_ACTIVE_ROOT: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+
+fn free_up_semaphore() -> &'static Semaphore {
+    FREE_UP_SEMAPHORE.get_or_init(|| Semaphore::new(1))
+}
+
+fn free_up_active_root() -> &'static Mutex<Option<PathBuf>> {
+    FREE_UP_ACTIVE_ROOT.get_or_init(|| Mutex::new(None))
+}
+
+struct FreeUpActiveGuard;
+
+impl Drop for FreeUpActiveGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = free_up_active_root().lock() {
+            *guard = None;
+        }
+    }
+}
+
+fn begin_free_up_active(path: &Path) -> FreeUpActiveGuard {
+    if let Ok(mut guard) = free_up_active_root().lock() {
+        *guard = Some(path.to_path_buf());
+    }
+    FreeUpActiveGuard
+}
+
+/// True while Free up space is walking `path` or an ancestor of it.
+pub fn is_path_under_active_free_up(path: &Path) -> bool {
+    let Ok(guard) = free_up_active_root().lock() else {
+        return false;
+    };
+    let Some(root) = guard.as_ref() else {
+        return false;
+    };
+    path_is_under_prefix(path, root)
+}
+
+/// True while any Free up space operation is in progress.
+pub fn is_free_up_in_progress() -> bool {
+    free_up_active_root()
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|_| ()))
+        .is_some()
+}
+
+fn path_is_under_prefix(path: &Path, root: &Path) -> bool {
+    let path_s = path.to_string_lossy().to_ascii_lowercase();
+    let root_s = root.to_string_lossy().to_ascii_lowercase();
+    if path_s == root_s {
+        return true;
+    }
+    let root_prefix = if root_s.ends_with('\\') {
+        root_s
+    } else {
+        format!("{root_s}\\")
+    };
+    path_s.starts_with(&root_prefix)
+}
+
+fn is_blob_missing_error(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("failed to read file")
+        || lower.contains("blob missing")
+        || lower.contains("blob unreadable")
+}
 
 /// Callback when My Drive starts transferring (upload/download/folder create).
 pub type MyDriveBusyCb = Arc<dyn Fn(&str) + Send + Sync>;
@@ -894,6 +967,435 @@ pub async fn ensure_my_drive_folder_path(
     }
     sync_log(format!("My Drive folder ensured — {}", relative));
     Ok(remote_id)
+}
+
+/// Download (hydrate) a My Drive file or folder for offline/local use (Stream “Available offline”).
+pub async fn hydrate_my_drive_path(api: &ApiClient, db: &DbHandle, path: &Path) -> AppResult<()> {
+    let sync_root = sync_root_dir(false)?;
+    let relative = relative_path_from_sync_root(&sync_root, path)
+        .ok_or_else(|| AppError::msg("path outside sync root"))?;
+    if !is_under_my_drive(&relative) {
+        return Err(AppError::msg("path not under My Drive"));
+    }
+
+    if path.is_dir() {
+        hydrate_my_drive_folder(api, db, path).await?;
+        sync_log(format!("My Drive hydrated folder — {}", relative));
+        return Ok(());
+    }
+    if path.is_file() {
+        hydrate_my_drive_file(api, db, path, &relative).await?;
+        sync_log(format!("My Drive hydrated file — {}", relative));
+        return Ok(());
+    }
+    Err(AppError::msg("path is not a file or folder"))
+}
+
+async fn hydrate_my_drive_file(
+    api: &ApiClient,
+    db: &DbHandle,
+    path: &Path,
+    relative: &str,
+) -> AppResult<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file");
+    if crate::sync::should_skip_file(file_name) {
+        return Ok(());
+    }
+    let remote_id = {
+        let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        my_drive_get_placeholder(&conn, relative)?
+            .filter(|(_, ty)| ty == "file")
+            .map(|(id, _)| id)
+    };
+    let Some(remote_id) = remote_id else {
+        // Local-only file — already on disk.
+        sync_log(format!(
+            "My Drive hydrate skipped (no remote id) — {}",
+            relative
+        ));
+        return Ok(());
+    };
+    let cached = ensure_hydrated_plaintext(api, db, &remote_id).await?;
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::copy(&cached, path)?;
+    Ok(())
+}
+
+async fn hydrate_my_drive_folder(api: &ApiClient, db: &DbHandle, dir: &Path) -> AppResult<()> {
+    let sync_root = sync_root_dir(false)?;
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries.flatten() {
+        let child = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.eq_ignore_ascii_case("desktop.ini") || name.starts_with('.') {
+            continue;
+        }
+        if child.is_dir() {
+            Box::pin(hydrate_my_drive_folder(api, db, &child)).await?;
+            continue;
+        }
+        if !child.is_file() {
+            continue;
+        }
+        if crate::sync::should_skip_file(&name) {
+            continue;
+        }
+        let Some(relative) = relative_path_from_sync_root(&sync_root, &child) else {
+            continue;
+        };
+        if let Err(e) = hydrate_my_drive_file(api, db, &child, &relative).await {
+            sync_log(format!(
+                "My Drive hydrate file failed {}: {}",
+                child.display(),
+                e
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Upload pending changes then dehydrate to cloud placeholder (Stream “Free up space”).
+pub async fn free_up_my_drive_path(
+    api: &ApiClient,
+    db: &DbHandle,
+    path: &Path,
+    on_progress: Option<MyDriveBusyCb>,
+) -> AppResult<()> {
+    let _permit = free_up_semaphore()
+        .acquire()
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?;
+    let _active = begin_free_up_active(path);
+
+    let sync_root = sync_root_dir(false)?;
+    let relative = relative_path_from_sync_root(&sync_root, path)
+        .ok_or_else(|| AppError::msg("path outside sync root"))?;
+    if !is_under_my_drive(&relative) {
+        return Err(AppError::msg("path not under My Drive"));
+    }
+
+    if path.is_dir() {
+        free_up_my_drive_folder(api, db, path, on_progress.as_ref()).await?;
+        // One probe-aware tree pass at the top — never dehydrate without a readable cloud blob.
+        if let Some(cb) = on_progress.as_ref() {
+            cb(&format!("Freeing up space — finishing {}…", relative));
+        }
+        let tree_freed = free_up_tree_pass_with_probe(api, db, path).await?;
+        sync_log(format!(
+            "My Drive free-up final tree_pass={} — {}",
+            tree_freed, relative
+        ));
+        sync_log(format!("My Drive freed folder — {}", relative));
+        return Ok(());
+    }
+    if path.is_file() {
+        if let Some(cb) = on_progress.as_ref() {
+            cb(&format!("Freeing up space — {}…", relative));
+        }
+        free_up_my_drive_file(api, db, path, &relative).await?;
+        sync_log(format!("My Drive freed file — {}", relative));
+        return Ok(());
+    }
+    Err(AppError::msg("path is not a file or folder"))
+}
+
+async fn free_up_my_drive_file(
+    api: &ApiClient,
+    db: &DbHandle,
+    path: &Path,
+    relative: &str,
+) -> AppResult<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file");
+    if crate::sync::should_skip_file(file_name) {
+        return Ok(());
+    }
+
+    let mut remote_id = {
+        let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        my_drive_get_placeholder(&conn, relative)?
+            .filter(|(_, ty)| ty == "file")
+            .map(|(id, _)| id)
+    };
+
+    // Prefer dehydrate without re-upload when the file is already tracked remotely.
+    if remote_id.is_none() {
+        if let Err(e) = upload_my_drive_path(api, db, path).await {
+            sync_log(format!(
+                "My Drive free-up upload failed {}: {}",
+                path.display(),
+                e
+            ));
+            return Err(e);
+        }
+        remote_id = {
+            let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+            my_drive_get_placeholder(&conn, relative)?
+                .filter(|(_, ty)| ty == "file")
+                .map(|(id, _)| id)
+        };
+    }
+
+    let remote_id = remote_id
+        .ok_or_else(|| AppError::msg(format!("no remote file id for {}", relative)))?;
+
+    // If local content exists, verify the cloud blob before dehydrating — otherwise
+    // Free up would destroy the only readable copy when the server blob is missing.
+    if !is_dehydrated_placeholder(path) {
+        match api.probe_file_download(&remote_id).await {
+            Ok(true) => {}
+            Ok(false) => {
+                sync_log(format!(
+                    "My Drive free-up skip dehydrate — cloud blob missing, keeping local {}",
+                    path.display()
+                ));
+                return Ok(());
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if is_blob_missing_error(&msg) {
+                    sync_log(format!(
+                        "My Drive free-up skip dehydrate — cloud blob missing, keeping local {}: {}",
+                        path.display(),
+                        e
+                    ));
+                    return Ok(());
+                }
+                sync_log(format!(
+                    "My Drive free-up blob probe failed {}, dehydrating anyway: {}",
+                    path.display(),
+                    e
+                ));
+            }
+        }
+    }
+
+    clear_hydrate_cache_for_file(&remote_id);
+
+    match dehydrate_placeholder_file(path) {
+        Ok(()) => {}
+        Err(e) if is_not_cloud_file_error(&e) => {
+            sync_log(format!(
+                "My Drive free-up converting plain file {}",
+                path.display()
+            ));
+            match convert_file_to_placeholder(path, &remote_id) {
+                Ok(()) => dehydrate_placeholder_file(path)?,
+                Err(conv_err) => {
+                    // Local content may be ahead of cloud — push then convert.
+                    sync_log(format!(
+                        "My Drive free-up convert failed {}, uploading first: {}",
+                        path.display(),
+                        conv_err
+                    ));
+                    upload_my_drive_path(api, db, path).await?;
+                    convert_file_to_placeholder(path, &remote_id)?;
+                    dehydrate_placeholder_file(path)?;
+                }
+            }
+        }
+        Err(e) => return Err(e),
+    }
+
+    if let Some(parent) = path.parent() {
+        notify_directory_updated(parent);
+    }
+    Ok(())
+}
+
+async fn free_up_my_drive_folder(
+    api: &ApiClient,
+    db: &DbHandle,
+    dir: &Path,
+    on_progress: Option<&MyDriveBusyCb>,
+) -> AppResult<()> {
+    let sync_root = sync_root_dir(false)?;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => return Err(e.into()),
+    };
+    let mut freed = 0u32;
+    let mut failed = 0u32;
+    for entry in entries.flatten() {
+        let child = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.eq_ignore_ascii_case("desktop.ini") || name.starts_with('.') {
+            continue;
+        }
+        if child.is_dir() {
+            Box::pin(free_up_my_drive_folder(api, db, &child, on_progress)).await?;
+            continue;
+        }
+        if !child.is_file() {
+            continue;
+        }
+        if crate::sync::should_skip_file(&name) {
+            continue;
+        }
+        let Some(relative) = relative_path_from_sync_root(&sync_root, &child) else {
+            continue;
+        };
+        match free_up_my_drive_file(api, db, &child, &relative).await {
+            Ok(()) => {
+                freed += 1;
+                if freed % 25 == 0 {
+                    sync_log(format!(
+                        "My Drive free-up progress — {} files under {}",
+                        freed,
+                        dir.display()
+                    ));
+                    if let Some(cb) = on_progress {
+                        // Short relative path for tray / Home (avoid huge absolute paths).
+                        let short = if relative.len() > 72 {
+                            format!("…{}", &relative[relative.len() - 69..])
+                        } else {
+                            relative.clone()
+                        };
+                        cb(&format!("Freeing up space — {}…", short));
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            }
+            Err(e) => {
+                failed += 1;
+                sync_log(format!(
+                    "My Drive free-up file failed {}: {}",
+                    child.display(),
+                    e
+                ));
+            }
+        }
+        // Yield so Explorer FETCH_DATA downloads can proceed.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    sync_log(format!(
+        "My Drive free-up folder done — path={} freed={} failed={}",
+        dir.display(),
+        freed,
+        failed
+    ));
+    notify_directory_updated(dir);
+    Ok(())
+}
+
+/// Final free-up walk: dehydrate leftovers only when the cloud blob is readable.
+async fn free_up_tree_pass_with_probe(
+    api: &ApiClient,
+    db: &DbHandle,
+    root: &Path,
+) -> AppResult<u32> {
+    let sync_root = sync_root_dir(false)?;
+    let mut freed = 0u32;
+    free_up_tree_pass_recursive(api, db, &sync_root, root, &mut freed).await?;
+    Ok(freed)
+}
+
+async fn free_up_tree_pass_recursive(
+    api: &ApiClient,
+    db: &DbHandle,
+    sync_root: &Path,
+    dir: &Path,
+    freed: &mut u32,
+) -> AppResult<()> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            sync_log(format!(
+                "My Drive free-up tree_pass walk failed {}: {}",
+                dir.display(),
+                e
+            ));
+            return Ok(());
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.eq_ignore_ascii_case("desktop.ini") || name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            Box::pin(free_up_tree_pass_recursive(
+                api, db, sync_root, &path, freed,
+            ))
+            .await?;
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        if crate::sync::should_skip_file(&name) {
+            continue;
+        }
+        if is_dehydrated_placeholder(&path) {
+            continue;
+        }
+        let Some(relative) = relative_path_from_sync_root(sync_root, &path) else {
+            continue;
+        };
+        let remote_id = {
+            let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+            my_drive_get_placeholder(&conn, &relative)?
+                .filter(|(_, ty)| ty == "file")
+                .map(|(id, _)| id)
+        };
+        let Some(remote_id) = remote_id else {
+            // No remote mapping — leave for earlier free_up_my_drive_file pass / next sync.
+            continue;
+        };
+
+        match api.probe_file_download(&remote_id).await {
+            Ok(true) => {}
+            Ok(false) => {
+                sync_log(format!(
+                    "My Drive free-up skip dehydrate — cloud blob missing, keeping local {}",
+                    path.display()
+                ));
+                continue;
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if is_blob_missing_error(&msg) {
+                    sync_log(format!(
+                        "My Drive free-up skip dehydrate — cloud blob missing, keeping local {}: {}",
+                        path.display(),
+                        e
+                    ));
+                    continue;
+                }
+                sync_log(format!(
+                    "My Drive free-up tree_pass probe failed {}, skipping dehydrate: {}",
+                    path.display(),
+                    e
+                ));
+                continue;
+            }
+        }
+
+        clear_hydrate_cache_for_file(&remote_id);
+        match dehydrate_placeholder_file(&path) {
+            Ok(()) => {
+                *freed += 1;
+                sync_log(format!("cfapi: dehydrated {}", path.display()));
+            }
+            Err(e) => {
+                sync_log(format!(
+                    "cfapi: dehydrate skipped {}: {}",
+                    path.display(),
+                    e
+                ));
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    Ok(())
 }
 
 fn local_dir_for_relative(sync_root: &Path, parent_relative: &str) -> PathBuf {

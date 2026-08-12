@@ -6,7 +6,7 @@ pub mod reconcile;
 pub mod suppress;
 pub mod watcher;
 
-pub const UPLOAD_CONCURRENCY: usize = 12;
+pub const UPLOAD_CONCURRENCY: usize = 4;
 pub const DOWNLOAD_CONCURRENCY: usize = 12;
 
 pub use engine::SyncEngine;

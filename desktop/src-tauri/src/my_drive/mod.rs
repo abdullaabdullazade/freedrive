@@ -14,7 +14,8 @@ pub use provider::{
 
 #[cfg(windows)]
 pub use sync::{
-    delete_my_drive_path, ensure_my_drive_folder_path, poll_my_drive, upload_my_drive_path,
+    delete_my_drive_path, ensure_my_drive_folder_path, free_up_my_drive_path, hydrate_my_drive_path,
+    is_free_up_in_progress, is_path_under_active_free_up, poll_my_drive, upload_my_drive_path,
     MyDriveBusyCb, MyDrivePollStats,
 };
 
@@ -80,4 +81,33 @@ pub async fn ensure_my_drive_folder_path(
     _path: &std::path::Path,
 ) -> crate::error::AppResult<String> {
     Ok(String::new())
+}
+
+#[cfg(not(windows))]
+pub async fn hydrate_my_drive_path(
+    _api: &crate::api::ApiClient,
+    _db: &crate::db::DbHandle,
+    _path: &std::path::Path,
+) -> crate::error::AppResult<()> {
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub async fn free_up_my_drive_path(
+    _api: &crate::api::ApiClient,
+    _db: &crate::db::DbHandle,
+    _path: &std::path::Path,
+    _on_progress: Option<MyDriveBusyCb>,
+) -> crate::error::AppResult<()> {
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn is_free_up_in_progress() -> bool {
+    false
+}
+
+#[cfg(not(windows))]
+pub fn is_path_under_active_free_up(_path: &std::path::Path) -> bool {
+    false
 }

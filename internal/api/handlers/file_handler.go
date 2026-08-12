@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -136,7 +137,8 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	readerIface, err := getReader()
 	if err != nil {
-		writeError(w, "failed to read file", http.StatusInternalServerError)
+		log.Printf("download blob missing file_id=%s blob_path=%s: %v", fileID, file.BlobPath, err)
+		writeError(w, "blob missing", http.StatusNotFound)
 		return
 	}
 	reader := readerIface.(io.ReadCloser)

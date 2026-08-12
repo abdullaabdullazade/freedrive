@@ -855,6 +855,17 @@ pub fn set_sync_mode(state: State<'_, AppState>, mode: String) -> Result<(), Str
     let normalized = if mode == "stream" { "stream" } else { "mirror" };
     crate::sync::engine::set_sync_mode(&state.db, normalized).map_err(|e: AppError| e.to_string())?;
 
+    #[cfg(windows)]
+    {
+        // Free up / Download only in Stream (Google Drive parity).
+        if let Err(e) = crate::cfapi::refresh_offline_context_menu(&state.db) {
+            crate::sync::log::sync_log(format!(
+                "refresh offline context menu after sync mode change failed: {}",
+                e
+            ));
+        }
+    }
+
     if normalized == "stream" {
         // Reclaim disk from a previous Mirror: dehydrate My Drive + drop hydrate_cache.
         tauri::async_runtime::spawn(async move {

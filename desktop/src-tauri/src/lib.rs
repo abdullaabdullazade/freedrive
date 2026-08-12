@@ -8,6 +8,7 @@ mod crypto;
 mod db;
 mod error;
 mod my_drive;
+mod my_drive_shell;
 mod state;
 mod sync;
 
@@ -54,13 +55,26 @@ pub fn run() {
         return;
     }
 
+    // Prove Explorer launched us (before single-instance may exit).
+    my_drive_shell::append_shell_invoke_log();
+
+    // Explorer context menu: always enqueue before single-instance may exit(0).
+    let launch_args: Vec<String> = std::env::args().collect();
+    if let Some(action) = my_drive_shell::parse_my_drive_shell_args(&launch_args) {
+        my_drive_shell::write_pending_shell_action(&action);
+    }
+
     let db = db::open_db().expect("failed to open database");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.show();
-                let _ = w.set_focus();
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let is_shell = my_drive_shell::handle_single_instance_shell(&app, &args);
+            // Explorer context-menu invocations must stay in tray.
+            if !is_shell {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
             }
         }))
         .plugin(tauri_plugin_opener::init())
@@ -130,11 +144,16 @@ pub fn run() {
                 #[cfg(windows)]
                 commands::spawn_cfapi_integration(app.handle());
 
+                my_drive_shell::spawn_pending_shell_poller(app.handle());
+
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     if let Some(state) = app_handle.try_state::<AppState>() {
                         let _ = commands::restore_sync_on_startup(&state, &app_handle).await;
                     }
+                    // Cold start from Explorer context menu (argv + pending file, deduped).
+                    let args: Vec<String> = std::env::args().collect();
+                    my_drive_shell::handle_single_instance_shell(&app_handle, &args);
                 });
             }
 
@@ -145,7 +164,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open_i, &pause_i, &resume_i, &quit_i])?;
 
             let icon = app.default_window_icon().cloned().expect("tray icon");
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main")
                 .icon(icon)
                 .menu(&menu)
                 .tooltip("FreeDrive")

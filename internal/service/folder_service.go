@@ -181,6 +181,21 @@ func (s *FolderService) ListAll(ctx context.Context, ownerID, search string) ([]
 	return s.folderRepo.ListAll(ctx, ownerID, search)
 }
 
+// Get returns a single folder the user can read (used by PATCH response).
+func (s *FolderService) Get(ctx context.Context, folderID, ownerID string) (*domain.Folder, error) {
+	if err := s.access.CanReadFolder(ctx, folderID, ownerID); err != nil {
+		return nil, err
+	}
+	folder, err := s.folderRepo.GetByID(ctx, folderID)
+	if err != nil {
+		return nil, err
+	}
+	if folder == nil {
+		return nil, fmt.Errorf("folder not found")
+	}
+	return folder, nil
+}
+
 // Rename renames a folder.
 func (s *FolderService) Rename(ctx context.Context, folderID, ownerID, newName string) error {
 	if err := s.access.CanWriteFolder(ctx, folderID, ownerID); err != nil {

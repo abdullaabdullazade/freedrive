@@ -39,6 +39,61 @@ fn http_api_error(status: reqwest::StatusCode, text: &str) -> AppError {
     AppError::http(code, text.to_string())
 }
 
+fn is_transient_gateway_status(status: reqwest::StatusCode) -> bool {
+    matches!(
+        status,
+        reqwest::StatusCode::BAD_GATEWAY
+            | reqwest::StatusCode::SERVICE_UNAVAILABLE
+            | reqwest::StatusCode::GATEWAY_TIMEOUT
+    )
+}
+
+fn is_transient_http_error(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("http 502")
+        || lower.contains("http 503")
+        || lower.contains("http 504")
+        || lower.contains("bad gateway")
+        || lower.contains("service unavailable")
+        || lower.contains("gateway timeout")
+        || lower.contains("error sending request")
+        || lower.contains("decoding response body")
+        || lower.contains("download connect failed")
+        || lower.contains("download interrupted")
+        || lower.contains("connection")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("reset")
+        || lower.contains("interrupted")
+}
+
+fn is_missing_blob_message(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("failed to read file")
+        || lower.contains("blob missing")
+        || lower.contains("blob unreadable")
+}
+
+async fn classify_probe_response(res: reqwest::Response) -> AppResult<bool> {
+    let status = res.status();
+    if status.is_success() {
+        // Drop body without buffering — connection closes on drop.
+        drop(res);
+        return Ok(true);
+    }
+    let text = res.text().await.unwrap_or_default();
+    if status.as_u16() == 404 || status.as_u16() == 500 {
+        if is_missing_blob_message(&text) || text.trim().is_empty() {
+            return Ok(false);
+        }
+        // 404 "file not found" from metadata also means not downloadable.
+        if status.as_u16() == 404 {
+            return Ok(false);
+        }
+    }
+    Err(http_api_error(status, &text))
+}
+
 fn desktop_device_id() -> String {
     crate::auth_store::device_id().unwrap_or_else(|_| uuid::Uuid::new_v4().to_string())
 }
@@ -268,6 +323,11 @@ impl ApiClient {
 
         }
 
+        if is_transient_gateway_status(res.status()) && rl_retries > 0 {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            return Box::pin(self.request_json(method, path, body, retry, rl_retries - 1)).await;
+        }
+
 
 
         let status = res.status();
@@ -280,7 +340,10 @@ impl ApiClient {
 
 
 
-        serde_json::from_str(&text).map_err(Into::into)
+        serde_json::from_str(&text).map_err(|e| {
+            let preview: String = text.chars().take(200).collect();
+            AppError::msg(format!("API JSON decode failed: {e}; body={preview}"))
+        })
 
     }
 
@@ -786,15 +849,38 @@ impl ApiClient {
         if let Some(pid) = parent_id {
             body.insert("parent_id".into(), serde_json::Value::String(pid.to_string()));
         }
-        self.request_json_mutation(
-            reqwest::Method::PATCH,
-            &format!("/folders/{}", folder_id),
-            Some(serde_json::Value::Object(body)),
-            client_mutation_id,
-            false,
-            2,
-        )
-        .await
+        let value: serde_json::Value = self
+            .request_json_mutation(
+                reqwest::Method::PATCH,
+                &format!("/folders/{}", folder_id),
+                Some(serde_json::Value::Object(body)),
+                client_mutation_id,
+                false,
+                2,
+            )
+            .await?;
+        // New API returns Folder; older servers returned {"message":"updated"}.
+        if let Ok(folder) = serde_json::from_value::<Folder>(value.clone()) {
+            if !folder.id.is_empty() {
+                return Ok(folder);
+            }
+        }
+        if value
+            .get("message")
+            .and_then(|m| m.as_str())
+            .is_some_and(|m| m.eq_ignore_ascii_case("updated"))
+        {
+            return Ok(Folder {
+                id: folder_id.to_string(),
+                name: name.unwrap_or("").to_string(),
+                parent_id: parent_id.map(|s| s.to_string()),
+                is_trashed: false,
+            });
+        }
+        Err(AppError::msg(format!(
+            "unexpected PATCH /folders response: {}",
+            value
+        )))
     }
 
     pub async fn get_computer_snapshot(&self, computer_id: &str) -> AppResult<ComputerSnapshot> {
@@ -881,13 +967,29 @@ impl ApiClient {
             .await;
         }
 
+        if is_transient_gateway_status(res.status()) && rl_retries > 0 {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            return Box::pin(self.request_json_mutation(
+                method,
+                path,
+                body,
+                client_mutation_id,
+                retry,
+                rl_retries - 1,
+            ))
+            .await;
+        }
+
         let status = res.status();
         let text = res.text().await?;
         if status.is_success() {
             if text.is_empty() {
                 return Ok(serde_json::from_str("null")?);
             }
-            return Ok(serde_json::from_str(&text)?);
+            return serde_json::from_str(&text).map_err(|e| {
+                let preview: String = text.chars().take(200).collect();
+                AppError::msg(format!("API JSON decode failed: {e}; body={preview}"))
+            });
         }
         Err(http_api_error(status, &text))
     }
@@ -1024,6 +1126,9 @@ impl ApiClient {
         let mut auth_retry = false;
 
         let mut rl_retries = 2u32;
+
+        let mut transient_retries = 3u32;
+        let backoff_ms = [200u64, 500, 1000];
 
 
 
@@ -1237,6 +1342,14 @@ impl ApiClient {
 
                     }
 
+                    if transient_retries > 0 && is_transient_http_error(&msg) {
+                        let attempt = (3 - transient_retries) as usize;
+                        let delay = backoff_ms[attempt.min(backoff_ms.len() - 1)];
+                        transient_retries -= 1;
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
+                        continue;
+                    }
+
                     if let (Some(db), Some(folder_id)) = (db, prepared.folder_id.as_deref()) {
 
                         if existing_key.is_none() {
@@ -1280,6 +1393,43 @@ impl ApiClient {
         Ok(bytes)
     }
 
+    /// Lightweight check that the encrypted blob is readable on the server.
+    /// Does not download the body — drops the response after status/headers.
+    /// Returns `Ok(true)` when readable, `Ok(false)` when blob is missing/unreadable.
+    pub async fn probe_file_download(&self, file_id: &str) -> AppResult<bool> {
+        let url = self.api_url(&format!("/files/{}/download", file_id));
+        let (access_token, http) = {
+            let inner = self.inner.read();
+            (inner.access_token.clone(), inner.http.clone())
+        };
+        let res = http
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", access_token))
+            .send()
+            .await
+            .map_err(|e| AppError::msg(format!("download connect failed: {e}")))?;
+
+        if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+            if self.try_refresh().await? {
+                // One retry after refresh.
+                let (access_token, http) = {
+                    let inner = self.inner.read();
+                    (inner.access_token.clone(), inner.http.clone())
+                };
+                let res = http
+                    .get(&url)
+                    .header("Authorization", format!("Bearer {}", access_token))
+                    .send()
+                    .await
+                    .map_err(|e| AppError::msg(format!("download connect failed: {e}")))?;
+                return classify_probe_response(res).await;
+            }
+            return Err(AppError::msg("session expired"));
+        }
+
+        classify_probe_response(res).await
+    }
+
     /// Download ciphertext to disk (streamed), decrypt, write plaintext to `dest`.
     /// Avoids buffering the whole HTTP body as a second in-memory copy during transfer.
     pub async fn download_file_to_path(
@@ -1290,6 +1440,8 @@ impl ApiClient {
     ) -> AppResult<()> {
         let mut auth_retry = false;
         let mut rl_retries = 2u32;
+        let mut transient_retries = 3u32;
+        let backoff_ms = [200u64, 500, 1000];
 
         loop {
             match self
@@ -1308,6 +1460,13 @@ impl ApiClient {
                     if rl_retries > 0 && msg.contains("rate limit") {
                         rl_retries -= 1;
                         tokio::time::sleep(Duration::from_millis(400)).await;
+                        continue;
+                    }
+                    if transient_retries > 0 && is_transient_http_error(&msg) {
+                        let attempt = (3 - transient_retries) as usize;
+                        let delay = backoff_ms[attempt.min(backoff_ms.len() - 1)];
+                        transient_retries -= 1;
+                        tokio::time::sleep(Duration::from_millis(delay)).await;
                         continue;
                     }
                     return Err(e);
@@ -1334,7 +1493,8 @@ impl ApiClient {
             .get(&url)
             .header("Authorization", format!("Bearer {}", access_token))
             .send()
-            .await?;
+            .await
+            .map_err(|e| AppError::msg(format!("download connect failed: {e}")))?;
 
         if res.status() == reqwest::StatusCode::UNAUTHORIZED {
             if self.try_refresh().await? {
@@ -1348,7 +1508,9 @@ impl ApiClient {
         }
 
         if !res.status().is_success() {
-            return Err(AppError::msg("download failed"));
+            let status = res.status();
+            let text = res.text().await.unwrap_or_default();
+            return Err(http_api_error(status, &text));
         }
 
         let iv_header = res
@@ -1370,7 +1532,8 @@ impl ApiClient {
             let mut file = tokio::fs::File::create(&enc_path).await?;
             let mut stream = res.bytes_stream();
             while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| AppError::msg(e.to_string()))?;
+                let chunk = chunk
+                    .map_err(|e| AppError::msg(format!("download interrupted: {e}")))?;
                 file.write_all(&chunk).await?;
             }
             file.flush().await?;
