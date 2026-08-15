@@ -70,6 +70,8 @@ export interface LoginApprovalDetails {
   created_at?: string;
 }
 
+export type LoginApprovalPendingItem = LoginApprovalDetails;
+
 export interface FolderItem {
   id: string;
   name: string;

@@ -32,6 +32,17 @@ type DownloadsNativeModule = {
     notificationId?: number,
     fileName?: string,
   ): Promise<string>;
+  encryptAesGcmFile?(
+    plainPath: string,
+    outputPath: string,
+    keyB64: string,
+  ): Promise<{
+    path: string;
+    ivB64: string;
+    originalSize: number;
+    encryptedSize: number;
+  }>;
+  readFileSliceBase64?(path: string, offset: number, length: number): Promise<string>;
   downloadToFile?(
     url: string,
     destPath: string,

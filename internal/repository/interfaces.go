@@ -57,6 +57,7 @@ type Email2FARepository interface {
 type LoginApprovalRepository interface {
 	Create(ctx context.Context, a *domain.LoginApproval) error
 	GetByID(ctx context.Context, id string) (*domain.LoginApproval, error)
+	ListPendingByUser(ctx context.Context, userID string) ([]domain.LoginApproval, error)
 	Update(ctx context.Context, a *domain.LoginApproval) error
 	DeleteExpired(ctx context.Context) error
 }

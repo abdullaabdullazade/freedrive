@@ -110,6 +110,29 @@ func (h *LoginApprovalHandler) Deny(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ListPending handles GET /api/v1/me/login-approvals/pending
+func (h *LoginApprovalHandler) ListPending(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	list, err := h.svc.ListPendingForUser(r.Context(), userID)
+	if err != nil {
+		writeError(w, "failed to list login approvals", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]interface{}, 0, len(list))
+	for _, a := range list {
+		out = append(out, map[string]interface{}{
+			"id":                  a.ID,
+			"status":              a.Status,
+			"pending_device_name": a.PendingDeviceName,
+			"pending_device_type": a.PendingDeviceType,
+			"ip_address":          a.IPAddress,
+			"expires_at":          a.ExpiresAt,
+			"created_at":          a.CreatedAt,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"approvals": out})
+}
+
 // RegisterPushToken handles POST /api/v1/me/push-token
 func (h *LoginApprovalHandler) RegisterPushToken(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())

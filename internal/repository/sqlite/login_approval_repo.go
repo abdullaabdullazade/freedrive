@@ -72,6 +72,40 @@ func (r *LoginApprovalRepo) GetByID(ctx context.Context, id string) (*domain.Log
 	return a, nil
 }
 
+func (r *LoginApprovalRepo) ListPendingByUser(ctx context.Context, userID string) ([]domain.LoginApproval, error) {
+	now := time.Now()
+	rows, err := r.reader.QueryContext(ctx, `
+		SELECT id, user_id, challenge_token, pending_device_id, pending_device_name, pending_device_type,
+		       ip_address, user_agent, status, expires_at, created_at, resolved_at,
+		       access_token, refresh_token, token_expires_in
+		FROM login_approvals
+		WHERE user_id = ? AND status = ? AND expires_at > ?
+		ORDER BY created_at DESC`, userID, domain.LoginApprovalPending, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.LoginApproval
+	for rows.Next() {
+		a := domain.LoginApproval{}
+		var resolved sql.NullTime
+		if err := rows.Scan(
+			&a.ID, &a.UserID, &a.ChallengeToken, &a.PendingDeviceID, &a.PendingDeviceName, &a.PendingDeviceType,
+			&a.IPAddress, &a.UserAgent, &a.Status, &a.ExpiresAt, &a.CreatedAt, &resolved,
+			&a.AccessToken, &a.RefreshToken, &a.TokenExpiresIn,
+		); err != nil {
+			return nil, err
+		}
+		if resolved.Valid {
+			t := resolved.Time
+			a.ResolvedAt = &t
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 func (r *LoginApprovalRepo) Update(ctx context.Context, a *domain.LoginApproval) error {
 	_, err := r.writer.ExecContext(ctx, `
 		UPDATE login_approvals SET

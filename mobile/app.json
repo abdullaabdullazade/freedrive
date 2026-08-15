@@ -8,13 +8,18 @@
     "userInterfaceStyle": "dark",
     "scheme": "freedrive",
     "backgroundColor": "#121212",
+    "extra": {
+      "eas": {
+        "projectId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.freedrive.mobile"
     },
     "android": {
       "package": "com.freedrive.mobile",
-      "versionCode": 44,
+      "versionCode": 46,
       "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

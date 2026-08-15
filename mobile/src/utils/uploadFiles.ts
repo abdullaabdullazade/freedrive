@@ -1,9 +1,37 @@
-import { Alert } from "react-native";
+import { Alert, NativeModules, Platform } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { api } from "../api/client";
 import type { FileItem } from "../api/types";
-import { cacheFileKey, prepareNewEncryptedFile } from "../crypto";
+import {
+  cacheFileKey,
+  prepareNewEncryptedFile,
+  prepareNewFileKey,
+  rawKeyToStandardBase64,
+} from "../crypto";
+
+/** Above this, in-memory JS encrypt (plain + cipher + base64) OOMs on typical phones. */
+export const JS_ENCRYPT_MAX_BYTES = 8 * 1024 * 1024;
+
+type EncryptNativeModule = {
+  encryptAesGcmFile?(
+    plainPath: string,
+    outputPath: string,
+    keyB64: string,
+  ): Promise<{
+    path: string;
+    ivB64: string;
+    originalSize: number;
+    encryptedSize: number;
+  }>;
+};
+
+function nativeEncrypt(): EncryptNativeModule | undefined {
+  if (Platform.OS !== "android") return undefined;
+  const mod = NativeModules.FreeDriveDownloads as EncryptNativeModule | undefined;
+  if (!mod || typeof mod.encryptAesGcmFile !== "function") return undefined;
+  return mod;
+}
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -25,7 +53,13 @@ function safeName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_") || "file";
 }
 
-async function uploadOne(
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function uploadOneJs(
   asset: DocumentPicker.DocumentPickerAsset,
   folderId: string | null,
 ): Promise<FileItem> {
@@ -57,6 +91,65 @@ async function uploadOne(
   } finally {
     await FileSystem.deleteAsync(encPath, { idempotent: true }).catch(() => {});
   }
+}
+
+async function uploadOneNative(
+  asset: DocumentPicker.DocumentPickerAsset,
+  folderId: string | null,
+  native: EncryptNativeModule,
+): Promise<FileItem> {
+  const name = asset.name || "file";
+  const mimeType = asset.mimeType || "application/octet-stream";
+  const dir = FileSystem.cacheDirectory;
+  if (!dir) throw new Error("Cache directory unavailable");
+  const encPath = `${dir}fd_new_${Date.now()}_${safeName(name)}.bin`;
+  const { rawKey, wrappedFileKey } = await prepareNewFileKey();
+  try {
+    const enc = await native.encryptAesGcmFile!(
+      asset.uri,
+      encPath,
+      rawKeyToStandardBase64(rawKey),
+    );
+    const created = await api.uploadFile({
+      name,
+      mimeType,
+      iv: enc.ivB64,
+      originalSize: Number(enc.originalSize),
+      encryptedUri: enc.path.startsWith("file:") ? enc.path : `file://${enc.path}`,
+      folderId,
+    });
+    await api.putFileEncryptionKey(created.id, wrappedFileKey);
+    await cacheFileKey(created.id, rawKey);
+    return created;
+  } finally {
+    await FileSystem.deleteAsync(encPath, { idempotent: true }).catch(() => {});
+  }
+}
+
+async function uploadOne(
+  asset: DocumentPicker.DocumentPickerAsset,
+  folderId: string | null,
+): Promise<FileItem> {
+  const info = await FileSystem.getInfoAsync(asset.uri);
+  const size = info.exists && "size" in info ? Number(info.size || 0) : Number(asset.size || 0);
+  const native = nativeEncrypt();
+
+  if (size > 0 && size <= JS_ENCRYPT_MAX_BYTES) {
+    return uploadOneJs(asset, folderId);
+  }
+
+  if (native && (size > JS_ENCRYPT_MAX_BYTES || size <= 0)) {
+    return uploadOneNative(asset, folderId, native);
+  }
+
+  if (size > JS_ENCRYPT_MAX_BYTES) {
+    throw new Error(
+      `This file is too large to upload on this device (${formatBytes(size)}). ` +
+        `Use the desktop app for files larger than ${formatBytes(JS_ENCRYPT_MAX_BYTES)}.`,
+    );
+  }
+
+  return uploadOneJs(asset, folderId);
 }
 
 export type UploadProgress = {

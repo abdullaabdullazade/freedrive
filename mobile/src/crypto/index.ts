@@ -237,10 +237,8 @@ export async function encryptFileBytes(
   return { ciphertext, ivB64: bytesToBase64(iv) };
 }
 
-/** Generate a new file key, encrypt plaintext, wrap key for the server, cache locally. */
-export async function prepareNewEncryptedFile(plaintext: Uint8Array): Promise<{
-  ciphertext: Uint8Array;
-  ivB64: string;
+/** Generate a new file key and wrap it for the server (no plaintext). */
+export async function prepareNewFileKey(): Promise<{
   rawKey: Uint8Array;
   wrappedFileKey: string;
 }> {
@@ -248,8 +246,19 @@ export async function prepareNewEncryptedFile(plaintext: Uint8Array): Promise<{
     throw new Error("Sign out and sign in again with your password to upload encrypted files.");
   }
   const rawKey = randomBytes(32);
-  const { ciphertext, ivB64 } = await encryptFileBytes(plaintext, rawKey);
   const wrappedFileKey = await wrapRawKey(rawKey, uekRaw);
+  return { rawKey, wrappedFileKey };
+}
+
+/** Generate a new file key, encrypt plaintext, wrap key for the server, cache locally. */
+export async function prepareNewEncryptedFile(plaintext: Uint8Array): Promise<{
+  ciphertext: Uint8Array;
+  ivB64: string;
+  rawKey: Uint8Array;
+  wrappedFileKey: string;
+}> {
+  const { rawKey, wrappedFileKey } = await prepareNewFileKey();
+  const { ciphertext, ivB64 } = await encryptFileBytes(plaintext, rawKey);
   return { ciphertext, ivB64, rawKey, wrappedFileKey };
 }
 

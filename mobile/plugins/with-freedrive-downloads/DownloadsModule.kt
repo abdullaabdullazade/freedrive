@@ -4,11 +4,15 @@ import com.facebook.react.bridge.ReadableMap
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.max
+import kotlin.math.min
 import org.bouncycastle.crypto.engines.AESEngine
 import org.bouncycastle.crypto.modes.GCMBlockCipher
 import org.bouncycastle.crypto.params.AEADParameters
@@ -466,6 +470,158 @@ class DownloadsModule(
         )
       }
     }
+  }
+
+  /**
+   * Stream AES-GCM encrypt (BouncyCastle). Format matches @noble/ciphers:
+   * random 12-byte IV returned separately; 16-byte tag appended to ciphertext file.
+   */
+  @ReactMethod
+  fun encryptAesGcmFile(
+    plainPath: String,
+    outputPath: String,
+    keyB64: String,
+    promise: Promise
+  ) {
+    ioExecutor.execute {
+      var outFile: File? = null
+      try {
+        val keyBytes = decodeFlexibleBase64(keyB64)
+        if (keyBytes.size != 16 && keyBytes.size != 24 && keyBytes.size != 32) {
+          promise.reject("ENCRYPT_FAILED", "Invalid AES key length (${keyBytes.size})", null)
+          return@execute
+        }
+
+        val ivBytes = ByteArray(12)
+        SecureRandom().nextBytes(ivBytes)
+
+        outFile = File(stripFileUri(outputPath))
+        outFile.parentFile?.mkdirs()
+        if (outFile.exists() && !outFile.delete()) {
+          promise.reject("ENCRYPT_FAILED", "Could not replace output file", null)
+          return@execute
+        }
+
+        val gcm = GCMBlockCipher.newInstance(AESEngine.newInstance())
+        gcm.init(true, AEADParameters(KeyParameter(keyBytes), 128, ivBytes))
+
+        var originalSize = 0L
+        openInputStream(plainPath).use { input ->
+          FileOutputStream(outFile).use { output ->
+            val inBuf = ByteArray(256 * 1024)
+            val outBuf = ByteArray(
+              gcm.getUpdateOutputSize(inBuf.size).coerceAtLeast(inBuf.size + 32)
+            )
+            while (true) {
+              val n = input.read(inBuf)
+              if (n < 0) break
+              originalSize += n
+              val outLen = gcm.processBytes(inBuf, 0, n, outBuf, 0)
+              if (outLen > 0) {
+                output.write(outBuf, 0, outLen)
+              }
+            }
+            val finalOut = ByteArray(gcm.getOutputSize(0).coerceAtLeast(32))
+            val finalLen = gcm.doFinal(finalOut, 0)
+            if (finalLen > 0) {
+              output.write(finalOut, 0, finalLen)
+            }
+            output.flush()
+          }
+        }
+
+        val result = Arguments.createMap()
+        result.putString("path", outFile.absolutePath)
+        result.putString("ivB64", Base64.encodeToString(ivBytes, Base64.NO_WRAP))
+        result.putDouble("originalSize", originalSize.toDouble())
+        result.putDouble("encryptedSize", outFile.length().toDouble())
+        promise.resolve(result)
+      } catch (error: Exception) {
+        try {
+          outFile?.delete()
+        } catch (_: Exception) {
+        }
+        promise.reject(
+          "ENCRYPT_FAILED",
+          error.message ?: "Could not encrypt file",
+          error
+        )
+      }
+    }
+  }
+
+  /**
+   * Read a byte range as standard Base64 (for resumable upload chunks without loading the whole file).
+   */
+  @ReactMethod
+  fun readFileSliceBase64(
+    path: String,
+    offset: Double,
+    length: Double,
+    promise: Promise
+  ) {
+    ioExecutor.execute {
+      try {
+        val start = offset.toLong()
+        val want = length.toLong()
+        if (start < 0L || want <= 0L) {
+          promise.reject("READ_SLICE_FAILED", "Invalid offset/length", null)
+          return@execute
+        }
+        // Cap at 10 MiB to keep the JS bridge heap safe.
+        val maxSlice = 10L * 1024L * 1024L
+        if (want > maxSlice) {
+          promise.reject("READ_SLICE_FAILED", "Slice too large (max 10 MiB)", null)
+          return@execute
+        }
+
+        val file = File(stripFileUri(path))
+        if (!file.isFile) {
+          promise.reject("READ_SLICE_FAILED", "File is missing", null)
+          return@execute
+        }
+        if (start >= file.length()) {
+          promise.resolve("")
+          return@execute
+        }
+
+        val toRead = min(want, file.length() - start).toInt()
+        val buf = ByteArray(toRead)
+        RandomAccessFile(file, "r").use { raf ->
+          raf.seek(start)
+          var read = 0
+          while (read < toRead) {
+            val n = raf.read(buf, read, toRead - read)
+            if (n < 0) break
+            read += n
+          }
+          if (read != toRead) {
+            promise.reject("READ_SLICE_FAILED", "Short read ($read of $toRead)", null)
+            return@execute
+          }
+        }
+        promise.resolve(Base64.encodeToString(buf, Base64.NO_WRAP))
+      } catch (error: Exception) {
+        promise.reject(
+          "READ_SLICE_FAILED",
+          error.message ?: "Could not read file slice",
+          error
+        )
+      }
+    }
+  }
+
+  private fun openInputStream(pathOrUri: String): InputStream {
+    if (pathOrUri.startsWith("content:")) {
+      val uri = Uri.parse(pathOrUri)
+      return reactApplicationContext.contentResolver.openInputStream(uri)
+        ?: throw IllegalStateException("Could not open content URI")
+    }
+    val file = File(stripFileUri(pathOrUri))
+    if (!file.isFile) {
+      throw IllegalStateException("Plaintext file is missing")
+    }
+    return FileInputStream(file)
   }
 
   private fun ensureChannels() {

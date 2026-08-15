@@ -1,6 +1,7 @@
 import * as Device from "expo-device";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { api } from "../api/client";
 
 Notifications.setNotificationHandler({
@@ -15,6 +16,15 @@ Notifications.setNotificationHandler({
 
 let lastRegisteredToken: string | null = null;
 
+function resolveProjectId(): string | undefined {
+  const easId = Constants.easConfig?.projectId;
+  if (typeof easId === "string" && easId) return easId;
+  const extra = Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined;
+  const fromExtra = extra?.eas?.projectId;
+  if (typeof fromExtra === "string" && fromExtra) return fromExtra;
+  return undefined;
+}
+
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
     if (!Device.isDevice && Platform.OS === "ios") {
@@ -27,9 +37,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
       finalStatus = status;
     }
     if (finalStatus !== "granted") {
+      console.warn("push registration: notification permission not granted");
       return null;
     }
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const projectId = resolveProjectId();
+    const tokenData = projectId
+      ? await Notifications.getExpoPushTokenAsync({ projectId })
+      : await Notifications.getExpoPushTokenAsync();
     const token = tokenData.data;
     if (!token) return null;
     await api.registerPushToken(token, Platform.OS === "ios" ? "ios" : "android");
@@ -39,6 +53,17 @@ export async function registerForPushNotifications(): Promise<string | null> {
     console.warn("push registration failed:", err);
     return null;
   }
+}
+
+/** Re-register when the app returns to foreground (best-effort). */
+export function startPushRegistrationRetries(): () => void {
+  const onChange = (state: string) => {
+    if (state === "active") {
+      void registerForPushNotifications();
+    }
+  };
+  const sub = AppState.addEventListener("change", onChange);
+  return () => sub.remove();
 }
 
 export async function unregisterPushNotifications(): Promise<void> {

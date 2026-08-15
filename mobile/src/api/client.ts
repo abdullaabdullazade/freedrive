@@ -21,6 +21,7 @@ import type {
   LoginSuccess,
   Login2FAChallenge,
   LoginApprovalDetails,
+  LoginApprovalPendingItem,
   SharedItem,
   ShareLink,
   SortDir,
@@ -45,6 +46,7 @@ type NativeDownloadModule = {
     mime: string;
     originalSize: number;
   }>;
+  readFileSliceBase64?(path: string, offset: number, length: number): Promise<string>;
 };
 
 function nativeDownloads(): NativeDownloadModule | undefined {
@@ -52,6 +54,15 @@ function nativeDownloads(): NativeDownloadModule | undefined {
   const mod = NativeModules.FreeDriveDownloads as NativeDownloadModule | undefined;
   if (!mod || typeof mod.downloadToFile !== "function") return undefined;
   return mod;
+}
+
+function nativeReadSlice():
+  | NonNullable<NativeDownloadModule["readFileSliceBase64"]>
+  | undefined {
+  if (Platform.OS !== "android") return undefined;
+  const mod = NativeModules.FreeDriveDownloads as NativeDownloadModule | undefined;
+  if (!mod || typeof mod.readFileSliceBase64 !== "function") return undefined;
+  return mod.readFileSliceBase64.bind(mod);
 }
 
 export class ApiError extends Error {
@@ -337,37 +348,37 @@ async function resumableUploadFromFile(opts: {
 }): Promise<FileItem> {
   const info = await FileSystem.getInfoAsync(opts.encryptedUri);
   const size = info.exists && "size" in info ? Number(info.size || 0) : 0;
+
+  const parameters: Record<string, string> = {
+    name: opts.name,
+    mime_type: opts.mimeType,
+    iv: opts.iv,
+    original_size: String(opts.originalSize),
+  };
+  if (opts.folderId) parameters.folder_id = opts.folderId;
+
   if (size > 0 && size <= RESUMABLE_THRESHOLD) {
-    const parameters: Record<string, string> = {
-      name: opts.name,
-      mime_type: opts.mimeType,
-      iv: opts.iv,
-      original_size: String(opts.originalSize),
-    };
-    if (opts.folderId) parameters.folder_id = opts.folderId;
     if (opts.fileId) {
       return multipartUploadFromFile(`/files/${opts.fileId}/content`, opts.encryptedUri, parameters);
     }
     return multipartUploadFromFile("/files/upload", opts.encryptedUri, parameters);
   }
 
-  const b64 = await FileSystem.readAsStringAsync(opts.encryptedUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const bytes = base64ToBytesLocal(b64);
-  const encryptedSize = bytes.byteLength;
-  if (encryptedSize <= RESUMABLE_THRESHOLD) {
-    const parameters: Record<string, string> = {
-      name: opts.name,
-      mime_type: opts.mimeType,
-      iv: opts.iv,
-      original_size: String(opts.originalSize),
-    };
-    if (opts.folderId) parameters.folder_id = opts.folderId;
+  const encryptedSize = size;
+  if (encryptedSize <= 0) {
+    // Unknown size — try multipart (native uploadAsync streams from disk).
     if (opts.fileId) {
       return multipartUploadFromFile(`/files/${opts.fileId}/content`, opts.encryptedUri, parameters);
     }
     return multipartUploadFromFile("/files/upload", opts.encryptedUri, parameters);
+  }
+
+  const readSlice = nativeReadSlice();
+  if (!readSlice) {
+    throw new ApiError(
+      "Large file upload requires the native Android build. Reinstall the FreeDrive APK.",
+      0,
+    );
   }
 
   const sessionBody: Record<string, unknown> = {
@@ -384,10 +395,13 @@ async function resumableUploadFromFile(opts: {
   let offset = 0;
   let last: FileItem | { complete?: boolean; id?: string } | null = null;
   const url = await baseUrl();
+  const filePath = opts.encryptedUri;
 
   while (offset < encryptedSize) {
     const end = Math.min(offset + RESUMABLE_CHUNK, encryptedSize) - 1;
-    const chunk = bytes.subarray(offset, end + 1);
+    const chunkLen = end - offset + 1;
+    const b64 = await readSlice(filePath, offset, chunkLen);
+    const chunk = base64ToBytesLocal(b64);
     const headers: Record<string, string> = {
       ...(await deviceHeaders()),
       "Content-Type": "application/octet-stream",
@@ -462,6 +476,14 @@ export const api = {
 
   getLoginApproval: (id: string) =>
     request<LoginApprovalDetails>("GET", `/auth/login-approval/${id}/details`),
+
+  listPendingLoginApprovals: async () => {
+    const data = await request<{ approvals?: LoginApprovalPendingItem[] | null }>(
+      "GET",
+      "/me/login-approvals/pending",
+    );
+    return data.approvals ?? [];
+  },
 
   approveLoginApproval: (id: string) =>
     request("POST", `/auth/login-approval/${id}/approve`),

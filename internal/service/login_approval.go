@@ -48,14 +48,22 @@ func NewLoginApprovalService(
 	}
 }
 
-// ShouldOfferApproval is true for new non-mobile devices when the user has push tokens.
+// ShouldOfferApproval is true for new non-mobile devices when the user has a
+// trusted phone (push token and/or an active mobile session).
 func (s *LoginApprovalService) ShouldOfferApproval(ctx context.Context, userID string, device DeviceInfo) (bool, error) {
 	if device.DeviceType == domain.DeviceTypeMobile {
 		return false, nil
 	}
-	has, err := s.push.HasPushTokens(ctx, userID)
-	if err != nil || !has {
-		return has, err
+	hasPush, err := s.push.HasPushTokens(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	hasMobile, err := s.auth.HasActiveMobileSession(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if !hasPush && !hasMobile {
+		return false, nil
 	}
 	if device.DeviceID == "" {
 		return true, nil
@@ -65,6 +73,11 @@ func (s *LoginApprovalService) ShouldOfferApproval(ctx context.Context, userID s
 		return false, err
 	}
 	return !known, nil
+}
+
+// ListPendingForUser returns non-expired pending approvals for the signed-in approver.
+func (s *LoginApprovalService) ListPendingForUser(ctx context.Context, userID string) ([]domain.LoginApproval, error) {
+	return s.approvalRepo.ListPendingByUser(ctx, userID)
 }
 
 // Start creates a pending approval and sends Expo push (best-effort).

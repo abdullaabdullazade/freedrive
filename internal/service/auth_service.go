@@ -333,6 +333,20 @@ func (s *AuthService) HasActiveDevice(ctx context.Context, userID, deviceID stri
 	return existing != nil, nil
 }
 
+// HasActiveMobileSession reports whether the user has any active mobile app session.
+func (s *AuthService) HasActiveMobileSession(ctx context.Context, userID string) (bool, error) {
+	sessions, err := s.sessionRepo.ListActiveByUser(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, sess := range sessions {
+		if sess.DeviceType == domain.DeviceTypeMobile {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Claims represents JWT claims.
 type Claims struct {
 	UserID    string      `json:"uid"`
