@@ -280,6 +280,26 @@ func (s *AuthService) EnsureSessionActive(ctx context.Context, sessionID string)
 	return nil
 }
 
+// SyncSessionDeviceMeta upgrades session device metadata from the current request
+// (e.g. mark an older "web" mobile-app session as device_type=mobile).
+func (s *AuthService) SyncSessionDeviceMeta(ctx context.Context, sessionID string, device DeviceInfo) {
+	if sessionID == "" || device.DeviceType != domain.DeviceTypeMobile {
+		return
+	}
+	session, err := s.sessionRepo.GetByID(ctx, sessionID)
+	if err != nil || session == nil || session.RevokedAt != nil {
+		return
+	}
+	if session.DeviceType == domain.DeviceTypeMobile {
+		return
+	}
+	name := strings.TrimSpace(device.DeviceName)
+	if name == "" {
+		name = session.DeviceName
+	}
+	_ = s.sessionRepo.UpdateDeviceMeta(ctx, sessionID, domain.DeviceTypeMobile, name)
+}
+
 // ListSessions returns active sessions for a user.
 func (s *AuthService) ListSessions(ctx context.Context, userID string) ([]domain.Session, error) {
 	return s.sessionRepo.ListActiveByUser(ctx, userID)

@@ -48,17 +48,20 @@ func NewLoginApprovalService(
 	}
 }
 
-// ShouldOfferApproval is true for new non-mobile devices when the user has a
-// trusted phone (push token and/or an active mobile session).
-func (s *LoginApprovalService) ShouldOfferApproval(ctx context.Context, userID string, device DeviceInfo) (bool, error) {
+// ShouldOfferApproval is true when the user opted into phone prompts, has a
+// trusted phone, and the sign-in is for a new device or would otherwise need 2FA.
+func (s *LoginApprovalService) ShouldOfferApproval(ctx context.Context, user *domain.User, device DeviceInfo, needs2FA bool) (bool, error) {
+	if user == nil || !user.LoginApprovalEnabled {
+		return false, nil
+	}
 	if device.DeviceType == domain.DeviceTypeMobile {
 		return false, nil
 	}
-	hasPush, err := s.push.HasPushTokens(ctx, userID)
+	hasPush, err := s.push.HasPushTokens(ctx, user.ID)
 	if err != nil {
 		return false, err
 	}
-	hasMobile, err := s.auth.HasActiveMobileSession(ctx, userID)
+	hasMobile, err := s.auth.HasActiveMobileSession(ctx, user.ID)
 	if err != nil {
 		return false, err
 	}
@@ -68,11 +71,36 @@ func (s *LoginApprovalService) ShouldOfferApproval(ctx context.Context, userID s
 	if device.DeviceID == "" {
 		return true, nil
 	}
-	known, err := s.auth.HasActiveDevice(ctx, userID, device.DeviceID)
+	known, err := s.auth.HasActiveDevice(ctx, user.ID, device.DeviceID)
 	if err != nil {
 		return false, err
 	}
-	return !known, nil
+	if !known {
+		return true, nil
+	}
+	return needs2FA, nil
+}
+
+// TrustedMobileStatus reports whether phone prompts are enabled and a trusted phone exists.
+func (s *LoginApprovalService) TrustedMobileStatus(ctx context.Context, user *domain.User) (enabled bool, hasTrusted bool, err error) {
+	if user == nil {
+		return false, false, nil
+	}
+	enabled = user.LoginApprovalEnabled
+	hasPush, err := s.push.HasPushTokens(ctx, user.ID)
+	if err != nil {
+		return enabled, false, err
+	}
+	hasMobile, err := s.auth.HasActiveMobileSession(ctx, user.ID)
+	if err != nil {
+		return enabled, false, err
+	}
+	return enabled, hasPush || hasMobile, nil
+}
+
+// UserByID loads a user for status endpoints.
+func (s *LoginApprovalService) UserByID(ctx context.Context, userID string) (*domain.User, error) {
+	return s.userRepo.GetByID(ctx, userID)
 }
 
 // ListPendingForUser returns non-expired pending approvals for the signed-in approver.

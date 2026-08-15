@@ -46,6 +46,14 @@ func Auth(authService *service.AuthService) func(next http.Handler) http.Handler
 				return
 			}
 
+			deviceType := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Device-Type")))
+			if deviceType == domain.DeviceTypeMobile {
+				authService.SyncSessionDeviceMeta(r.Context(), claims.SessionID, service.DeviceInfo{
+					DeviceType: domain.DeviceTypeMobile,
+					DeviceName: strings.TrimSpace(r.Header.Get("X-Device-Name")),
+				})
+			}
+
 			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
 			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)

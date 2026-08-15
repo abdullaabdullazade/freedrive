@@ -41,11 +41,15 @@ func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	if user.TotpEnabled {
 		totpEnabled = 1
 	}
+	loginApproval := 0
+	if user.LoginApprovalEnabled {
+		loginApproval = 1
+	}
 	_, err := r.writer.ExecContext(ctx,
-		`INSERT INTO users (id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled, login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Email, user.Username, user.PasswordHash, user.Role,
-		user.QuotaBytes, user.UsedBytes, user.AvatarURL, suspended, email2fa,
+		user.QuotaBytes, user.UsedBytes, user.AvatarURL, suspended, email2fa, loginApproval,
 		nullIfEmpty(user.TotpSecret), totpEnabled, user.TotpEnrolledAt,
 		user.CreatedAt, user.UpdatedAt,
 	)
@@ -66,11 +70,11 @@ func scanUser(row interface {
 	Scan(dest ...interface{}) error
 }) (*domain.User, error) {
 	user := &domain.User{}
-	var suspended, email2fa, totpEnabled int
+	var suspended, email2fa, loginApproval, totpEnabled int
 	var totpSecret sql.NullString
 	var totpEnrolledAt sql.NullTime
 	err := row.Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Role,
-		&user.QuotaBytes, &user.UsedBytes, &user.AvatarURL, &suspended, &email2fa,
+		&user.QuotaBytes, &user.UsedBytes, &user.AvatarURL, &suspended, &email2fa, &loginApproval,
 		&totpSecret, &totpEnabled, &totpEnrolledAt,
 		&user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt)
 	if err != nil {
@@ -78,6 +82,7 @@ func scanUser(row interface {
 	}
 	user.Suspended = suspended != 0
 	user.Email2FAEnabled = email2fa != 0
+	user.LoginApprovalEnabled = loginApproval != 0
 	user.TotpEnabled = totpEnabled != 0
 	if totpSecret.Valid {
 		user.TotpSecret = totpSecret.String
@@ -92,7 +97,7 @@ func scanUser(row interface {
 func (r *UserRepo) GetByID(ctx context.Context, id string) (*domain.User, error) {
 	row := r.reader.QueryRowContext(ctx,
 		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled,
-		        totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
+		        login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
 		 FROM users WHERE id = ?`, id,
 	)
 	user, err := scanUser(row)
@@ -108,7 +113,7 @@ func (r *UserRepo) GetByID(ctx context.Context, id string) (*domain.User, error)
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	row := r.reader.QueryRowContext(ctx,
 		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled,
-		        totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
+		        login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
 		 FROM users WHERE email = ? COLLATE NOCASE`, email,
 	)
 	user, err := scanUser(row)
@@ -135,12 +140,16 @@ func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
 	if user.TotpEnabled {
 		totpEnabled = 1
 	}
+	loginApproval := 0
+	if user.LoginApprovalEnabled {
+		loginApproval = 1
+	}
 	_, err := r.writer.ExecContext(ctx,
 		`UPDATE users SET email=?, username=?, password_hash=?, role=?, quota_bytes=?, used_bytes=?, avatar_url=?, suspended=?,
-		 email_2fa_enabled=?, totp_secret=?, totp_enabled=?, totp_enrolled_at=?, updated_at=?, last_login_at=?
+		 email_2fa_enabled=?, login_approval_enabled=?, totp_secret=?, totp_enabled=?, totp_enrolled_at=?, updated_at=?, last_login_at=?
 		 WHERE id=?`,
 		user.Email, user.Username, user.PasswordHash, user.Role,
-		user.QuotaBytes, user.UsedBytes, user.AvatarURL, suspended, email2fa,
+		user.QuotaBytes, user.UsedBytes, user.AvatarURL, suspended, email2fa, loginApproval,
 		nullIfEmpty(user.TotpSecret), totpEnabled, user.TotpEnrolledAt,
 		user.UpdatedAt, user.LastLoginAt, user.ID,
 	)
@@ -204,7 +213,7 @@ func (r *UserRepo) Delete(ctx context.Context, id string) error {
 func (r *UserRepo) List(ctx context.Context) ([]domain.User, error) {
 	rows, err := r.reader.QueryContext(ctx,
 		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled,
-		        totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
+		        login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
 		 FROM users ORDER BY created_at DESC`,
 	)
 	if err != nil {

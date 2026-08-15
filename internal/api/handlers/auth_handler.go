@@ -161,7 +161,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	device := deviceInfoFromRequest(r)
 
 	if h.loginApproval != nil {
-		offer, err := h.loginApproval.ShouldOfferApproval(r.Context(), user.ID, device)
+		offer, err := h.loginApproval.ShouldOfferApproval(r.Context(), user, device, service.Needs2FA(user))
 		if err != nil {
 			writeError(w, "login failed", http.StatusInternalServerError)
 			return

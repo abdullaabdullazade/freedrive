@@ -431,10 +431,15 @@ const App = (() => {
         const required = Boolean(profile.two_factor_required);
         const emailEnabled = Boolean(profile.email_2fa_enabled);
         const totpEnabled = Boolean(profile.totp_enabled);
-        const emailToggleDisabled = required && !totpEnabled ? 'disabled' : '';
+        const phoneEnabled = Boolean(profile.login_approval_enabled);
+        let phoneStatus = { enabled: phoneEnabled, has_trusted_mobile: false };
+        try {
+            phoneStatus = await API.loginApprovalStatus();
+        } catch { /* ignore */ }
+
         const requiredNote = required
             ? '<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Your administrator requires two-factor authentication (authenticator app or email).</p>'
-            : '<p style="margin:12px 0 0;font-size:12px;color:#5f6368;line-height:1.45;">When enabled, you will receive a 6-digit code by email each time you sign in.</p>';
+            : '';
 
         let needsRecovery = false;
         if (window.CryptoSync?.detectNeedsRecovery) {
@@ -464,6 +469,26 @@ const App = (() => {
                <button type="button" class="btn btn-primary" id="security-totp-setup-btn">Set up authenticator</button>
                <div id="security-totp-setup-panel" class="hidden" style="margin-top:14px;"></div>`;
 
+        const emailCanDisable = !(required && !totpEnabled);
+        const emailBody = emailEnabled
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Email verification codes are enabled for ${esc(profile.email || 'your email')}.</p>
+               <button type="button" class="btn btn-secondary" id="security-email-2fa-disable-btn" style="margin-top:12px;" ${emailCanDisable ? '' : 'disabled'}>Disable email codes</button>
+               ${emailCanDisable ? '' : '<p style="margin:8px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Required by your administrator until an authenticator app is set up.</p>'}`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">Protect your account with a 6-digit code sent to ${esc(profile.email || 'your email')} each time you sign in.</p>
+               <button type="button" class="btn btn-primary" id="security-email-2fa-enable-btn">Enable email codes</button>
+               ${requiredNote}`;
+
+        const phoneTrustedNote = phoneStatus.has_trusted_mobile
+            ? '<p style="margin:8px 0 0;font-size:12px;color:#137333;line-height:1.45;">Trusted FreeDrive mobile app detected.</p>'
+            : '<p style="margin:8px 0 0;font-size:12px;color:#b06000;line-height:1.45;">No trusted mobile app signed in yet. Install FreeDrive on your phone and stay signed in.</p>';
+        const phoneBody = phoneEnabled
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Phone sign-in prompts are enabled.</p>
+               ${phoneTrustedNote}
+               <button type="button" class="btn btn-secondary" id="security-phone-approval-disable-btn" style="margin-top:12px;">Disable phone prompts</button>`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">When you sign in on a new computer or browser, FreeDrive can ask your phone to approve instead of an authenticator code. Requires the FreeDrive mobile app signed in.</p>
+               <button type="button" class="btn btn-primary" id="security-phone-approval-enable-btn">Enable phone prompts</button>
+               ${phoneTrustedNote}`;
+
         Components.showModal('Security', `
             <div class="drive-settings-modal" style="padding:8px 0;display:flex;flex-direction:column;gap:16px;">
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
@@ -472,16 +497,14 @@ const App = (() => {
                     ${totpBody}
                 </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
-                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;">
-                        <div>
-                            <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Email two-factor authentication</div>
-                            <div style="font-size:13px;color:#5f6368;line-height:1.45;">Protect your account with a verification code sent to ${esc(profile.email || 'your email')}.</div>
-                        </div>
-                        <label class="live-toggle" style="flex-shrink:0;display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
-                            <input type="checkbox" id="security-2fa-toggle" ${emailEnabled ? 'checked' : ''} ${emailToggleDisabled}>
-                        </label>
-                    </div>
-                    ${requiredNote}
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Email two-factor authentication</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Protect your account with a verification code sent by email.</div>
+                    ${emailBody}
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Phone sign-in prompts</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Approve sign-ins from your phone, like Google Prompt.</div>
+                    ${phoneBody}
                 </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
@@ -524,24 +547,35 @@ const App = (() => {
             </div>
         `, [{ text: 'Close' }]);
 
-        const toggle = document.getElementById('security-2fa-toggle');
-        toggle?.addEventListener('change', async () => {
-            if (required && !totpEnabled && !toggle.checked) {
-                toggle.checked = true;
+        const setEmail2FA = async (next) => {
+            if (required && !totpEnabled && !next) {
                 Components.toast('Two-factor authentication is required by your administrator', 'info');
                 return;
             }
-            const next = Boolean(toggle.checked);
-            const prev = !next;
             try {
                 const updated = await API.updateMe({ email_2fa_enabled: next });
                 API.setUser(updated);
-                Components.toast(next ? 'Email two-factor authentication enabled' : 'Email two-factor authentication disabled', 'success');
+                Components.toast(next ? 'Email verification codes enabled' : 'Email verification codes disabled', 'success');
+                openSecurityCenter();
             } catch (err) {
-                toggle.checked = prev;
-                Components.toast(err?.message || 'Failed to update security setting', 'error');
+                Components.toast(err?.message || 'Failed to update email two-factor setting', 'error');
             }
-        });
+        };
+        document.getElementById('security-email-2fa-enable-btn')?.addEventListener('click', () => setEmail2FA(true));
+        document.getElementById('security-email-2fa-disable-btn')?.addEventListener('click', () => setEmail2FA(false));
+
+        const setPhoneApproval = async (next) => {
+            try {
+                const updated = await API.updateMe({ login_approval_enabled: next });
+                API.setUser(updated);
+                Components.toast(next ? 'Phone sign-in prompts enabled' : 'Phone sign-in prompts disabled', 'success');
+                openSecurityCenter();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to update phone prompt setting', 'error');
+            }
+        };
+        document.getElementById('security-phone-approval-enable-btn')?.addEventListener('click', () => setPhoneApproval(true));
+        document.getElementById('security-phone-approval-disable-btn')?.addEventListener('click', () => setPhoneApproval(false));
 
         const showBackupCodes = (codes) => {
             const list = (codes || []).map((c) => `<code style="display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;background:#f1f3f4;border-radius:6px;">${esc(c)}</code>`).join('');

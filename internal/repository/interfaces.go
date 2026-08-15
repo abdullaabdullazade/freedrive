@@ -213,6 +213,7 @@ type SessionRepository interface {
 	ListActiveByUser(ctx context.Context, userID string) ([]domain.Session, error)
 	// UpdateCredentials rotates the refresh token and refreshes device metadata.
 	UpdateCredentials(ctx context.Context, session *domain.Session) error
+	UpdateDeviceMeta(ctx context.Context, id, deviceType, deviceName string) error
 	TouchLastSeen(ctx context.Context, id string, minAgeSeconds int) error
 	RevokeByID(ctx context.Context, id, userID string) error
 	RevokeAllForUser(ctx context.Context, userID string, exceptID string) error

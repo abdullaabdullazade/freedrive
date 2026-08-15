@@ -385,6 +385,7 @@ const API = (() => {
     const myStorage = () => request('GET', '/me/storage');
     const me = () => request('GET', '/me');
     const updateMe = (payload) => request('PATCH', '/me', payload);
+    const loginApprovalStatus = () => request('GET', '/me/login-approval/status');
     const totpSetup = () => request('POST', '/me/totp/setup');
     const totpConfirm = (code) => request('POST', '/me/totp/confirm', { code });
     const totpDisable = (payload) => request('POST', '/me/totp/disable', payload || {});
@@ -492,6 +493,7 @@ const API = (() => {
         myStorage,
         me,
         updateMe,
+        loginApprovalStatus,
         totpSetup,
         totpConfirm,
         totpDisable,

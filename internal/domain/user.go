@@ -23,6 +23,7 @@ type User struct {
 	AvatarURL         string     `json:"avatar_url,omitempty"`
 	Suspended         bool       `json:"suspended"`
 	Email2FAEnabled   bool       `json:"email_2fa_enabled"`
+	LoginApprovalEnabled bool     `json:"login_approval_enabled"`
 	TotpEnabled       bool       `json:"totp_enabled"`
 	TotpSecret        string     `json:"-"`
 	TotpEnrolledAt    *time.Time `json:"totp_enrolled_at,omitempty"`

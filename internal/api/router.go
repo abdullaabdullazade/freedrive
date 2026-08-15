@@ -110,6 +110,7 @@ func NewRouter(
 			r.Post("/me/push-token", loginApprovalHandler.RegisterPushToken)
 			r.Delete("/me/push-token", loginApprovalHandler.UnregisterPushToken)
 			r.Get("/me/login-approvals/pending", loginApprovalHandler.ListPending)
+			r.Get("/me/login-approval/status", loginApprovalHandler.Status)
 			r.Post("/me/totp/setup", userHandler.SetupTOTP)
 			r.Post("/me/totp/confirm", userHandler.ConfirmTOTP)
 			r.Post("/me/totp/disable", userHandler.DisableTOTP)

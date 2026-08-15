@@ -72,9 +72,10 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Username          *string `json:"username"`
-		AvatarURL         *string `json:"avatar_url"`
-		Email2FAEnabled   *bool   `json:"email_2fa_enabled"`
+		Username             *string `json:"username"`
+		AvatarURL            *string `json:"avatar_url"`
+		Email2FAEnabled      *bool   `json:"email_2fa_enabled"`
+		LoginApprovalEnabled *bool   `json:"login_approval_enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
@@ -117,6 +118,10 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		user.Email2FAEnabled = *req.Email2FAEnabled
+	}
+
+	if req.LoginApprovalEnabled != nil {
+		user.LoginApprovalEnabled = *req.LoginApprovalEnabled
 	}
 
 	user.UpdatedAt = time.Now()

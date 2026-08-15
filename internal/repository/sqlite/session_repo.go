@@ -139,6 +139,16 @@ func (r *SessionRepo) UpdateCredentials(ctx context.Context, session *domain.Ses
 	return err
 }
 
+func (r *SessionRepo) UpdateDeviceMeta(ctx context.Context, id, deviceType, deviceName string) error {
+	_, err := r.writer.ExecContext(ctx, `
+		UPDATE sessions
+		SET device_type = ?, device_name = COALESCE(NULLIF(?, ''), device_name), last_seen_at = ?
+		WHERE id = ? AND revoked_at IS NULL`,
+		deviceType, deviceName, time.Now(), id,
+	)
+	return err
+}
+
 func (r *SessionRepo) TouchLastSeen(ctx context.Context, id string, minAgeSeconds int) error {
 	threshold := time.Now().Add(-time.Duration(minAgeSeconds) * time.Second)
 	_, err := r.writer.ExecContext(ctx, `

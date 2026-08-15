@@ -133,6 +133,25 @@ func (h *LoginApprovalHandler) ListPending(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]interface{}{"approvals": out})
 }
 
+// Status handles GET /api/v1/me/login-approval/status
+func (h *LoginApprovalHandler) Status(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	user, err := h.svc.UserByID(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+	enabled, hasTrusted, err := h.svc.TrustedMobileStatus(r.Context(), user)
+	if err != nil {
+		writeError(w, "failed to load login approval status", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"enabled":            enabled,
+		"has_trusted_mobile": hasTrusted,
+	})
+}
+
 // RegisterPushToken handles POST /api/v1/me/push-token
 func (h *LoginApprovalHandler) RegisterPushToken(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
