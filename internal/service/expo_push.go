@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/abdullaabdullazade/freedrive/internal/domain"
 	"github.com/abdullaabdullazade/freedrive/internal/repository"
 )
 
