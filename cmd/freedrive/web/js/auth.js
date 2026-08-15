@@ -4,6 +4,7 @@
 
 const Auth = (() => {
     let pendingLoginPassword = '';
+    let approvalPollTimer = null;
 
     function friendlyAuthError(err) {
         const raw = String(err?.message || err || '').trim();
@@ -36,10 +37,12 @@ const Auth = (() => {
     }
 
     function showTwoFAForm(challengeId, emailMasked, method, methodsAvailable) {
+        stopApprovalPoll();
         document.getElementById('login-form')?.classList.add('hidden');
         document.getElementById('register-form')?.classList.add('hidden');
         document.getElementById('reset-form')?.classList.add('hidden');
         document.getElementById('confirm-email-form')?.classList.add('hidden');
+        document.getElementById('login-approval-form')?.classList.add('hidden');
         document.querySelector('.auth-tabs')?.classList.add('hidden');
 
         const form = document.getElementById('twofa-form');
@@ -85,7 +88,9 @@ const Auth = (() => {
     }
 
     function showLoginForm() {
+        stopApprovalPoll();
         document.getElementById('twofa-form')?.classList.add('hidden');
+        document.getElementById('login-approval-form')?.classList.add('hidden');
         document.getElementById('register-form')?.classList.add('hidden');
         document.getElementById('reset-form')?.classList.add('hidden');
         document.getElementById('confirm-email-form')?.classList.add('hidden');
@@ -98,6 +103,75 @@ const Auth = (() => {
         if (subtitleEl) subtitleEl.textContent = 'to continue to FreeDrive';
         clearFormError('login-error');
         clearFormError('twofa-error');
+        clearFormError('login-approval-error');
+    }
+
+    function stopApprovalPoll() {
+        if (approvalPollTimer) {
+            clearTimeout(approvalPollTimer);
+            approvalPollTimer = null;
+        }
+    }
+
+    function showLoginApprovalForm(challengeId, challengeToken, deviceName) {
+        stopApprovalPoll();
+        document.getElementById('login-form')?.classList.add('hidden');
+        document.getElementById('register-form')?.classList.add('hidden');
+        document.getElementById('reset-form')?.classList.add('hidden');
+        document.getElementById('confirm-email-form')?.classList.add('hidden');
+        document.getElementById('twofa-form')?.classList.add('hidden');
+        document.querySelector('.auth-tabs')?.classList.add('hidden');
+        document.getElementById('login-approval-form')?.classList.remove('hidden');
+
+        const titleEl = document.querySelector('.auth-logo h1');
+        const subtitleEl = document.querySelector('.auth-logo .tagline');
+        if (titleEl) titleEl.textContent = 'Check your phone';
+        if (subtitleEl) subtitleEl.textContent = 'confirm sign-in';
+
+        document.getElementById('login-approval-id').value = challengeId || '';
+        document.getElementById('login-approval-token').value = challengeToken || '';
+        const msg = document.getElementById('login-approval-message');
+        if (msg) {
+            msg.innerHTML = deviceName
+                ? `Open FreeDrive on your phone and tap <strong>Yes, it's me</strong> to approve sign-in to <strong>${Components.escapeHtml(deviceName)}</strong>.`
+                : `Open FreeDrive on your phone and tap <strong>Yes, it's me</strong> to finish signing in.`;
+        }
+        clearFormError('login-approval-error');
+        scheduleApprovalPoll();
+    }
+
+    function scheduleApprovalPoll() {
+        stopApprovalPoll();
+        approvalPollTimer = setTimeout(async () => {
+            const id = document.getElementById('login-approval-id')?.value;
+            const token = document.getElementById('login-approval-token')?.value;
+            if (!id || !token) return;
+            try {
+                const data = await API.auth.pollLoginApproval(id, token);
+                if (data?.status === 'pending') {
+                    scheduleApprovalPoll();
+                    return;
+                }
+                if (data?.status === 'denied') {
+                    setFormError('login-approval-error', 'Sign-in denied on your phone.');
+                    return;
+                }
+                if (data?.status === 'expired') {
+                    setFormError('login-approval-error', 'Sign-in request expired.');
+                    return;
+                }
+                if (data?.status === 'approved' && data?.tokens) {
+                    stopApprovalPoll();
+                    await completeLogin(data, pendingLoginPassword);
+                    pendingLoginPassword = '';
+                    return;
+                }
+                scheduleApprovalPoll();
+            } catch (err) {
+                setFormError('login-approval-error', friendlyAuthError(err));
+                scheduleApprovalPoll();
+            }
+        }, 2000);
     }
 
     async function completeLogin(data, password) {
@@ -174,8 +248,11 @@ const Auth = (() => {
                 tab.classList.add('active');
 
                 const tabName = tab.dataset.tab;
+                stopApprovalPoll();
                 document.getElementById('login-form').classList.toggle('hidden', tabName !== 'login');
                 document.getElementById('register-form').classList.toggle('hidden', tabName !== 'register');
+                document.getElementById('login-approval-form')?.classList.add('hidden');
+                document.getElementById('twofa-form')?.classList.add('hidden');
                 clearFormError('login-error');
                 clearFormError('register-error');
             });
@@ -187,6 +264,10 @@ const Auth = (() => {
         });
 
         document.getElementById('twofa-back-btn')?.addEventListener('click', () => {
+            showLoginForm();
+        });
+
+        document.getElementById('login-approval-back-btn')?.addEventListener('click', () => {
             showLoginForm();
         });
 
@@ -408,6 +489,11 @@ const Auth = (() => {
                 btn.querySelector('span').textContent = 'Signing in...';
 
                 const data = await API.auth.login(email, password);
+                if (data?.requires_login_approval) {
+                    pendingLoginPassword = password;
+                    showLoginApprovalForm(data.challenge_id, data.challenge_token, data.pending_device_name);
+                    return;
+                }
                 if (data?.requires_2fa) {
                     pendingLoginPassword = password;
                     showTwoFAForm(data.challenge_id, data.email_masked, data.method, data.methods_available);
@@ -444,6 +530,11 @@ const Auth = (() => {
 
                 // Auto-login after registration
                 const data = await API.auth.login(email, password);
+                if (data?.requires_login_approval) {
+                    pendingLoginPassword = password;
+                    showLoginApprovalForm(data.challenge_id, data.challenge_token, data.pending_device_name);
+                    return;
+                }
                 if (data?.requires_2fa) {
                     pendingLoginPassword = password;
                     showTwoFAForm(data.challenge_id, data.email_masked, data.method, data.methods_available);

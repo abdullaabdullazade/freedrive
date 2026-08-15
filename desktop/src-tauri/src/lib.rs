@@ -88,6 +88,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_auth_state,
             commands::login,
+            commands::poll_login_approval,
             commands::verify_2fa,
             commands::send_2fa_email,
             commands::logout,

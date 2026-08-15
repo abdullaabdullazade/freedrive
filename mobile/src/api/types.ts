@@ -42,10 +42,32 @@ export interface Login2FAChallenge {
   methods_available?: string[];
 }
 
-export type LoginResult = LoginSuccess | Login2FAChallenge;
+export interface LoginApprovalChallenge {
+  requires_login_approval: true;
+  challenge_id: string;
+  challenge_token: string;
+  expires_at?: string;
+  pending_device_name?: string;
+}
+
+export type LoginResult = LoginSuccess | Login2FAChallenge | LoginApprovalChallenge;
 
 export function is2FAChallenge(result: LoginResult): result is Login2FAChallenge {
   return "requires_2fa" in result && result.requires_2fa === true;
+}
+
+export function isLoginApprovalChallenge(result: LoginResult): result is LoginApprovalChallenge {
+  return "requires_login_approval" in result && result.requires_login_approval === true;
+}
+
+export interface LoginApprovalDetails {
+  id: string;
+  status: string;
+  pending_device_name: string;
+  pending_device_type?: string;
+  ip_address?: string;
+  expires_at?: string;
+  created_at?: string;
 }
 
 export interface FolderItem {

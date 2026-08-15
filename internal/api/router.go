@@ -44,6 +44,7 @@ func NewRouter(
 	dataDir string,
 	clientMutationRepo repository.ClientMutationRepository,
 	uploadSessionRepo repository.UploadSessionRepository,
+	loginApprovalService *service.LoginApprovalService,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -58,6 +59,10 @@ func NewRouter(
 	r.Use(limiter.Limit)
 
 	authHandler := handlers.NewAuthHandler(authService, cryptoService, emailChangeRepo, userRepo, activityRepo, passwordResetService)
+	if loginApprovalService != nil {
+		authHandler.SetLoginApproval(loginApprovalService)
+	}
+	loginApprovalHandler := handlers.NewLoginApprovalHandler(loginApprovalService)
 	sessionHandler := handlers.NewSessionHandler(authService)
 	fileHandler := handlers.NewFileHandler(fileService, fileRepo, diskStorage, maxUpload, clientMutationRepo)
 	uploadHandler := handlers.NewUploadHandler(uploadSessionRepo, fileRepo, userRepo, fileService, diskStorage, accessService, maxUpload, dataDir)
@@ -77,6 +82,7 @@ func NewRouter(
 			r.Post("/login", authHandler.Login)
 			r.Post("/verify-2fa", authHandler.Verify2FA)
 			r.Post("/2fa/send-email", authHandler.Send2FAEmail)
+			r.Get("/login-approval/{id}", loginApprovalHandler.Poll)
 			r.Post("/refresh", authHandler.Refresh)
 			r.Post("/logout", authHandler.Logout)
 			r.Post("/forgot-password", authHandler.ForgotPassword)
@@ -94,10 +100,15 @@ func NewRouter(
 			r.Get("/auth/sessions", sessionHandler.List)
 			r.Delete("/auth/sessions/{id}", sessionHandler.Revoke)
 			r.Post("/auth/sessions/revoke-others", sessionHandler.RevokeOthers)
+			r.Get("/auth/login-approval/{id}/details", loginApprovalHandler.Get)
+			r.Post("/auth/login-approval/{id}/approve", loginApprovalHandler.Approve)
+			r.Post("/auth/login-approval/{id}/deny", loginApprovalHandler.Deny)
 
 			r.Get("/me", userHandler.GetMe)
 			r.Patch("/me", userHandler.UpdateMe)
 			r.Get("/me/storage", userHandler.MyStorage)
+			r.Post("/me/push-token", loginApprovalHandler.RegisterPushToken)
+			r.Delete("/me/push-token", loginApprovalHandler.UnregisterPushToken)
 			r.Post("/me/totp/setup", userHandler.SetupTOTP)
 			r.Post("/me/totp/confirm", userHandler.ConfirmTOTP)
 			r.Post("/me/totp/disable", userHandler.DisableTOTP)

@@ -66,6 +66,13 @@ export type LoginResult =
       email_masked: string;
       method?: string;
       methods_available?: string[];
+    }
+  | {
+      type: "login_approval";
+      challenge_id: string;
+      challenge_token: string;
+      expires_at?: string;
+      pending_device_name?: string;
     };
 
 export interface SystemFolder {

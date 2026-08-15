@@ -43,6 +43,12 @@ pub enum LoginResult {
         method: String,
         methods_available: Vec<String>,
     },
+    LoginApproval {
+        challenge_id: String,
+        challenge_token: String,
+        expires_at: Option<String>,
+        pending_device_name: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -408,11 +414,99 @@ pub async fn login(
         }
     }
 
+    if let Some(requires) = data
+        .get("requires_login_approval")
+        .and_then(|v| v.as_bool())
+    {
+        if requires {
+            return Ok(LoginResult::LoginApproval {
+                challenge_id: data["challenge_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                challenge_token: data["challenge_token"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                expires_at: data
+                    .get("expires_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                pending_device_name: data
+                    .get("pending_device_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("this device")
+                    .to_string(),
+            });
+        }
+    }
+
     let success: LoginSuccess = serde_json::from_value(data).map_err(|e| e.to_string())?;
     finish_login(&state, &app, &req.server_url, &success, Some(&req.password)).await?;
     Ok(LoginResult::Success {
         user: success.user,
     })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PollLoginApprovalRequest {
+    pub server_url: String,
+    pub challenge_id: String,
+    pub challenge_token: String,
+    pub password: String,
+}
+
+#[tauri::command]
+pub async fn poll_login_approval(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    req: PollLoginApprovalRequest,
+) -> Result<LoginResult, String> {
+    let data = ApiClient::poll_login_approval(
+        &req.server_url,
+        &req.challenge_id,
+        &req.challenge_token,
+    )
+    .await
+    .map_err(|e: crate::error::AppError| e.to_string())?;
+
+    let status = data
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("pending");
+    match status {
+        "pending" => Ok(LoginResult::LoginApproval {
+            challenge_id: req.challenge_id.clone(),
+            challenge_token: req.challenge_token.clone(),
+            expires_at: data
+                .get("expires_at")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            pending_device_name: data
+                .get("pending_device_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("this device")
+                .to_string(),
+        }),
+        "denied" => Err("Sign-in denied on your phone".into()),
+        "expired" => Err("Sign-in request expired".into()),
+        "approved" => {
+            let success: LoginSuccess =
+                serde_json::from_value(data).map_err(|e| e.to_string())?;
+            finish_login(
+                &state,
+                &app,
+                &req.server_url,
+                &success,
+                Some(&req.password),
+            )
+            .await?;
+            Ok(LoginResult::Success {
+                user: success.user,
+            })
+        }
+        other => Err(format!("unexpected approval status: {}", other)),
+    }
 }
 
 #[tauri::command]

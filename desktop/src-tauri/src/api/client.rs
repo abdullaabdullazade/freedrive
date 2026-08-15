@@ -465,6 +465,39 @@ impl ApiClient {
 
 
 
+
+    pub async fn poll_login_approval(
+        server_url: &str,
+        challenge_id: &str,
+        challenge_token: &str,
+    ) -> AppResult<serde_json::Value> {
+        let base = server_url.trim_end_matches('/');
+        let http = reqwest::Client::new();
+        let encoded = challenge_token
+            .bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    (b as char).to_string()
+                }
+                _ => format!("%{:02X}", b),
+            })
+            .collect::<String>();
+        let url = format!(
+            "{}/api/v1/auth/login-approval/{}?token={}",
+            base, challenge_id, encoded
+        );
+        let res = apply_device_headers(http.get(url)).send().await?;
+        let status = res.status();
+        let text = res.text().await?;
+        if !status.is_success() {
+            if let Ok(err) = serde_json::from_str::<ApiError>(&text) {
+                return Err(AppError::msg(err.error));
+            }
+            return Err(AppError::msg("login approval poll failed"));
+        }
+        serde_json::from_str(&text).map_err(Into::into)
+    }
+
     pub async fn verify_2fa(challenge_id: &str, code: &str, server_url: &str) -> AppResult<LoginSuccess> {
 
         let base = server_url.trim_end_matches('/');

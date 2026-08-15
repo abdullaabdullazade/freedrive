@@ -37,6 +37,7 @@ func runMigrations(db *sql.DB) error {
 		{14, migrationV14},
 		{15, migrationV15},
 		{16, migrationV16},
+		{17, migrationV17},
 	}
 
 	for _, m := range migrations {
@@ -413,4 +414,65 @@ CREATE TABLE IF NOT EXISTS totp_backup_codes (
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_totp_backup_user ON totp_backup_codes(user_id);
+`
+
+const migrationV17 = `
+CREATE TABLE IF NOT EXISTS login_approvals (
+    id                   TEXT PRIMARY KEY,
+    user_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    challenge_token      TEXT NOT NULL UNIQUE,
+    pending_device_id    TEXT NOT NULL DEFAULT '',
+    pending_device_name  TEXT NOT NULL DEFAULT '',
+    pending_device_type  TEXT NOT NULL DEFAULT 'web',
+    ip_address           TEXT NOT NULL DEFAULT '',
+    user_agent           TEXT NOT NULL DEFAULT '',
+    status               TEXT NOT NULL DEFAULT 'pending',
+    expires_at           DATETIME NOT NULL,
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at          DATETIME,
+    access_token         TEXT NOT NULL DEFAULT '',
+    refresh_token        TEXT NOT NULL DEFAULT '',
+    token_expires_in     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_login_approvals_user ON login_approvals(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_login_approvals_expires ON login_approvals(expires_at);
+
+CREATE TABLE IF NOT EXISTS push_tokens (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id        TEXT NOT NULL DEFAULT '',
+    expo_push_token  TEXT NOT NULL,
+    platform         TEXT NOT NULL DEFAULT 'android',
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, device_id)
+);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS sessions_v17 (
+    id                  TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token_hash  TEXT NOT NULL UNIQUE,
+    device_name         TEXT NOT NULL DEFAULT '',
+    device_type         TEXT NOT NULL DEFAULT 'web',
+    user_agent          TEXT NOT NULL DEFAULT '',
+    ip_address          TEXT NOT NULL DEFAULT '',
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at          DATETIME NOT NULL,
+    revoked_at          DATETIME,
+    device_id           TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO sessions_v17 (
+    id, user_id, refresh_token_hash, device_name, device_type, user_agent, ip_address,
+    created_at, last_seen_at, expires_at, revoked_at, device_id
+)
+SELECT id, user_id, refresh_token_hash, device_name, device_type, user_agent, ip_address,
+       created_at, last_seen_at, expires_at, revoked_at, device_id
+FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_v17 RENAME TO sessions;
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON sessions(user_id, device_id);
 `

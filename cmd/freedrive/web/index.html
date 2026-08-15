@@ -70,6 +70,16 @@
                 <button type="button" class="auth-link-btn hidden" id="twofa-send-email-btn">Send code by email</button>
                 <button type="button" class="auth-link-btn" id="twofa-back-btn">Back to sign in</button>
             </form>
+            <div id="login-approval-form" class="auth-form hidden">
+                <p id="login-approval-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;">
+                    Check your phone and tap <strong>Yes, it's me</strong> to finish signing in.
+                </p>
+                <input type="hidden" id="login-approval-id" value="">
+                <input type="hidden" id="login-approval-token" value="">
+                <div class="auth-error" id="login-approval-error" role="alert" aria-live="polite"></div>
+                <p style="text-align:center;color:#5f6368;font-size:13px;">Waiting for approval…</p>
+                <button type="button" class="auth-link-btn" id="login-approval-back-btn">Cancel</button>
+            </div>
             <div class="auth-footer">
                 <div class="encryption-badge">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>

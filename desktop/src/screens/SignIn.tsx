@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/tauri";
 import { Logo } from "../components/Logo";
 
@@ -19,7 +19,51 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
     method: string;
     methods_available: string[];
   } | null>(null);
+  const [loginApproval, setLoginApproval] = useState<{
+    challenge_id: string;
+    challenge_token: string;
+    pending_device_name?: string;
+  } | null>(null);
   const [code, setCode] = useState("");
+  const pollStop = useRef(false);
+
+  useEffect(() => {
+    if (!loginApproval) return;
+    pollStop.current = false;
+    const tick = async () => {
+      if (pollStop.current || !loginApproval) return;
+      try {
+        const result = await api.pollLoginApproval(
+          serverUrl,
+          loginApproval.challenge_id,
+          loginApproval.challenge_token,
+          password,
+        );
+        if (result.type === "success") {
+          pollStop.current = true;
+          onSuccess();
+          return;
+        }
+        if (result.type === "login_approval") {
+          // still waiting
+        }
+      } catch (err) {
+        pollStop.current = true;
+        setError(String(err));
+        setLoginApproval(null);
+        setLoading(false);
+        return;
+      }
+      if (!pollStop.current) {
+        window.setTimeout(() => void tick(), 2000);
+      }
+    };
+    setLoading(true);
+    void tick();
+    return () => {
+      pollStop.current = true;
+    };
+  }, [loginApproval, serverUrl, password, onSuccess]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,12 +79,19 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
           methods_available: result.methods_available || [],
         });
         setCode("");
+        setLoading(false);
+      } else if (result.type === "login_approval") {
+        setLoginApproval({
+          challenge_id: result.challenge_id,
+          challenge_token: result.challenge_token,
+          pending_device_name: result.pending_device_name,
+        });
       } else {
         onSuccess();
+        setLoading(false);
       }
     } catch (err) {
       setError(String(err));
-    } finally {
       setLoading(false);
     }
   };
@@ -100,7 +151,32 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
           <button type="button" className="icon-btn">⋮</button>
         </div>
 
-        {!twoFactor ? (
+        {loginApproval ? (
+          <>
+            <h1 className="signin-title">Check your phone</h1>
+            <p className="signin-subtitle">
+              Open FreeDrive on your phone and tap <strong>Yes, it&apos;s me</strong> to finish
+              signing in
+              {loginApproval.pending_device_name
+                ? ` to ${loginApproval.pending_device_name}`
+                : ""}
+              .
+            </p>
+            {error && <div className="error-banner">{error}</div>}
+            <p className="signin-subtitle">Waiting for approval…</p>
+            <button
+              type="button"
+              className="btn-text"
+              onClick={() => {
+                pollStop.current = true;
+                setLoginApproval(null);
+                setLoading(false);
+              }}
+            >
+              Cancel
+            </button>
+          </>
+        ) : !twoFactor ? (
           <>
             <h1 className="signin-title">Sign in to get started</h1>
             <p className="signin-subtitle">

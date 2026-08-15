@@ -53,6 +53,22 @@ type Email2FARepository interface {
 	DeleteByID(ctx context.Context, id string) error
 }
 
+// LoginApprovalRepository stores Google-style login prompts.
+type LoginApprovalRepository interface {
+	Create(ctx context.Context, a *domain.LoginApproval) error
+	GetByID(ctx context.Context, id string) (*domain.LoginApproval, error)
+	Update(ctx context.Context, a *domain.LoginApproval) error
+	DeleteExpired(ctx context.Context) error
+}
+
+// PushTokenRepository stores Expo push tokens for trusted devices.
+type PushTokenRepository interface {
+	Upsert(ctx context.Context, token *domain.PushToken) error
+	ListByUser(ctx context.Context, userID string) ([]domain.PushToken, error)
+	DeleteByUserDevice(ctx context.Context, userID, deviceID string) error
+	DeleteByToken(ctx context.Context, userID, expoPushToken string) error
+}
+
 // TotpBackupRepository defines data access for TOTP backup codes.
 type TotpBackupRepository interface {
 	ReplaceAll(ctx context.Context, userID string, codeHashes []string) error

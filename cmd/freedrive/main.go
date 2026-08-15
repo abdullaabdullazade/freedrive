@@ -63,6 +63,8 @@ func main() {
 	syncChangeRepo := sqlite.NewSyncChangeRepo(db)
 	clientMutationRepo := sqlite.NewClientMutationRepo(db)
 	sessionRepo := sqlite.NewSessionRepo(db)
+	loginApprovalRepo := sqlite.NewLoginApprovalRepo(db)
+	pushTokenRepo := sqlite.NewPushTokenRepo(db)
 
 	accessService := service.NewAccessService(shareRepo, fileRepo, folderRepo)
 	shareService := service.NewShareService(shareRepo, fileRepo, folderRepo, userRepo, accessService)
@@ -72,6 +74,8 @@ func main() {
 	syncFeedService := service.NewSyncFeedService(syncChangeRepo, computerRepo, folderRepo, fileRepo)
 
 	authService := service.NewAuthService(userRepo, email2faRepo, totpBackupRepo, sessionRepo, cfg.JWTSecret)
+	expoPush := service.NewExpoPushService(pushTokenRepo)
+	loginApprovalService := service.NewLoginApprovalService(loginApprovalRepo, pushTokenRepo, expoPush, authService, userRepo)
 	fileService := service.NewFileService(fileRepo, userRepo, diskStorage, activityRepo, accessService, folderRepo, syncChangeService)
 	computerService := service.NewComputerService(computerRepo, folderRepo)
 	folderService := service.NewFolderService(folderRepo, fileRepo, userRepo, diskStorage, activityRepo, computerRepo, accessService, syncChangeService)
@@ -114,6 +118,7 @@ func main() {
 		cfg.DataDir,
 		clientMutationRepo,
 		sqlite.NewUploadSessionRepo(db),
+		loginApprovalService,
 	)
 
 	server := &http.Server{

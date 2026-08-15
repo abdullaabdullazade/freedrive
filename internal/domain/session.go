@@ -5,6 +5,7 @@ import "time"
 const (
 	DeviceTypeWeb     = "web"
 	DeviceTypeDesktop = "desktop"
+	DeviceTypeMobile  = "mobile"
 )
 
 // Session represents a login session tied to a refresh-token family.

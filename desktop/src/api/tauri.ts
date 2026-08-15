@@ -29,6 +29,15 @@ export const api = {
     invoke<LoginResult>("login", {
       req: { server_url, email, password },
     }),
+  pollLoginApproval: (
+    server_url: string,
+    challenge_id: string,
+    challenge_token: string,
+    password: string,
+  ) =>
+    invoke<LoginResult>("poll_login_approval", {
+      req: { server_url, challenge_id, challenge_token, password },
+    }),
   verify2FA: (server_url: string, challenge_id: string, code: string, password: string) =>
     invoke<User>("verify_2fa", {
       req: { server_url, challenge_id, code, password },

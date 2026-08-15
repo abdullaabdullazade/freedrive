@@ -53,6 +53,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     const uid = user?.id ?? null;
     try {
+      const { unregisterPushNotifications } = await import("../notifications/push");
+      await unregisterPushNotifications();
+    } catch {
+      /* ignore */
+    }
+    try {
       await api.logout();
     } catch {
       /* ignore */

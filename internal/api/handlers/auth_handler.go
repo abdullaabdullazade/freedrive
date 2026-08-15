@@ -20,6 +20,7 @@ type AuthHandler struct {
 	userRepo             repository.UserRepository
 	activityRepo         repository.ActivityRepository
 	passwordResetService *service.PasswordResetService
+	loginApproval        *service.LoginApprovalService
 }
 
 // NewAuthHandler creates a new auth handler.
@@ -39,6 +40,11 @@ func NewAuthHandler(
 		activityRepo:         activityRepo,
 		passwordResetService: passwordResetService,
 	}
+}
+
+// SetLoginApproval attaches optional Google-style phone approval.
+func (h *AuthHandler) SetLoginApproval(svc *service.LoginApprovalService) {
+	h.loginApproval = svc
 }
 
 func (h *AuthHandler) checkIP(w http.ResponseWriter, r *http.Request) bool {
@@ -152,6 +158,31 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	device := deviceInfoFromRequest(r)
+
+	if h.loginApproval != nil {
+		offer, err := h.loginApproval.ShouldOfferApproval(r.Context(), user.ID, device)
+		if err != nil {
+			writeError(w, "login failed", http.StatusInternalServerError)
+			return
+		}
+		if offer {
+			challenge, err := h.loginApproval.Start(r.Context(), user, device)
+			if err != nil {
+				writeError(w, "failed to start login approval", http.StatusInternalServerError)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"requires_login_approval": true,
+				"challenge_id":            challenge.ID,
+				"challenge_token":         challenge.ChallengeToken,
+				"expires_at":              challenge.ExpiresAt,
+				"pending_device_name":     challenge.PendingDeviceName,
+			})
+			return
+		}
+	}
+
 	if service.Needs2FA(user) {
 		challenge, err := h.authService.StartLogin2FA(r.Context(), user)
 		if err == service.Err2FAUnavailable {
@@ -167,16 +198,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"requires_2fa":       true,
-			"challenge_id":       challenge.ChallengeID,
-			"method":             challenge.Method,
-			"methods_available":  challenge.MethodsAvailable,
-			"email_masked":       challenge.EmailMasked,
+			"requires_2fa":      true,
+			"challenge_id":      challenge.ChallengeID,
+			"method":            challenge.Method,
+			"methods_available": challenge.MethodsAvailable,
+			"email_masked":      challenge.EmailMasked,
 		})
 		return
 	}
 
-	tokens, err := h.authService.IssueTokens(r.Context(), user, deviceInfoFromRequest(r))
+	tokens, err := h.authService.IssueTokens(r.Context(), user, device)
 	if err != nil {
 		writeError(w, "login failed", http.StatusInternalServerError)
 		return

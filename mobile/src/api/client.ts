@@ -20,6 +20,7 @@ import type {
   LoginResult,
   LoginSuccess,
   Login2FAChallenge,
+  LoginApprovalDetails,
   SharedItem,
   ShareLink,
   SortDir,
@@ -96,7 +97,7 @@ async function getDeviceId(): Promise<string> {
 
 async function deviceHeaders(): Promise<Record<string, string>> {
   return {
-    "X-Device-Type": "web",
+    "X-Device-Type": "mobile",
     "X-Device-Name": deviceName(),
     "X-Device-ID": await getDeviceId(),
   };
@@ -447,6 +448,26 @@ export const api = {
       /* ignore logout errors */
     }
   },
+
+  registerPushToken: (expo_push_token: string, platform = "android") =>
+    request("POST", "/me/push-token", { expo_push_token, platform }),
+
+  unregisterPushToken: async (expo_push_token?: string) => {
+    try {
+      await request("DELETE", "/me/push-token", { expo_push_token: expo_push_token || "" });
+    } catch {
+      /* ignore */
+    }
+  },
+
+  getLoginApproval: (id: string) =>
+    request<LoginApprovalDetails>("GET", `/auth/login-approval/${id}/details`),
+
+  approveLoginApproval: (id: string) =>
+    request("POST", `/auth/login-approval/${id}/approve`),
+
+  denyLoginApproval: (id: string) =>
+    request("POST", `/auth/login-approval/${id}/deny`),
 
   me: () => request<User>("GET", "/me"),
   myStorage: () => request<StorageInfo>("GET", "/me/storage"),

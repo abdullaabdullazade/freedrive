@@ -271,6 +271,7 @@ const API = (() => {
 
     const auth = {
         login: (email, password) => request('POST', '/auth/login', { email, password }),
+        pollLoginApproval: (id, token) => request('GET', `/auth/login-approval/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`),
         verify2FA: (challenge_id, code) => request('POST', '/auth/verify-2fa', { challenge_id, code }),
         send2FAEmail: (challenge_id) => request('POST', '/auth/2fa/send-email', { challenge_id }),
         register: (email, username, password, invite_code) => request('POST', '/auth/register', { email, username, password, invite_code }),

@@ -32,6 +32,19 @@ func deviceInfoFromRequest(r *http.Request) service.DeviceInfo {
 		}
 	}
 
+	if deviceType == domain.DeviceTypeMobile {
+		if deviceName == "" {
+			deviceName = "Mobile app"
+		}
+		return service.DeviceInfo{
+			DeviceID:   deviceID,
+			DeviceName: deviceName,
+			DeviceType: domain.DeviceTypeMobile,
+			UserAgent:  ua,
+			IPAddress:  middleware.ClientIP(r),
+		}
+	}
+
 	if deviceName == "" {
 		deviceName = describeUserAgent(ua)
 	}

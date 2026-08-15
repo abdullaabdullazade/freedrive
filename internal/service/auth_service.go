@@ -321,6 +321,18 @@ func (s *AuthService) EnsureAdmin(ctx context.Context, email, password string) e
 	return err
 }
 
+// HasActiveDevice reports whether the user already has an active session for deviceID.
+func (s *AuthService) HasActiveDevice(ctx context.Context, userID, deviceID string) (bool, error) {
+	if deviceID == "" {
+		return false, nil
+	}
+	existing, err := s.sessionRepo.GetActiveByUserDevice(ctx, userID, deviceID)
+	if err != nil {
+		return false, err
+	}
+	return existing != nil, nil
+}
+
 // Claims represents JWT claims.
 type Claims struct {
 	UserID    string      `json:"uid"`
@@ -351,7 +363,10 @@ func (s *AuthService) generateTokenPair(ctx context.Context, user *domain.User, 
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
 
 	deviceType := device.DeviceType
-	if deviceType != domain.DeviceTypeDesktop {
+	switch deviceType {
+	case domain.DeviceTypeDesktop, domain.DeviceTypeMobile:
+		// keep
+	default:
 		deviceType = domain.DeviceTypeWeb
 	}
 	deviceName := strings.TrimSpace(device.DeviceName)
