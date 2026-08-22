@@ -4,6 +4,7 @@ interface EncryptionSettingsPanelProps {
   keysImportMessage: string;
   keysImporting: boolean;
   keysExporting: boolean;
+  backupPassword: string;
   cryptoUnlocked: boolean;
   serverHasCrypto: boolean;
   cryptoUnlockError: string;
@@ -18,6 +19,7 @@ interface EncryptionSettingsPanelProps {
   onRotateCryptoKey: () => void;
   onExportKeys: () => void;
   onImportKeys: () => void;
+  onBackupPasswordChange: (value: string) => void;
   onBack?: () => void;
   embedded?: boolean;
 }
@@ -28,6 +30,7 @@ export function EncryptionSettingsPanel({
   keysImportMessage,
   keysImporting,
   keysExporting,
+  backupPassword,
   cryptoUnlocked,
   serverHasCrypto,
   cryptoUnlockError,
@@ -42,6 +45,7 @@ export function EncryptionSettingsPanel({
   onRotateCryptoKey,
   onExportKeys,
   onImportKeys,
+  onBackupPasswordChange,
   onBack,
   embedded = false,
 }: EncryptionSettingsPanelProps) {
@@ -132,8 +136,17 @@ export function EncryptionSettingsPanel({
         </details>
         <label>Manual backup (optional)</label>
         <p className="settings-hint">
-          Export/import below only if you need to move keys manually between devices.
+          Backups are encrypted with a separate password. Use at least 12 characters and store it
+          separately from the backup file.
         </p>
+        <input
+          type="password"
+          autoComplete="new-password"
+          placeholder="Backup password (12+ characters)"
+          value={backupPassword}
+          onChange={(e) => onBackupPasswordChange(e.target.value)}
+          style={{ width: "100%", marginBottom: 8 }}
+        />
         {keysImportMessage && <div className="success-banner">{keysImportMessage}</div>}
         <div
           className="settings-actions"

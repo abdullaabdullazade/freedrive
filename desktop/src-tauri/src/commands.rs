@@ -1,14 +1,19 @@
 use crate::api::types::{LoginSuccess, SharedItem, StorageInfo, User};
 use crate::api::ApiClient;
-use crate::auth_store::{clear_auth, load_auth, my_drive_path, save_auth, sync_root_dir, StoredAuth};
+use crate::auth_store::{
+    clear_auth, load_auth, my_drive_path, save_auth, sync_root_dir, StoredAuth,
+};
 use crate::db::{
-    config_get, config_set, delete_sync_folder, import_file_keys, list_activity, list_all_file_keys,
-    list_sync_folders, prepare_login_session, reset_session_on_logout, save_local_sync_folders,
+    config_get, config_set, delete_sync_folder, import_file_keys, list_activity,
+    list_all_file_keys, list_sync_folders, prepare_login_session, reset_session_on_logout,
+    save_local_sync_folders,
 };
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::sync::engine::{initial_sync_complete, SyncEngine, SyncStatusKind};
 use crate::sync::watcher::WatcherHandle;
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -36,7 +41,9 @@ pub struct LoginRequest {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LoginResult {
-    Success { user: User },
+    Success {
+        user: User,
+    },
     TwoFactor {
         challenge_id: String,
         email_masked: String,
@@ -153,8 +160,8 @@ fn restart_watcher(state: &AppState, engine: Arc<SyncEngine>) -> Result<(), Stri
             paths.push(my_drive);
         }
     }
-    let watcher = WatcherHandle::start(paths, engine)
-        .map_err(|e: crate::error::AppError| e.to_string())?;
+    let watcher =
+        WatcherHandle::start(paths, engine).map_err(|e: crate::error::AppError| e.to_string())?;
     state.set_watcher(watcher);
     Ok(())
 }
@@ -238,10 +245,7 @@ fn start_sync_services(
                 }
                 if let Err(e) = eng3.clone().run_background_verify().await {
                     eprintln!("periodic background verify failed: {}", e);
-                    crate::sync::log::sync_log(format!(
-                        "periodic background verify failed: {}",
-                        e
-                    ));
+                    crate::sync::log::sync_log(format!("periodic background verify failed: {}", e));
                 }
             }
         });
@@ -278,13 +282,10 @@ async fn ensure_crypto_unlocked(state: &AppState, app: &AppHandle) -> Result<(),
         .ok_or_else(|| "missing user id".to_string())?
         .to_string();
     let client = state.api().map_err(|e| e.to_string())?;
-    if let Some(stats) = crate::account_crypto::ensure_unlocked_from_keyring(
-        &client,
-        &state.db,
-        &user_id,
-    )
-    .await
-    .map_err(|e: crate::error::AppError| e.to_string())?
+    if let Some(stats) =
+        crate::account_crypto::ensure_unlocked_from_keyring(&client, &state.db, &user_id)
+            .await
+            .map_err(|e: crate::error::AppError| e.to_string())?
     {
         emit_crypto_unlocked(app);
         emit_crypto_sync_stats(app, &stats);
@@ -320,7 +321,10 @@ pub async fn restore_sync_on_startup(state: &AppState, app: &AppHandle) -> AppRe
         return Ok(());
     }
 
-    let paths: Vec<PathBuf> = folders.iter().map(|f| PathBuf::from(&f.local_path)).collect();
+    let paths: Vec<PathBuf> = folders
+        .iter()
+        .map(|f| PathBuf::from(&f.local_path))
+        .collect();
 
     let pending_initial = !initial_sync_complete(&state.db);
     if pending_initial {
@@ -443,9 +447,7 @@ pub async fn login(
 
     let success: LoginSuccess = serde_json::from_value(data).map_err(|e| e.to_string())?;
     finish_login(&state, &app, &req.server_url, &success, Some(&req.password)).await?;
-    Ok(LoginResult::Success {
-        user: success.user,
-    })
+    Ok(LoginResult::Success { user: success.user })
 }
 
 #[derive(Debug, Deserialize)]
@@ -462,13 +464,10 @@ pub async fn poll_login_approval(
     app: AppHandle,
     req: PollLoginApprovalRequest,
 ) -> Result<LoginResult, String> {
-    let data = ApiClient::poll_login_approval(
-        &req.server_url,
-        &req.challenge_id,
-        &req.challenge_token,
-    )
-    .await
-    .map_err(|e: crate::error::AppError| e.to_string())?;
+    let data =
+        ApiClient::poll_login_approval(&req.server_url, &req.challenge_id, &req.challenge_token)
+            .await
+            .map_err(|e: crate::error::AppError| e.to_string())?;
 
     let status = data
         .get("status")
@@ -491,19 +490,9 @@ pub async fn poll_login_approval(
         "denied" => Err("Sign-in denied on your phone".into()),
         "expired" => Err("Sign-in request expired".into()),
         "approved" => {
-            let success: LoginSuccess =
-                serde_json::from_value(data).map_err(|e| e.to_string())?;
-            finish_login(
-                &state,
-                &app,
-                &req.server_url,
-                &success,
-                Some(&req.password),
-            )
-            .await?;
-            Ok(LoginResult::Success {
-                user: success.user,
-            })
+            let success: LoginSuccess = serde_json::from_value(data).map_err(|e| e.to_string())?;
+            finish_login(&state, &app, &req.server_url, &success, Some(&req.password)).await?;
+            Ok(LoginResult::Success { user: success.user })
         }
         other => Err(format!("unexpected approval status: {}", other)),
     }
@@ -518,14 +507,7 @@ pub async fn verify_2fa(
     let success = ApiClient::verify_2fa(&req.challenge_id, &req.code, &req.server_url)
         .await
         .map_err(|e: crate::error::AppError| e.to_string())?;
-    finish_login(
-        &state,
-        &app,
-        &req.server_url,
-        &success,
-        Some(&req.password),
-    )
-    .await?;
+    finish_login(&state, &app, &req.server_url, &success, Some(&req.password)).await?;
     Ok(success.user)
 }
 
@@ -615,13 +597,8 @@ async fn finish_login(
         };
 
         if let Some(pwd) = password_owned.as_deref() {
-            match crate::account_crypto::unlock_after_login(
-                &client,
-                &app_state.db,
-                &user_id,
-                pwd,
-            )
-            .await
+            match crate::account_crypto::unlock_after_login(&client, &app_state.db, &user_id, pwd)
+                .await
             {
                 Ok(unlock) => {
                     if unlock.setup {
@@ -642,12 +619,9 @@ async fn finish_login(
                     emit_crypto_unlock_failed(&app_handle, &message);
                 }
             }
-        } else if let Ok(Some(stats)) = crate::account_crypto::ensure_unlocked_from_keyring(
-            &client,
-            &app_state.db,
-            &user_id,
-        )
-        .await
+        } else if let Ok(Some(stats)) =
+            crate::account_crypto::ensure_unlocked_from_keyring(&client, &app_state.db, &user_id)
+                .await
         {
             emit_crypto_unlocked(&app_handle);
             emit_crypto_sync_stats(&app_handle, &stats);
@@ -715,8 +689,7 @@ pub async fn logout(state: State<'_, AppState>) -> Result<(), String> {
     clear_auth().map_err(|e: crate::error::AppError| e.to_string())?;
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        reset_session_on_logout(&conn)
-            .map_err(|e: crate::error::AppError| e.to_string())?;
+        reset_session_on_logout(&conn).map_err(|e: crate::error::AppError| e.to_string())?;
     }
     *state.api.lock() = None;
     *state.sync_engine.lock() = None;
@@ -771,11 +744,7 @@ pub async fn save_sync_config(
     app: AppHandle,
     req: SaveSyncConfigRequest,
 ) -> Result<(), String> {
-    let pairs: Vec<(String, String)> = req
-        .folders
-        .into_iter()
-        .map(|f| (f.path, f.label))
-        .collect();
+    let pairs: Vec<(String, String)> = req.folders.into_iter().map(|f| (f.path, f.label)).collect();
 
     let folders_changed = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -784,8 +753,7 @@ pub async fn save_sync_config(
             .into_iter()
             .map(|f| f.local_path)
             .collect();
-        let new: std::collections::HashSet<String> =
-            pairs.iter().map(|(p, _)| p.clone()).collect();
+        let new: std::collections::HashSet<String> = pairs.iter().map(|(p, _)| p.clone()).collect();
         old != new
     };
 
@@ -817,7 +785,9 @@ pub async fn save_sync_config(
             .into_iter()
             .map(|(p, _)| PathBuf::from(p))
             .collect();
-        if let Err(e) = start_sync_services(&app_state, &app_handle, engine, paths, run_initial, true) {
+        if let Err(e) =
+            start_sync_services(&app_state, &app_handle, engine, paths, run_initial, true)
+        {
             eprintln!("start_sync_services after save_sync_config failed: {}", e);
         }
     });
@@ -826,10 +796,7 @@ pub async fn save_sync_config(
 }
 
 #[tauri::command]
-pub async fn complete_onboarding(
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<(), String> {
+pub async fn complete_onboarding(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
     state.mark_onboarding_complete();
 
     let app_handle = app.clone();
@@ -850,28 +817,31 @@ pub async fn complete_onboarding(
 }
 
 #[tauri::command]
-pub async fn get_sync_status(state: State<'_, AppState>) -> Result<crate::sync::engine::SyncStatus, String> {
+pub async fn get_sync_status(
+    state: State<'_, AppState>,
+) -> Result<crate::sync::engine::SyncStatus, String> {
     let engine = state.sync_engine().map_err(|e| e.to_string())?;
     Ok(engine.get_status())
 }
 
 #[tauri::command]
-pub async fn get_sync_activity(state: State<'_, AppState>) -> Result<Vec<crate::db::ActivityRow>, String> {
+pub async fn get_sync_activity(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::db::ActivityRow>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     list_activity(&conn, 50).map_err(|e: crate::error::AppError| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_sync_folders(state: State<'_, AppState>) -> Result<Vec<crate::db::SyncFolderRow>, String> {
+pub async fn get_sync_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::db::SyncFolderRow>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     list_sync_folders(&conn).map_err(|e: crate::error::AppError| e.to_string())
 }
 
 #[tauri::command]
-pub async fn add_sync_folder(
-    state: State<'_, AppState>,
-    path: String,
-) -> Result<String, String> {
+pub async fn add_sync_folder(state: State<'_, AppState>, path: String) -> Result<String, String> {
     let engine = state.sync_engine().map_err(|e| e.to_string())?;
     let label = Path::new(&path)
         .file_name()
@@ -922,10 +892,7 @@ pub async fn quit_app(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn remove_sync_folder(
-    state: State<'_, AppState>,
-    folder_id: i64,
-) -> Result<(), String> {
+pub async fn remove_sync_folder(state: State<'_, AppState>, folder_id: i64) -> Result<(), String> {
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         if !delete_sync_folder(&conn, folder_id).map_err(|e: AppError| e.to_string())? {
@@ -947,7 +914,8 @@ pub fn get_sync_mode(state: State<'_, AppState>) -> Result<String, String> {
 #[tauri::command]
 pub fn set_sync_mode(state: State<'_, AppState>, mode: String) -> Result<(), String> {
     let normalized = if mode == "stream" { "stream" } else { "mirror" };
-    crate::sync::engine::set_sync_mode(&state.db, normalized).map_err(|e: AppError| e.to_string())?;
+    crate::sync::engine::set_sync_mode(&state.db, normalized)
+        .map_err(|e: AppError| e.to_string())?;
 
     #[cfg(windows)]
     {
@@ -1068,10 +1036,7 @@ pub async fn get_explorer_integration_status(
 }
 
 #[tauri::command]
-pub async fn open_drive_folder(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn open_drive_folder(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     crate::cfapi::ensure_connected(&state).map_err(|e| e.to_string())?;
     #[cfg(windows)]
     let dir = my_drive_path(false).map_err(|e: crate::error::AppError| e.to_string())?;
@@ -1122,7 +1087,11 @@ pub async fn open_server_url(
     let url = match path.filter(|p| !p.is_empty()) {
         Some(p) if p.starts_with('#') => format!("{}{}", base, p),
         Some(p) if p.starts_with('/') => format!("{}{}", base, p),
-        Some(p) => format!("{}/{}", base.trim_end_matches('/'), p.trim_start_matches('/')),
+        Some(p) => format!(
+            "{}/{}",
+            base.trim_end_matches('/'),
+            p.trim_start_matches('/')
+        ),
         None => base,
     };
     app.opener()
@@ -1155,6 +1124,74 @@ struct EncryptionKeysExport {
     keys: HashMap<String, String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct EncryptedEncryptionKeysExport {
+    version: u32,
+    exported_at: String,
+    kdf: String,
+    iterations: u32,
+    salt: String,
+    encrypted_payload: String,
+}
+
+fn encrypt_keys_export(keys: HashMap<String, String>, password: &str) -> Result<String, String> {
+    if password.chars().count() < 12 {
+        return Err("Backup password must be at least 12 characters".into());
+    }
+    let payload = EncryptionKeysExport {
+        version: 1,
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        keys,
+    };
+    let plaintext =
+        serde_json::to_vec(&payload).map_err(|e| format!("Failed to encode keys: {e}"))?;
+    let mut salt = [0u8; 16];
+    rand::thread_rng().fill_bytes(&mut salt);
+    let kek = crate::crypto::derive_kek(password, &salt).map_err(|e| e.to_string())?;
+    let encrypted_payload =
+        crate::crypto::wrap_bytes(&plaintext, &kek).map_err(|e| e.to_string())?;
+    serde_json::to_string_pretty(&EncryptedEncryptionKeysExport {
+        version: 2,
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        kdf: "PBKDF2-HMAC-SHA256".into(),
+        iterations: crate::crypto::PBKDF2_ITERATIONS,
+        salt: BASE64_STANDARD.encode(salt),
+        encrypted_payload,
+    })
+    .map_err(|e| format!("Failed to encode encrypted backup: {e}"))
+}
+
+fn decrypt_keys_export(content: &str, password: &str) -> Result<EncryptionKeysExport, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(content).map_err(|e| format!("Invalid key export file: {e}"))?;
+    if value
+        .get("version")
+        .and_then(|v| v.as_u64())
+        .unwrap_or_default()
+        < 2
+    {
+        return serde_json::from_value(value)
+            .map_err(|e| format!("Invalid legacy key export file: {e}"));
+    }
+    if password.chars().count() < 12 {
+        return Err("Enter the backup password (at least 12 characters)".into());
+    }
+    let encrypted: EncryptedEncryptionKeysExport = serde_json::from_value(value)
+        .map_err(|e| format!("Invalid encrypted key export file: {e}"))?;
+    if encrypted.kdf != "PBKDF2-HMAC-SHA256"
+        || encrypted.iterations != crate::crypto::PBKDF2_ITERATIONS
+    {
+        return Err("Unsupported key backup encryption settings".into());
+    }
+    let salt = BASE64_STANDARD
+        .decode(encrypted.salt)
+        .map_err(|_| "Invalid key backup salt".to_string())?;
+    let kek = crate::crypto::derive_kek(password, &salt).map_err(|e| e.to_string())?;
+    let plaintext = crate::crypto::unwrap_bytes(&encrypted.encrypted_payload, &kek)
+        .map_err(|_| "Wrong backup password or damaged backup file".to_string())?;
+    serde_json::from_slice(&plaintext).map_err(|e| format!("Invalid decrypted key backup: {e}"))
+}
+
 #[derive(Debug, Serialize)]
 pub struct ImportEncryptionKeysResult {
     pub imported: usize,
@@ -1170,6 +1207,7 @@ pub struct ExportEncryptionKeysResult {
 pub async fn import_encryption_keys(
     state: State<'_, AppState>,
     app: AppHandle,
+    password: String,
 ) -> Result<ImportEncryptionKeysResult, String> {
     let picked = tokio::task::spawn_blocking(move || {
         app.dialog()
@@ -1183,8 +1221,7 @@ pub async fn import_encryption_keys(
 
     let path = picked.ok_or_else(|| "No file selected".to_string())?;
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let export: EncryptionKeysExport =
-        serde_json::from_str(&content).map_err(|e| format!("Invalid key export file: {}", e))?;
+    let export = decrypt_keys_export(&content, &password)?;
     if export.keys.is_empty() {
         return Err("Key export file contains no keys".into());
     }
@@ -1201,6 +1238,7 @@ pub async fn import_encryption_keys(
 pub async fn export_encryption_keys(
     state: State<'_, AppState>,
     app: AppHandle,
+    password: String,
 ) -> Result<ExportEncryptionKeysResult, String> {
     let keys = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -1210,13 +1248,7 @@ pub async fn export_encryption_keys(
         return Err("No encryption keys on this device".into());
     }
 
-    let export = EncryptionKeysExport {
-        version: 1,
-        exported_at: chrono::Utc::now().to_rfc3339(),
-        keys: keys.clone(),
-    };
-    let json =
-        serde_json::to_string_pretty(&export).map_err(|e| format!("Failed to encode keys: {}", e))?;
+    let json = encrypt_keys_export(keys.clone(), &password)?;
 
     let path = tokio::task::spawn_blocking(move || {
         app.dialog()
@@ -1265,17 +1297,18 @@ struct EncryptionKeysListStatus {
 
 #[tauri::command]
 pub async fn get_crypto_status(state: State<'_, AppState>) -> Result<CryptoStatus, String> {
-    let unlocked = if let Ok(Some(auth)) = load_auth().map_err(|e: crate::error::AppError| e.to_string()) {
-        let user: serde_json::Value =
-            serde_json::from_str(&auth.user_json).map_err(|e| e.to_string())?;
-        if let Some(user_id) = user.get("id").and_then(|v| v.as_str()) {
-            crate::account_crypto::get_uek(user_id).is_some()
+    let unlocked =
+        if let Ok(Some(auth)) = load_auth().map_err(|e: crate::error::AppError| e.to_string()) {
+            let user: serde_json::Value =
+                serde_json::from_str(&auth.user_json).map_err(|e| e.to_string())?;
+            if let Some(user_id) = user.get("id").and_then(|v| v.as_str()) {
+                crate::account_crypto::get_uek(user_id).is_some()
+            } else {
+                false
+            }
         } else {
             false
-        }
-    } else {
-        false
-    };
+        };
     let mut server_has_crypto = false;
     let mut needs_recovery = false;
     if let Ok(client) = state.api() {
@@ -1363,14 +1396,42 @@ pub async fn rotate_crypto_key(
         .ok_or_else(|| "missing user id".to_string())?
         .to_string();
     let client = state.api().map_err(|e| e.to_string())?;
-    let recovery_code = crate::account_crypto::rotate_account_key(
-        &client,
-        &state.db,
-        &user_id,
-        &req.password,
-    )
-    .await
-    .map_err(|e: crate::error::AppError| e.to_string())?;
+    let recovery_code =
+        crate::account_crypto::rotate_account_key(&client, &state.db, &user_id, &req.password)
+            .await
+            .map_err(|e: crate::error::AppError| e.to_string())?;
     let _ = app.emit("crypto-recovery-setup", recovery_code.clone());
     Ok(RotateCryptoKeyResult { recovery_code })
+}
+
+#[cfg(test)]
+mod encryption_export_tests {
+    use super::*;
+
+    #[test]
+    fn encrypted_key_export_roundtrip() {
+        let mut keys = HashMap::new();
+        keys.insert("file-1".to_string(), "secret-file-key".to_string());
+        let encoded = encrypt_keys_export(keys.clone(), "correct horse battery staple").unwrap();
+
+        assert!(!encoded.contains("secret-file-key"));
+        let decoded = decrypt_keys_export(&encoded, "correct horse battery staple").unwrap();
+        assert_eq!(decoded.keys, keys);
+    }
+
+    #[test]
+    fn encrypted_key_export_rejects_wrong_password() {
+        let mut keys = HashMap::new();
+        keys.insert("file-1".to_string(), "secret-file-key".to_string());
+        let encoded = encrypt_keys_export(keys, "correct horse battery staple").unwrap();
+
+        assert!(decrypt_keys_export(&encoded, "incorrect password value").is_err());
+    }
+
+    #[test]
+    fn legacy_key_export_still_imports() {
+        let content = r#"{"version":1,"exported_at":"now","keys":{"file-1":"key"}}"#;
+        let decoded = decrypt_keys_export(content, "").unwrap();
+        assert_eq!(decoded.keys.get("file-1").map(String::as_str), Some("key"));
+    }
 }

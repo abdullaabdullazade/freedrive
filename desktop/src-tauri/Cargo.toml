@@ -28,7 +28,6 @@ notify = "7"
 notify-debouncer-full = "0.4"
 pbkdf2 = "0.12"
 sha2 = "0.10"
-keyring = { version = "3", features = ["windows-native"] }
 dirs = "6"
 hostname = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
@@ -43,6 +42,7 @@ uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
 
 [target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 winreg = "0.55"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
@@ -55,6 +55,12 @@ windows = { version = "0.58", features = [
     "Win32_System_Threading",
     "Win32_UI_Shell",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native-sync-persistent", "crypto-rust"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"

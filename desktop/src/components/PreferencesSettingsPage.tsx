@@ -73,6 +73,7 @@ export function PreferencesSettingsPage({
           keysImportMessage={encryption.keysImportMessage}
           keysImporting={encryption.keysImporting}
           keysExporting={encryption.keysExporting}
+          backupPassword={encryption.backupPassword}
           cryptoUnlocked={encryption.cryptoUnlocked}
           serverHasCrypto={encryption.serverHasCrypto}
           cryptoUnlockError={encryption.cryptoUnlockError}
@@ -87,6 +88,7 @@ export function PreferencesSettingsPage({
           onRotateCryptoKey={encryption.handleRotateCryptoKey}
           onExportKeys={encryption.handleExportEncryptionKeys}
           onImportKeys={encryption.handleImportEncryptionKeys}
+          onBackupPasswordChange={encryption.setBackupPassword}
         />
       </section>
 

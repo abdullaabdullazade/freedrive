@@ -81,10 +81,10 @@ export const api = {
   openProjectUrl: () => invoke<void>("open_project_url"),
   openPathInExplorer: (path: string) =>
     invoke<void>("open_path_in_explorer", { path }),
-  importEncryptionKeys: () =>
-    invoke<ImportEncryptionKeysResult>("import_encryption_keys"),
-  exportEncryptionKeys: () =>
-    invoke<ExportEncryptionKeysResult>("export_encryption_keys"),
+  importEncryptionKeys: (password: string) =>
+    invoke<ImportEncryptionKeysResult>("import_encryption_keys", { password }),
+  exportEncryptionKeys: (password: string) =>
+    invoke<ExportEncryptionKeysResult>("export_encryption_keys", { password }),
   getCryptoStatus: () => invoke<CryptoStatus>("get_crypto_status"),
   unlockCryptoRecovery: (recovery_code: string) =>
     invoke<CryptoSyncStats>("unlock_crypto_recovery", {

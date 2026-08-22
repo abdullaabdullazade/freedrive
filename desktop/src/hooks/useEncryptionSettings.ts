@@ -6,6 +6,7 @@ export function useEncryptionSettings() {
   const [keysImportMessage, setKeysImportMessage] = useState("");
   const [keysImporting, setKeysImporting] = useState(false);
   const [keysExporting, setKeysExporting] = useState(false);
+  const [backupPassword, setBackupPassword] = useState("");
   const [cryptoUnlocked, setCryptoUnlocked] = useState(false);
   const [serverHasCrypto, setServerHasCrypto] = useState(false);
   const [cryptoUnlockError, setCryptoUnlockError] = useState("");
@@ -34,9 +35,13 @@ export function useEncryptionSettings() {
   const handleExportEncryptionKeys = async () => {
     setSettingsError("");
     setKeysImportMessage("");
+    if (backupPassword.length < 12) {
+      setSettingsError("Backup password must be at least 12 characters");
+      return;
+    }
     setKeysExporting(true);
     try {
-      const result = await api.exportEncryptionKeys();
+      const result = await api.exportEncryptionKeys(backupPassword);
       setKeysImportMessage(
         `Exported ${result.exported} encryption key${result.exported === 1 ? "" : "s"} to ${result.path}.`,
       );
@@ -53,9 +58,13 @@ export function useEncryptionSettings() {
   const handleImportEncryptionKeys = async () => {
     setSettingsError("");
     setKeysImportMessage("");
+    if (backupPassword.length < 12) {
+      setSettingsError("Enter the backup password (at least 12 characters)");
+      return;
+    }
     setKeysImporting(true);
     try {
-      const result = await api.importEncryptionKeys();
+      const result = await api.importEncryptionKeys(backupPassword);
       setKeysImportMessage(
         `Imported ${result.imported} encryption key${result.imported === 1 ? "" : "s"}.`,
       );
@@ -122,6 +131,8 @@ export function useEncryptionSettings() {
     setKeysImportMessage,
     keysImporting,
     keysExporting,
+    backupPassword,
+    setBackupPassword,
     cryptoUnlocked,
     setCryptoUnlocked,
     serverHasCrypto,
