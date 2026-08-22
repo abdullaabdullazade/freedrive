@@ -192,6 +192,7 @@ const Auth = (() => {
             await CryptoSync.ensureUnlockedAfterLogin(password);
         }
         Components.toast('Welcome back, ' + (data.user.username || data.user.email) + '!', 'success');
+        history.replaceState(null, '', '/');
         App.showApp();
     }
 
@@ -404,9 +405,7 @@ const Auth = (() => {
                     }
                     await API.auth.resetPassword(token, finalEmail, newPassword, cryptoUpdate);
                     Components.toast('Password reset successful. Please sign in.', 'success');
-                    history.replaceState(null, '', '/');
-                    window.location.hash = '#/login';
-                    window.location.reload();
+                    window.location.replace('/login');
                 } catch (err) {
                     const msg = friendlyAuthError(err);
                     setFormError('reset-error', msg);
@@ -469,9 +468,7 @@ const Auth = (() => {
             })();
 
             loginBtn?.addEventListener('click', () => {
-                history.replaceState(null, '', '/');
-                window.location.hash = '#/login';
-                window.location.reload();
+                window.location.replace('/login');
             });
         }
 
@@ -551,6 +548,15 @@ const Auth = (() => {
                 btn.querySelector('span').textContent = 'Create Account';
             }
         });
+
+        if (window.location.pathname === '/login') {
+            const notice = sessionStorage.getItem('fd_auth_notice');
+            if (notice) {
+                sessionStorage.removeItem('fd_auth_notice');
+                showLoginForm();
+                setFormError('login-error', notice);
+            }
+        }
     }
 
     return { init };

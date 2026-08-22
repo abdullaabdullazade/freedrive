@@ -817,6 +817,11 @@ const App = (() => {
     }
 
     function init() {
+        // Migrate the old hash login URL to the canonical history route.
+        if (window.location.hash === '#/login') {
+            history.replaceState(null, '', `/login${window.location.search}`);
+        }
+
         if (window.location.hash.startsWith('#/public-share/')) {
             showPublicShareDownload();
             return;
@@ -833,8 +838,15 @@ const App = (() => {
         if (API.isLoggedIn()) SidebarTree.init();
 
         if (API.isLoggedIn()) {
+            if (window.location.pathname === '/login') {
+                history.replaceState(null, '', '/');
+            }
             showApp();
         } else {
+            const authPath = window.location.pathname;
+            if (authPath !== '/login' && !authPath.startsWith('/reset-password') && !authPath.startsWith('/confirm-email')) {
+                history.replaceState(null, '', '/login');
+            }
             showAuth();
         }
 
@@ -1254,6 +1266,7 @@ const App = (() => {
             }
             API.clearAuth();
             SidebarTree.invalidateAll();
+            history.replaceState(null, '', '/login');
             showAuth();
         });
 

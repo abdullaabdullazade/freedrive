@@ -49,6 +49,15 @@ const API = (() => {
         // Keep fd_device_id so re-login overwrites the same device session.
     }
 
+    let _sessionExpiryRedirected = false;
+    function redirectToLogin() {
+        if (_sessionExpiryRedirected) return;
+        _sessionExpiryRedirected = true;
+        clearAuth();
+        sessionStorage.setItem('fd_auth_notice', 'Session expired. Please sign in again.');
+        window.location.replace('/login');
+    }
+
     function getDeviceID() {
         let id = localStorage.getItem('fd_device_id') || '';
         if (!id) {
@@ -95,11 +104,12 @@ const API = (() => {
             || path === '/auth/verify-2fa'
             || path === '/auth/2fa/send-email'
             || path === '/auth/forgot-password';
-        if (res.status === 401 && !isRetry && refreshToken && !isPublicAuth) {
-            const refreshed = await tryRefresh();
-            if (refreshed) return request(method, path, body, true, rlRetries);
-            clearAuth();
-            window.location.hash = '#/login';
+        if (res.status === 401 && !isPublicAuth && accessToken) {
+            if (!isRetry && refreshToken) {
+                const refreshed = await tryRefresh();
+                if (refreshed) return request(method, path, body, true, rlRetries);
+            }
+            redirectToLogin();
             throw new Error('Session expired');
         }
 
@@ -144,6 +154,11 @@ const API = (() => {
             xhr.onload = () => {
                 let payload = {};
                 try { payload = JSON.parse(xhr.responseText || '{}'); } catch {}
+                if (xhr.status === 401 && accessToken) {
+                    redirectToLogin();
+                    reject(new Error('Session expired'));
+                    return;
+                }
                 if (xhr.status >= 200 && xhr.status < 300) {
                     resolve(payload);
                 } else {
@@ -175,6 +190,11 @@ const API = (() => {
             xhr.onload = () => {
                 let payload = {};
                 try { payload = JSON.parse(xhr.responseText || '{}'); } catch {}
+                if (xhr.status === 401 && accessToken) {
+                    redirectToLogin();
+                    reject(new Error('Session expired'));
+                    return;
+                }
                 if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
                 else reject(new Error(payload.error || `Chunk upload failed (${xhr.status})`));
             };
@@ -259,6 +279,10 @@ const API = (() => {
         const res = await fetch(`${BASE}/files/${fileId}/download`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
+        if (res.status === 401 && accessToken) {
+            redirectToLogin();
+            throw new Error('Session expired');
+        }
         if (!res.ok) throw new Error('Download failed');
         const blob = await res.blob();
         return {
@@ -419,6 +443,10 @@ const API = (() => {
             const res = await fetch(`${BASE}/admin/backup/download/${encodeURIComponent(filename)}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
+            if (res.status === 401 && accessToken) {
+                redirectToLogin();
+                throw new Error('Session expired');
+            }
             if (!res.ok) {
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || `Download failed (${res.status})`);
