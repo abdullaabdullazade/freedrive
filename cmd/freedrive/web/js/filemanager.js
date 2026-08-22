@@ -520,6 +520,7 @@ const FileManager = (() => {
         if (mt.startsWith('image/')) return 'image';
         if (mt.startsWith('video/')) return 'video';
         if (mt.startsWith('audio/')) return 'audio';
+        if (['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'oga', 'opus'].includes(ext)) return 'audio';
         if (mt === 'application/pdf' || ext === 'pdf') return 'pdf';
         if (mt.includes('presentation') || mt.includes('powerpoint') || ['ppt', 'pptx', 'odp', 'key'].includes(ext)) return 'presentation';
         if (mt.includes('zip') || mt.includes('rar') || mt.includes('gzip') || ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'archive';
@@ -6062,6 +6063,8 @@ const FileManager = (() => {
         let idx = Math.max(0, playlist.findIndex((f) => f.id === file.id));
         let repeat = false;
         let shuffle = false;
+        shuffleButton.setAttribute('aria-pressed', 'false');
+        repeatButton.setAttribute('aria-pressed', 'false');
 
         const formatAudioTime = (seconds) => {
             if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -6069,9 +6072,23 @@ const FileManager = (() => {
             return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
         };
 
-        const setAudioSource = (sourceBlob) => {
+        const audioMimeFor = (item, sourceBlob) => {
+            const sourceMime = String(sourceBlob.type || item?.mime_type || '').toLowerCase();
+            if (sourceMime && sourceMime !== 'application/octet-stream' && sourceMime !== 'binary/octet-stream') {
+                return sourceMime;
+            }
+            const extension = getFileExtension(item?.name || '');
+            return {
+                mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav',
+                flac: 'audio/flac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+            }[extension] || sourceMime || 'application/octet-stream';
+        };
+
+        const setAudioSource = (sourceBlob, item) => {
             if (player.dataset.objectUrl) URL.revokeObjectURL(player.dataset.objectUrl);
-            const localURL = URL.createObjectURL(sourceBlob);
+            const mime = audioMimeFor(item, sourceBlob);
+            const playableBlob = sourceBlob.type === mime ? sourceBlob : new Blob([sourceBlob], { type: mime });
+            const localURL = URL.createObjectURL(playableBlob);
             player.dataset.objectUrl = localURL;
             audio.src = localURL;
         };
@@ -6084,21 +6101,33 @@ const FileManager = (() => {
             toggle.title = paused ? 'Play' : 'Pause';
         };
 
+        const playAudio = async (silentAutoplay = false) => {
+            try {
+                await audio.play();
+            } catch (err) {
+                syncPlayButton();
+                if (silentAutoplay && err?.name === 'NotAllowedError') return;
+                const detail = err?.name === 'NotSupportedError'
+                    ? 'This audio codec is not supported by your browser.'
+                    : (err?.message || 'Unknown playback error');
+                Components.toast(`Could not play audio: ${detail}`, 'error');
+            }
+        };
+
         const playIndex = async (nextIdx) => {
             idx = nextIdx;
             const current = playlist[idx];
             const dec = await decryptFileBlob(current);
-            setAudioSource(dec);
+            setAudioSource(dec, current);
             title.textContent = current.name;
             title.title = current.name;
-            audio.play().catch(() => Components.toast('Could not start audio playback', 'error'));
+            await playAudio();
         };
 
-        setAudioSource(blob);
-        audio.play().catch(() => Components.toast('Could not start audio playback', 'error'));
+        setAudioSource(blob, file);
 
         toggle.onclick = () => {
-            if (audio.paused) audio.play(); else audio.pause();
+            if (audio.paused) playAudio(); else audio.pause();
         };
         document.getElementById('audio-prev').onclick = () => {
             const next = idx <= 0 ? playlist.length - 1 : idx - 1;
@@ -6119,6 +6148,10 @@ const FileManager = (() => {
 
         audio.onplay = syncPlayButton;
         audio.onpause = syncPlayButton;
+        audio.onerror = () => {
+            syncPlayButton();
+            Components.toast('Could not play audio. The file may use an unsupported codec or be damaged.', 'error');
+        };
         audio.onloadedmetadata = () => {
             duration.textContent = formatAudioTime(audio.duration);
             seek.value = '0';
@@ -6143,7 +6176,8 @@ const FileManager = (() => {
 
         syncPlayButton();
         startWaveform(audio);
-        Components.toast('Audio playback started', 'success');
+        await playAudio(true);
+        Components.toast(audio.paused ? 'Audio ready — press Play' : 'Audio playback started', 'success');
     }
 
     function startWaveform(audio) {
@@ -6153,26 +6187,16 @@ const FileManager = (() => {
         if (audio.dataset.visualizerStarted === 'true') return;
         audio.dataset.visualizerStarted = 'true';
 
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = actx.createMediaElementSource(audio);
-        const analyser = actx.createAnalyser();
-        analyser.fftSize = 128;
-        src.connect(analyser);
-        analyser.connect(actx.destination);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-
         const draw = () => {
-            if (audio.paused) {
-                requestAnimationFrame(draw);
-                return;
-            }
-            analyser.getByteFrequencyData(data);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#7c5cfc';
-            const barW = canvas.width / data.length;
-            for (let i = 0; i < data.length; i += 1) {
-                const h = (data[i] / 255) * canvas.height;
-                ctx.fillRect(i * barW, canvas.height - h, barW - 1, h);
+            const bars = 48;
+            const barW = canvas.width / bars;
+            const progress = audio.duration ? audio.currentTime / audio.duration : 0;
+            for (let i = 0; i < bars; i += 1) {
+                const phase = i * 0.72 + (audio.paused ? 0 : audio.currentTime * 5);
+                const h = 5 + (Math.sin(phase) * 0.5 + 0.5) * (canvas.height - 8);
+                ctx.fillStyle = i / bars <= progress ? '#c4b5fd' : 'rgba(167,139,250,.42)';
+                ctx.fillRect(i * barW, canvas.height - h, Math.max(1, barW - 1.5), h);
             }
             requestAnimationFrame(draw);
         };
