@@ -20,13 +20,17 @@
 <body>
     <div id="auth-screen" class="auth-screen">
         <div class="auth-container">
-            <div class="auth-logo">
-                <div class="logo-drive">
-                    <svg width="40" height="40" viewBox="0 0 87.3 78"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
+            <section class="auth-brand-panel">
+                <div class="auth-logo">
+                    <div class="logo-drive" aria-label="FreeDrive">
+                        <svg width="48" height="48" viewBox="0 0 87.3 78"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
+                        <span>FreeDrive</span>
+                    </div>
+                    <h1>Sign in</h1>
+                    <p class="tagline">to continue to FreeDrive</p>
                 </div>
-                <h1>Sign in</h1>
-                <p class="tagline">to continue to FreeDrive</p>
-            </div>
+            </section>
+            <section class="auth-action-panel">
             <div class="auth-tabs">
                 <button class="auth-tab active" data-tab="login" id="login-tab">Sign in</button>
                 <button class="auth-tab" data-tab="register" id="register-tab">Create account</button>
@@ -86,6 +90,7 @@
                     Zero-knowledge encrypted
                 </div>
             </div>
+            </section>
         </div>
     </div>
 
