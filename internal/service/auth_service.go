@@ -241,17 +241,21 @@ func (s *AuthService) ResetPasswordByEmail(ctx context.Context, email, newPasswo
 		return fmt.Errorf("hash password: %w", err)
 	}
 	user.PasswordHash = string(hash)
-	return s.userRepo.Update(ctx, user)
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return err
+	}
+	_ = s.userRepo.DeleteUserRefreshTokens(ctx, user.ID)
+	return s.sessionRepo.RevokeAllForUser(ctx, user.ID, "")
 }
 
 // ValidateAccessToken validates a JWT access token and returns the claims.
 func (s *AuthService) ValidateAccessToken(tokenStr string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return s.jwtSecret, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer("freedrive"))
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
@@ -264,20 +268,25 @@ func (s *AuthService) ValidateAccessToken(tokenStr string) (*Claims, error) {
 	return claims, nil
 }
 
-// EnsureSessionActive verifies the session is still valid and optionally updates last_seen.
-func (s *AuthService) EnsureSessionActive(ctx context.Context, sessionID string) error {
-	if sessionID == "" {
-		return ErrSessionRevoked
+// ValidateSession verifies the session belongs to the token subject and returns
+// fresh user data so authorization never trusts stale role claims from a JWT.
+func (s *AuthService) ValidateSession(ctx context.Context, sessionID, userID string) (*domain.User, error) {
+	if sessionID == "" || userID == "" {
+		return nil, ErrSessionRevoked
 	}
 	session, err := s.sessionRepo.GetByID(ctx, sessionID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if session == nil || session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
-		return ErrSessionRevoked
+	if session == nil || session.UserID != userID || session.RevokedAt != nil || session.ExpiresAt.Before(time.Now()) {
+		return nil, ErrSessionRevoked
+	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil || user == nil || user.Suspended {
+		return nil, ErrSessionRevoked
 	}
 	_ = s.sessionRepo.TouchLastSeen(ctx, sessionID, 60)
-	return nil
+	return user, nil
 }
 
 // SyncSessionDeviceMeta upgrades session device metadata from the current request

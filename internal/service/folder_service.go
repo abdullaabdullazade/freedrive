@@ -51,6 +51,9 @@ func NewFolderService(
 // folder is created — never auto-restored into My Drive (that would undo a
 // mobile/web Move to bin when desktop sync retries create_or_resolve).
 func (s *FolderService) Create(ctx context.Context, folder *domain.Folder) error {
+	if err := ValidateItemName(folder.Name); err != nil {
+		return err
+	}
 	if folder.ParentID != nil && *folder.ParentID != "" {
 		if err := s.access.CanWriteFolder(ctx, *folder.ParentID, folder.OwnerID); err != nil {
 			return err
@@ -198,6 +201,9 @@ func (s *FolderService) Get(ctx context.Context, folderID, ownerID string) (*dom
 
 // Rename renames a folder.
 func (s *FolderService) Rename(ctx context.Context, folderID, ownerID, newName string) error {
+	if err := ValidateItemName(newName); err != nil {
+		return err
+	}
 	if err := s.access.CanWriteFolder(ctx, folderID, ownerID); err != nil {
 		return err
 	}

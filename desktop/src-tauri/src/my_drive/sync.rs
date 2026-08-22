@@ -1415,5 +1415,24 @@ fn join_my_drive_relative(parent_relative: &str, name: &str) -> String {
 }
 
 fn sanitize_name(name: &str) -> String {
-    name.replace(['/', '\\'], "_")
+    let mut safe: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || r#"<>:"/\\|?*"#.contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    safe = safe.trim_end_matches([' ', '.']).to_string();
+    let stem = safe.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'));
+    if safe.is_empty() || safe == "." || safe == ".." || reserved {
+        safe.insert(0, '_');
+    }
+    safe
 }

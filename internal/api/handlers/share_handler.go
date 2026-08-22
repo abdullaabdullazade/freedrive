@@ -201,19 +201,20 @@ func (h *ShareHandler) ListLinks(w http.ResponseWriter, r *http.Request) {
 // PublicLinkInfo handles GET /api/v1/public/share/{token}
 func (h *ShareHandler) PublicLinkInfo(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
-	password := r.URL.Query().Get("password")
+	password := strings.TrimSpace(r.Header.Get("X-Share-Password"))
 	link, err := h.shareService.ResolveLink(r.Context(), token, password)
 	if err != nil {
 		writeError(w, "invalid or expired share link", http.StatusBadRequest)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, link)
 }
 
 // PublicLinkDownload handles GET /api/v1/public/share/{token}/download
 func (h *ShareHandler) PublicLinkDownload(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
-	password := r.URL.Query().Get("password")
+	password := strings.TrimSpace(r.Header.Get("X-Share-Password"))
 	link, err := h.shareService.ResolveLink(r.Context(), token, password)
 	if err != nil || link.FileID == nil {
 		writeError(w, "invalid or expired share link", http.StatusBadRequest)
@@ -236,6 +237,7 @@ func (h *ShareHandler) PublicLinkDownload(w http.ResponseWriter, r *http.Request
 	_ = h.shareService.RecordLinkDownload(r.Context(), link.ID)
 
 	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
 	w.Header().Set("Content-Length", strconv.FormatInt(file.EncryptedSize, 10))
 	w.Header().Set("X-File-IV", file.IV)

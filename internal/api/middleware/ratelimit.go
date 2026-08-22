@@ -45,7 +45,10 @@ func NewRateLimiter(rate, burst int) *RateLimiter {
 // Limit returns rate limiting middleware.
 func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
+		ip := ClientIP(r)
+		if ip == "" {
+			ip = r.RemoteAddr
+		}
 
 		rl.mu.Lock()
 		v, exists := rl.visitors[ip]

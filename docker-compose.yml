@@ -1,16 +1,18 @@
-version: '3'
-
 services:
   freedrive:
     image: marcinx98x/freedrive:latest
     container_name: freedrive
     restart: unless-stopped
-    user: "0:0"
+    user: "${FREEDRIVE_UID:-1000}:${FREEDRIVE_GID:-1000}"
     ports:
-      - "8080:8080"
+      - "${FREEDRIVE_PORT:-8080}:8080"
     environment:
-      - FREEDRIVE_ADMIN_EMAIL=admin@twoj-domena.com
-      - FREEDRIVE_ADMIN_PASSWORD=BardzoSilneHaslo123!
-      - FREEDRIVE_MAX_UPLOAD_MB=10240
+      FREEDRIVE_PORT: 8080
+      FREEDRIVE_DATA_DIR: /app/data
+      FREEDRIVE_ADMIN_EMAIL: "${FREEDRIVE_ADMIN_EMAIL:-admin@freedrive.local}"
+      FREEDRIVE_ADMIN_PASSWORD: "${FREEDRIVE_ADMIN_PASSWORD:?Set FREEDRIVE_ADMIN_PASSWORD in .env}"
+      FREEDRIVE_JWT_SECRET: "${FREEDRIVE_JWT_SECRET:-}"
+      FREEDRIVE_MAX_UPLOAD_MB: "${FREEDRIVE_MAX_UPLOAD_MB:-10240}"
+      FREEDRIVE_TRUSTED_PROXIES: "${FREEDRIVE_TRUSTED_PROXIES:-}"
     volumes:
-      - /volume2/docker/freedrive/data:/app/data
+      - "${FREEDRIVE_DATA_PATH:-./data}:/app/data"

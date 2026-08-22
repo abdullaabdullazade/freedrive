@@ -26,7 +26,7 @@ func Load() (*Config, error) {
 		JWTSecret:      getEnvStr("FREEDRIVE_JWT_SECRET", ""),
 		MaxUploadBytes: int64(getEnvInt("FREEDRIVE_MAX_UPLOAD_MB", 5120)) * 1024 * 1024,
 		AdminEmail:     getEnvStr("FREEDRIVE_ADMIN_EMAIL", "admin@freedrive.local"),
-		AdminPassword:  getEnvStr("FREEDRIVE_ADMIN_PASSWORD", "admin123"),
+		AdminPassword:  getEnvStr("FREEDRIVE_ADMIN_PASSWORD", ""),
 	}
 
 	// Auto-generate or load JWT secret if not provided via env
@@ -46,6 +46,12 @@ func Load() (*Config, error) {
 			}
 			cfg.JWTSecret = secret
 		}
+	}
+	if cfg.JWTSecret == "gents-reorder-goldsmith-proton-siren-spout" {
+		return nil, fmt.Errorf("FREEDRIVE_JWT_SECRET uses a publicly known example value; remove it to auto-generate a secret")
+	}
+	if len(cfg.JWTSecret) < 32 {
+		return nil, fmt.Errorf("FREEDRIVE_JWT_SECRET must be at least 32 characters")
 	}
 
 	return cfg, nil

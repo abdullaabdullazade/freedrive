@@ -74,7 +74,7 @@ func TestIssueTokensCreatesSessionWithSID(t *testing.T) {
 	if claims.SessionID == "" {
 		t.Fatal("expected sid claim")
 	}
-	if err := auth.EnsureSessionActive(ctx, claims.SessionID); err != nil {
+	if _, err := auth.ValidateSession(ctx, claims.SessionID, user.ID); err != nil {
 		t.Fatalf("session should be active: %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestRevokeSessionBlocksAccess(t *testing.T) {
 	if err := auth.RevokeSession(ctx, user.ID, claims.SessionID); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
-	if err := auth.EnsureSessionActive(ctx, claims.SessionID); err == nil {
+	if _, err := auth.ValidateSession(ctx, claims.SessionID, user.ID); err == nil {
 		t.Fatal("expected revoked session to fail EnsureSessionActive")
 	}
 }
@@ -167,10 +167,10 @@ func TestRevokeOtherSessionsKeepsCurrent(t *testing.T) {
 	if err := auth.RevokeOtherSessions(ctx, user.ID, currentClaims.SessionID); err != nil {
 		t.Fatalf("revoke others: %v", err)
 	}
-	if err := auth.EnsureSessionActive(ctx, currentClaims.SessionID); err != nil {
+	if _, err := auth.ValidateSession(ctx, currentClaims.SessionID, user.ID); err != nil {
 		t.Fatalf("current should remain active: %v", err)
 	}
-	if err := auth.EnsureSessionActive(ctx, otherClaims.SessionID); err == nil {
+	if _, err := auth.ValidateSession(ctx, otherClaims.SessionID, user.ID); err == nil {
 		t.Fatal("other session should be revoked")
 	}
 
@@ -213,8 +213,50 @@ func TestLegacyRefreshTokenMigratesToSession(t *testing.T) {
 	if claims.SessionID == "" {
 		t.Fatal("expected sid after migration")
 	}
-	if err := auth.EnsureSessionActive(ctx, claims.SessionID); err != nil {
+	if _, err := auth.ValidateSession(ctx, claims.SessionID, user.ID); err != nil {
 		t.Fatalf("migrated session inactive: %v", err)
+	}
+}
+
+func TestValidateSessionRejectsDifferentTokenSubject(t *testing.T) {
+	auth, userRepo, db := newTestAuth(t)
+	defer db.Close()
+	ctx := context.Background()
+	owner := createTestUser(t, userRepo, "session-owner", "owner@test.local")
+	attacker := createTestUser(t, userRepo, "claim-attacker", "attacker@test.local")
+
+	tokens, err := auth.IssueTokens(ctx, owner, service.DeviceInfo{DeviceName: "Browser"})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	claims, err := auth.ValidateAccessToken(tokens.AccessToken)
+	if err != nil {
+		t.Fatalf("validate token: %v", err)
+	}
+	if _, err := auth.ValidateSession(ctx, claims.SessionID, attacker.ID); err == nil {
+		t.Fatal("session must not validate for a different token subject")
+	}
+}
+
+func TestResetPasswordRevokesAllSessions(t *testing.T) {
+	auth, userRepo, db := newTestAuth(t)
+	defer db.Close()
+	ctx := context.Background()
+	user := createTestUser(t, userRepo, "reset-user", "reset@test.local")
+
+	tokens, err := auth.IssueTokens(ctx, user, service.DeviceInfo{DeviceName: "Browser"})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	claims, _ := auth.ValidateAccessToken(tokens.AccessToken)
+	if err := auth.ResetPasswordByEmail(ctx, user.Email, "new-password-123"); err != nil {
+		t.Fatalf("reset password: %v", err)
+	}
+	if _, err := auth.ValidateSession(ctx, claims.SessionID, user.ID); err == nil {
+		t.Fatal("password reset must revoke existing sessions")
+	}
+	if _, err := auth.Refresh(ctx, tokens.RefreshToken, service.DeviceInfo{}); err == nil {
+		t.Fatal("password reset must revoke refresh tokens")
 	}
 }
 

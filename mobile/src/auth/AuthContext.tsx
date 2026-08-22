@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api, setUnauthorizedHandler } from "../api/client";
 import type { LoginResult, User } from "../api/types";
-import { is2FAChallenge } from "../api/types";
+import { is2FAChallenge, isLoginApprovalChallenge } from "../api/types";
 import {
   clearSession,
   getServerUrl,
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setServerUrl(url);
     setServerUrlState(url.replace(/\/$/, ""));
     const result = await api.login(email.trim().toLowerCase(), password);
-    if (is2FAChallenge(result)) {
+    if (is2FAChallenge(result) || isLoginApprovalChallenge(result)) {
       pendingLoginPassword = password;
       return result;
     }

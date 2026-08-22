@@ -7,6 +7,7 @@ use crate::db::{
 };
 use crate::error::{AppError, AppResult};
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use windows::Win32::Storage::CloudFilters::CF_CALLBACK_INFO;
 
 pub const ROOT_FOLDER_CONFIG_KEY: &str = "my_drive_root_folder_id";
@@ -71,6 +72,7 @@ pub fn resolve_my_drive_root_id(db: &DbHandle) -> AppResult<String> {
     Ok(config_get(&conn, ROOT_FOLDER_CONFIG_KEY)?.unwrap_or_else(|| "root".to_string()))
 }
 
+#[cfg(windows)]
 pub fn resolve_folder_id_from_identity(info: &CF_CALLBACK_INFO) -> Option<String> {
     if info.FileIdentity.is_null() || info.FileIdentityLength == 0 {
         return None;
@@ -96,6 +98,7 @@ pub enum FolderIdSource {
     RootConfig,
 }
 
+#[cfg(windows)]
 pub fn resolve_folder_id_for_fetch(
     db: &DbHandle,
     info: &CF_CALLBACK_INFO,
@@ -316,9 +319,10 @@ fn resolve_encryption_key(db: &DbHandle, file_id: &str) -> AppResult<String> {
         if item_type != "file" {
             return Err(AppError::msg("FETCH_DATA on non-file"));
         }
-        let file_name = Path::new(&rel_path)
-            .file_name()
-            .and_then(|n| n.to_str())
+        let file_name = rel_path
+            .rsplit(['/', '\\'])
+            .next()
+            .filter(|name| !name.is_empty())
             .ok_or_else(|| AppError::msg("invalid file path in placeholder"))?;
         pending_file_name = Some(file_name.to_string());
         let folder_id = parent_remote_id.unwrap_or_else(|| {

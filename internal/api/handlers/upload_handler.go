@@ -93,20 +93,20 @@ func (h *UploadHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	h.cleanupExpired()
 
 	var req struct {
-		Name           string  `json:"name"`
-		MimeType       string  `json:"mime_type"`
-		IV             string  `json:"iv"`
-		OriginalSize   int64   `json:"original_size"`
-		EncryptedSize  int64   `json:"encrypted_size"`
-		FolderID       *string `json:"folder_id"`
-		FileID         *string `json:"file_id"`
+		Name          string  `json:"name"`
+		MimeType      string  `json:"mime_type"`
+		IV            string  `json:"iv"`
+		OriginalSize  int64   `json:"original_size"`
+		EncryptedSize int64   `json:"encrypted_size"`
+		FolderID      *string `json:"folder_id"`
+		FileID        *string `json:"file_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" {
-		writeError(w, "name is required", http.StatusBadRequest)
+	if err := service.ValidateItemName(req.Name); err != nil {
+		writeError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if req.EncryptedSize <= 0 {
@@ -129,6 +129,12 @@ func (h *UploadHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MimeType == "" {
 		req.MimeType = "application/octet-stream"
+	}
+	if (req.FileID == nil || *req.FileID == "") && req.FolderID != nil && *req.FolderID != "" {
+		if err := h.access.CanWriteFolder(r.Context(), *req.FolderID, userID); err != nil {
+			writeError(w, "access denied", http.StatusForbidden)
+			return
+		}
 	}
 
 	user, err := h.userRepo.GetByID(r.Context(), userID)
@@ -330,6 +336,11 @@ func (h *UploadHandler) PutChunk(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UploadHandler) finalize(ctx context.Context, session *domain.UploadSession) (*domain.File, error) {
+	if (session.FileID == nil || *session.FileID == "") && session.FolderID != nil && *session.FolderID != "" {
+		if err := h.access.CanWriteFolder(ctx, *session.FolderID, session.UserID); err != nil {
+			return nil, fmt.Errorf("access denied")
+		}
+	}
 	info, err := os.Stat(session.TempPath)
 	if err != nil {
 		return nil, fmt.Errorf("temp file missing")

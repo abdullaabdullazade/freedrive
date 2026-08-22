@@ -80,13 +80,18 @@ func main() {
 	computerService := service.NewComputerService(computerRepo, folderRepo)
 	folderService := service.NewFolderService(folderRepo, fileRepo, userRepo, diskStorage, activityRepo, computerRepo, accessService, syncChangeService)
 
-	if err := authService.EnsureAdmin(context.Background(), cfg.AdminEmail, cfg.AdminPassword); err != nil {
-		log.Printf("Warning: Could not create admin user: %v", err)
-	} else {
-		count, _ := userRepo.Count(context.Background())
-		if count == 1 {
-			log.Printf("✓ Admin user created: %s", cfg.AdminEmail)
+	userCount, err := userRepo.Count(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to count users: %v", err)
+	}
+	if userCount == 0 && len(cfg.AdminPassword) < 12 {
+		log.Fatal("FREEDRIVE_ADMIN_PASSWORD must be set to at least 12 characters for first startup")
+	}
+	if userCount == 0 {
+		if err := authService.EnsureAdmin(context.Background(), cfg.AdminEmail, cfg.AdminPassword); err != nil {
+			log.Fatalf("Could not create initial admin user: %v", err)
 		}
+		log.Printf("✓ Admin user created: %s", cfg.AdminEmail)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

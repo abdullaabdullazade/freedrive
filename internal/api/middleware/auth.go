@@ -41,7 +41,8 @@ func Auth(authService *service.AuthService) func(next http.Handler) http.Handler
 				return
 			}
 
-			if err := authService.EnsureSessionActive(r.Context(), claims.SessionID); err != nil {
+			user, err := authService.ValidateSession(r.Context(), claims.SessionID, claims.UserID)
+			if err != nil {
 				http.Error(w, `{"error":"session expired"}`, http.StatusUnauthorized)
 				return
 			}
@@ -54,10 +55,10 @@ func Auth(authService *service.AuthService) func(next http.Handler) http.Handler
 				})
 			}
 
-			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-			ctx = context.WithValue(ctx, UserRoleKey, claims.Role)
-			ctx = context.WithValue(ctx, UserEmailKey, claims.Email)
-			ctx = context.WithValue(ctx, UsernameKey, claims.Username)
+			ctx := context.WithValue(r.Context(), UserIDKey, user.ID)
+			ctx = context.WithValue(ctx, UserRoleKey, user.Role)
+			ctx = context.WithValue(ctx, UserEmailKey, user.Email)
+			ctx = context.WithValue(ctx, UsernameKey, user.Username)
 			ctx = context.WithValue(ctx, SessionIDKey, claims.SessionID)
 
 			next.ServeHTTP(w, r.WithContext(ctx))

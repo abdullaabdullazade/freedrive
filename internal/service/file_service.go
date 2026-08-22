@@ -47,7 +47,13 @@ func NewFileService(
 
 // Upload stores a file and creates metadata.
 func (s *FileService) Upload(ctx context.Context, file *domain.File, blobPath string) error {
+	if err := ValidateItemName(file.Name); err != nil {
+		return err
+	}
 	if file.FolderID != nil && *file.FolderID != "" && s.folderRepo != nil {
+		if err := s.access.CanWriteFolder(ctx, *file.FolderID, file.OwnerID); err != nil {
+			return fmt.Errorf("access denied")
+		}
 		folder, err := s.folderRepo.GetByID(ctx, *file.FolderID)
 		if err != nil {
 			return err
@@ -224,6 +230,9 @@ func (s *FileService) Restore(ctx context.Context, fileID, userID string) error 
 
 // Rename renames a file.
 func (s *FileService) Rename(ctx context.Context, fileID, userID, newName string) error {
+	if err := ValidateItemName(newName); err != nil {
+		return err
+	}
 	if err := s.access.CanWriteFile(ctx, fileID, userID); err != nil {
 		return err
 	}
@@ -476,6 +485,9 @@ func (s *FileService) logActivity(ctx context.Context, userID string, action dom
 
 // UpdateContent replaces the encrypted blob for an existing file and creates a version snapshot.
 func (s *FileService) UpdateContent(ctx context.Context, fileID, userID, name, mimeType, iv string, originalSize int64, r io.Reader) (*domain.File, error) {
+	if err := ValidateItemName(name); err != nil {
+		return nil, err
+	}
 	if err := s.access.CanWriteFile(ctx, fileID, userID); err != nil {
 		return nil, err
 	}
@@ -576,6 +588,9 @@ func (s *FileService) UpdateContentFromBlob(
 	originalSize, encryptedSize int64,
 	blobPath string,
 ) (*domain.File, error) {
+	if err := ValidateItemName(name); err != nil {
+		return nil, err
+	}
 	if err := s.access.CanWriteFile(ctx, fileID, userID); err != nil {
 		_ = s.storage.Delete(blobPath)
 		return nil, err

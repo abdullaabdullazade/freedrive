@@ -627,8 +627,8 @@ For encrypted payloads **> 32 MiB**, clients open a session and send **8 MiB
 
 ### Public (no auth)
 
-- `GET /public/share/{token}` — share link metadata (`?password=` if protected)
-- `GET /public/share/{token}/download` — download file via share link (`?password=` if protected)
+- `GET /public/share/{token}` — share link metadata (`X-Share-Password` header if protected)
+- `GET /public/share/{token}/download` — download file via share link (`X-Share-Password` header if protected)
 
 ### Admin (Requires `admin` role)
 

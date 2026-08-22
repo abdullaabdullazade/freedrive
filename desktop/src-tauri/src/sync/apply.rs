@@ -11,6 +11,44 @@ use crate::sync::suppress::WatcherSuppress;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+fn is_windows_reserved_name(component: &str) -> bool {
+    let stem = component.split('.').next().unwrap_or("").to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+}
+
+fn validate_path_component(component: &str) -> AppResult<()> {
+    if component.is_empty()
+        || component == "."
+        || component == ".."
+        || component.ends_with([' ', '.'])
+        || component.chars().any(|c| c.is_control() || r#"<>:"|?*"#.contains(c))
+        || is_windows_reserved_name(component)
+    {
+        return Err(AppError::msg("unsafe remote path component"));
+    }
+    Ok(())
+}
+
+fn safe_join(root: &str, relative: &str) -> AppResult<PathBuf> {
+    if relative.trim().is_empty() {
+        return Err(AppError::msg("empty remote path"));
+    }
+    let mut out = PathBuf::from(root);
+    let mut count = 0usize;
+    for component in relative.split(['/', '\\']) {
+        validate_path_component(component)?;
+        out.push(component);
+        count += 1;
+    }
+    if count == 0 {
+        return Err(AppError::msg("empty remote path"));
+    }
+    Ok(out)
+}
+
 fn current_user_id() -> AppResult<String> {
     crate::auth_store::load_auth()
         .ok()
@@ -137,7 +175,7 @@ async fn apply_remote_file(
         }
     };
 
-    let local_path = PathBuf::from(&local_root).join(relative.replace('/', "\\"));
+    let local_path = safe_join(&local_root, &relative)?;
 
     let pending_local = {
         let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
@@ -316,7 +354,7 @@ fn apply_remote_folder_create(
         }
     };
 
-    let local_path = PathBuf::from(&local_root).join(relative.replace('/', "\\"));
+    let local_path = safe_join(&local_root, &relative)?;
     suppress.run_suppressed(&local_path, || {
         std::fs::create_dir_all(&local_path).ok();
     });
@@ -340,7 +378,7 @@ fn apply_remote_file_rename(
             .into_iter()
             .find(|f| f.id == sync_folder_id);
         if let Some(sf) = sf {
-            let old_path = PathBuf::from(&sf.local_path).join(old_relative.replace('/', "\\"));
+            let old_path = safe_join(&sf.local_path, &old_relative)?;
             let new_relative = if change.parent_id.is_some() {
                 resolve_sync_context(
                     &conn,
@@ -363,7 +401,7 @@ fn apply_remote_file_rename(
                     })
                     .unwrap_or_else(|| change.name.clone())
             };
-            let new_path = PathBuf::from(&sf.local_path).join(new_relative.replace('/', "\\"));
+            let new_path = safe_join(&sf.local_path, &new_relative)?;
             suppress.run_suppressed(&new_path, || {
                 if old_path.exists() {
                     if let Some(parent) = new_path.parent() {
@@ -400,7 +438,7 @@ fn apply_remote_folder_rename(
     let folders = list_sync_folders(&conn)?;
     for sf in folders {
         if let Some(old_rel) = find_relative_for_remote_folder(&conn, sf.id, &change.entity_id)? {
-            let old_path = PathBuf::from(&sf.local_path).join(old_rel.replace('/', "\\"));
+            let old_path = safe_join(&sf.local_path, &old_rel)?;
             let parent_relative = Path::new(&old_rel)
                 .parent()
                 .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -410,7 +448,7 @@ fn apply_remote_folder_rename(
             } else {
                 format!("{}/{}", parent_relative, change.name)
             };
-            let new_path = PathBuf::from(&sf.local_path).join(new_relative.replace('/', "\\"));
+            let new_path = safe_join(&sf.local_path, &new_relative)?;
             suppress.run_suppressed(&new_path, || {
                 if old_path.exists() {
                     if let Some(parent) = new_path.parent() {
@@ -462,7 +500,7 @@ fn apply_remote_delete(
                 .into_iter()
                 .find(|f| f.id == sync_folder_id);
             if let Some(sf) = sf {
-                let local_path = PathBuf::from(&sf.local_path).join(relative.replace('/', "\\"));
+                let local_path = safe_join(&sf.local_path, &relative)?;
                 suppress.run_suppressed(&local_path, || {
                     let _ = std::fs::remove_file(&local_path);
                 });
@@ -473,7 +511,7 @@ fn apply_remote_delete(
         let folders = list_sync_folders(&conn)?;
         for sf in folders {
             if let Some(rel) = find_relative_for_remote_folder(&conn, sf.id, &change.entity_id)? {
-                let local_path = PathBuf::from(&sf.local_path).join(rel.replace('/', "\\"));
+                let local_path = safe_join(&sf.local_path, &rel)?;
                 suppress.run_suppressed(&local_path, || {
                     let _ = std::fs::remove_dir_all(&local_path);
                 });
@@ -486,6 +524,26 @@ fn apply_remote_delete(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::safe_join;
+
+    #[test]
+    fn safe_join_rejects_traversal_and_windows_special_names() {
+        for bad in ["../outside.txt", "dir\\..\\outside.txt", "C:/boot.ini", "CON", "safe/NUL.txt", ""] {
+            assert!(safe_join("C:\\sync", bad).is_err(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn safe_join_accepts_normal_nested_path() {
+        let path = safe_join("C:\\sync", "docs/report.txt").unwrap();
+        assert!(path.ends_with(PathBuf::from("docs").join("report.txt")));
+    }
+
+    use std::path::PathBuf;
 }
 
 pub async fn apply_snapshot(

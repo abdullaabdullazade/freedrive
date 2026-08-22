@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { ApiError } from "../api/client";
-import { is2FAChallenge } from "../api/types";
+import { is2FAChallenge, isLoginApprovalChallenge } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { Logo } from "../components/Logo";
 import type { RootStackParamList } from "../navigation/types";
@@ -44,6 +44,8 @@ export function LoginScreen({ navigation }: Props) {
           method: result.method,
           methodsAvailable: result.methods_available,
         });
+      } else if (isLoginApprovalChallenge(result)) {
+        setError("This sign-in must be approved from an already connected mobile device.");
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err));

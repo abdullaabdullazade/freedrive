@@ -40,10 +40,10 @@ aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
-winreg = "0.55"
 urlencoding = "2"
 
 [target.'cfg(windows)'.dependencies]
+winreg = "0.55"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Storage_CloudFilters",

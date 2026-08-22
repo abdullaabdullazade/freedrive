@@ -8,9 +8,10 @@ pub use cleanup::{clear_my_drive_contents, uninstall_remove_app_data, uninstall_
 pub use provider::{
     api_folder_parent_id, clear_all_hydrate_cache, clear_hydrate_cache_for_file,
     ensure_hydrated_plaintext, fetch_folder_contents, is_under_my_drive,
-    relative_path_from_sync_root, resolve_folder_id_for_fetch, resolve_my_drive_root_id,
-    FolderIdSource, ROOT_FOLDER_CONFIG_KEY,
+    relative_path_from_sync_root, resolve_my_drive_root_id, FolderIdSource, ROOT_FOLDER_CONFIG_KEY,
 };
+#[cfg(windows)]
+pub use provider::resolve_folder_id_for_fetch;
 
 #[cfg(windows)]
 pub use sync::{
