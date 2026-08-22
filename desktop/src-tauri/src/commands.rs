@@ -1555,7 +1555,18 @@ pub async fn create_drive_share_link(
     item_id: String,
     password: String,
 ) -> Result<DriveShareResult, String> {
+    if item_type != "file" {
+        return Err("Public links currently support files only; share folders with a FreeDrive user instead".into());
+    }
     let client = state.api().map_err(|e| e.to_string())?;
+    let key = crate::account_crypto::resolve_file_key(
+        &client,
+        &state.db,
+        &current_user_id()?,
+        &item_id,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     let link = client
         .create_share_link(&item_type, &item_id, &password)
         .await
@@ -1563,9 +1574,10 @@ pub async fn create_drive_share_link(
     Ok(DriveShareResult {
         id: link.id,
         url: Some(format!(
-            "{}/api/v1/public/share/{}/download",
+            "{}/#/public-share/{}?k={}",
             client.server_url().trim_end_matches('/'),
-            link.token
+            link.token,
+            urlencoding::encode(&key),
         )),
     })
 }

@@ -158,10 +158,10 @@ export function DriveItemDialog({ item, onClose, onChanged }: Props) {
               }, "Shared with user.",
             )}>Share</button>
           </div>
-          <div className="drive-dialog-inline">
+          {item.type === "file" && <div className="drive-dialog-inline">
             <input type="password" placeholder="Optional link password" value={linkPassword} onChange={(event) => setLinkPassword(event.target.value)} />
-            <button type="button" className="btn-secondary" disabled={busy} onClick={createLink}>Create link</button>
-          </div>
+            <button type="button" className="btn-secondary" disabled={busy} onClick={createLink}>Create encrypted link</button>
+          </div>}
           {shareUrl && <div className="drive-share-link"><input readOnly value={shareUrl} /><button type="button" className="btn-secondary" onClick={() => navigator.clipboard.writeText(shareUrl)}>Copy</button></div>}
           {(shares.user_shares.length > 0 || shares.links.length > 0) && (
             <div className="drive-share-list">

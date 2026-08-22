@@ -817,6 +817,10 @@ const App = (() => {
     }
 
     function init() {
+        if (window.location.hash.startsWith('#/public-share/')) {
+            showPublicShareDownload();
+            return;
+        }
         if (!window.location.hash && window.location.pathname.startsWith('/admin') && window.location.pathname !== '/admin') {
             // We use history wrapper below, do not convert to hash.
             // Allow pathname to dictate routing.
@@ -842,6 +846,72 @@ const App = (() => {
         initRipple();
         
         handleRoute();
+    }
+
+    function showPublicShareDownload() {
+        document.getElementById('auth-screen')?.classList.add('hidden');
+        document.getElementById('app')?.classList.add('hidden');
+
+        const route = window.location.hash.slice('#/public-share/'.length);
+        const [rawToken, rawQuery = ''] = route.split('?');
+        const token = decodeURIComponent(rawToken || '');
+        const keyText = new URLSearchParams(rawQuery).get('k') || '';
+
+        const page = document.createElement('main');
+        page.className = 'public-share-page';
+        page.innerHTML = `
+            <section class="public-share-card" aria-labelledby="public-share-title">
+                <div class="public-share-logo">FreeDrive</div>
+                <h1 id="public-share-title">Encrypted file</h1>
+                <p>The decryption key stays in this link and is never sent to the server.</p>
+                <input id="public-share-password" type="password" placeholder="Link password, if required" autocomplete="off">
+                <button id="public-share-download" type="button" class="btn btn-primary">Download and decrypt</button>
+                <p id="public-share-status" role="status" aria-live="polite"></p>
+            </section>`;
+        document.body.appendChild(page);
+
+        const button = page.querySelector('#public-share-download');
+        const status = page.querySelector('#public-share-status');
+        button?.addEventListener('click', async () => {
+            if (!token || !keyText) {
+                status.textContent = 'This encrypted link is incomplete.';
+                return;
+            }
+            button.disabled = true;
+            status.textContent = 'Downloading encrypted file…';
+            try {
+                const password = page.querySelector('#public-share-password')?.value || '';
+                const response = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}/download`, {
+                    headers: password ? { 'X-Share-Password': password } : {},
+                    cache: 'no-store',
+                });
+                if (!response.ok) throw new Error('Link is invalid, expired, or requires the correct password.');
+                const iv = response.headers.get('X-File-IV') || '';
+                if (!iv) throw new Error('The encrypted file metadata is incomplete.');
+                status.textContent = 'Decrypting in your browser…';
+                const key = await CryptoModule.importKey(keyText);
+                const plaintext = await CryptoModule.decryptFile(
+                    await response.arrayBuffer(), key, CryptoModule.base64ToUint8(iv),
+                );
+                const disposition = response.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="([^"]+)"/i);
+                const fileName = (match?.[1] || 'freedrive-download').replace(/[\\/\r\n]/g, '_');
+                const blob = new Blob([plaintext], {
+                    type: response.headers.get('X-File-Mime') || 'application/octet-stream',
+                });
+                const url = URL.createObjectURL(blob);
+                const anchor = document.createElement('a');
+                anchor.href = url;
+                anchor.download = fileName;
+                anchor.click();
+                setTimeout(() => URL.revokeObjectURL(url), 1200);
+                status.textContent = 'File decrypted and downloaded.';
+            } catch (error) {
+                status.textContent = error?.message || 'Download failed.';
+            } finally {
+                button.disabled = false;
+            }
+        });
     }
 
     function bindGlobalUI() {

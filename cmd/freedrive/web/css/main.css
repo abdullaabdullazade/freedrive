@@ -1676,3 +1676,10 @@ svg {
   font-weight: 500;
 }
 .is-resizing-sidebar * { user-select: none; }
+/* Public zero-knowledge download page. The key remains in the URL fragment. */
+.public-share-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f8fafd; }
+.public-share-card { width: min(430px, 100%); display: grid; gap: 16px; padding: 36px; border: 1px solid #dadce0; border-radius: 16px; background: #fff; box-shadow: 0 8px 28px rgba(60,64,67,.12); }
+.public-share-card h1, .public-share-card p { margin: 0; }
+.public-share-card p { color: #5f6368; line-height: 1.5; }
+.public-share-logo { color: #1a73e8; font: 500 20px 'Google Sans', sans-serif; }
+.public-share-card input { min-height: 48px; padding: 0 14px; border: 1px solid #dadce0; border-radius: 8px; font: inherit; }
