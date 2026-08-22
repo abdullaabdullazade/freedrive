@@ -103,8 +103,9 @@ func MaxUploadMB() int {
 }
 
 // AllowedTypesUnlimited returns true when the admin disabled the extension whitelist.
+// A missing setting defaults to unlimited so new installs accept every file type.
 func AllowedTypesUnlimited() bool {
-	return asBool(general(load())["allowed_types_unlimited"], false)
+	return asBool(general(load())["allowed_types_unlimited"], true)
 }
 
 // AllowedTypes returns lowercase file extensions without dots.

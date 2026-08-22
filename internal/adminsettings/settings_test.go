@@ -21,14 +21,26 @@ func withSettingsFile(t *testing.T, data map[string]interface{}) {
 	}
 }
 
-func TestAllowedTypesUnlimited_DefaultFalse(t *testing.T) {
+func TestAllowedTypesUnlimited_DefaultTrue(t *testing.T) {
 	withSettingsFile(t, map[string]interface{}{
 		"general": map[string]interface{}{
 			"allowed_types": []string{"pdf", "png"},
 		},
 	})
+	if !AllowedTypesUnlimited() {
+		t.Fatal("expected true when allowed_types_unlimited is missing")
+	}
+}
+
+func TestAllowedTypesUnlimited_FalseWhenExplicitlyRestricted(t *testing.T) {
+	withSettingsFile(t, map[string]interface{}{
+		"general": map[string]interface{}{
+			"allowed_types_unlimited": false,
+			"allowed_types":           []string{"pdf"},
+		},
+	})
 	if AllowedTypesUnlimited() {
-		t.Fatal("expected false when allowed_types_unlimited is missing")
+		t.Fatal("expected false when the admin explicitly enables the whitelist")
 	}
 }
 

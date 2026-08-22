@@ -1,6 +1,6 @@
 const AdminPanel = (() => {
     const UI_PREFS_KEY = 'fd_admin_ui_prefs_v1';
-    const ALLOWED_TYPES_VERSION = 1;
+    const ALLOWED_TYPES_VERSION = 2;
 
     const DEFAULT_SETTINGS = {
         general: {
@@ -10,7 +10,7 @@ const AdminPanel = (() => {
             default_quota_gb: 10,
             registration: 'invite',
             max_upload_mb: 512,
-            allowed_types_unlimited: false,
+            allowed_types_unlimited: true,
             allowed_types: [
                 // Obrazy
                 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'tif', 'ico', 'heic', 'heif', 'avif', 'raw',
@@ -342,6 +342,7 @@ const AdminPanel = (() => {
         const gen = state.settings.general;
         if (gen.allowed_types_version === ALLOWED_TYPES_VERSION) return false;
         gen.allowed_types = clone(DEFAULT_SETTINGS.general.allowed_types);
+        gen.allowed_types_unlimited = true;
         gen.allowed_types_version = ALLOWED_TYPES_VERSION;
         state.settingsDraft = clone(state.settings);
         return true;
