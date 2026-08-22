@@ -124,10 +124,11 @@ func (h *FolderHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
 	var req struct {
-		Name     *string `json:"name"`
-		ParentID *string `json:"parent_id"`
-		Color    *string `json:"color"`
-		Star     *bool   `json:"is_starred"`
+		Name          *string `json:"name"`
+		ParentID      *string `json:"parent_id"`
+		MoveRequested bool    `json:"move_requested"`
+		Color         *string `json:"color"`
+		Star          *bool   `json:"is_starred"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
@@ -141,7 +142,7 @@ func (h *FolderHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.ParentID != nil {
+	if req.ParentID != nil || req.MoveRequested {
 		if err := h.folderService.Move(r.Context(), folderID, userID, req.ParentID); err != nil {
 			writeError(w, err.Error(), http.StatusBadRequest)
 			return
@@ -156,7 +157,7 @@ func (h *FolderHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Star != nil {
-		if err := h.folderService.ToggleStar(r.Context(), folderID, userID); err != nil {
+		if err := h.folderService.SetStar(r.Context(), folderID, userID, *req.Star); err != nil {
 			writeError(w, err.Error(), http.StatusBadRequest)
 			return
 		}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, formatBytes } from "../api/tauri";
 import type { DriveFile, DriveFolder } from "../types";
+import { DriveItemDialog, type ManagedDriveItem } from "../components/DriveItemDialog";
 
 interface Crumb {
   id?: string;
@@ -13,6 +14,7 @@ export function DriveBrowser({ search }: { search: string }) {
   const [crumbs, setCrumbs] = useState<Crumb[]>([{ name: "My Drive" }]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<ManagedDriveItem | null>(null);
 
   const current = crumbs[crumbs.length - 1];
   const loadFolder = useCallback(async (folderId?: string) => {
@@ -66,16 +68,6 @@ export function DriveBrowser({ search }: { search: string }) {
     }
   };
 
-  const trash = async (type: "file" | "folder", id: string, name: string) => {
-    if (!window.confirm(`Move “${name}” to trash?`)) return;
-    try {
-      await api.trashDriveItem(type, id);
-      await loadFolder(current.id);
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
   return (
     <section className="drive-browser">
       <header className="drive-browser-header">
@@ -114,7 +106,7 @@ export function DriveBrowser({ search }: { search: string }) {
             <div className="drive-browser-row" role="row" key={`folder-${folder.id}`}>
               <button className="drive-item-name" type="button" onClick={() => openFolder(folder)}>📁 {folder.name}</button>
               <span>Folder</span><span>—</span>
-              <button className="drive-item-action" type="button" onClick={() => trash("folder", folder.id, folder.name)}>Trash</button>
+              <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "folder", value: folder })}>Manage</button>
             </div>
           ))}
           {files.map((file) => (
@@ -123,12 +115,13 @@ export function DriveBrowser({ search }: { search: string }) {
               <span>{file.mime_type || "File"}</span><span>{formatBytes(file.size)}</span>
               <div className="drive-item-actions">
                 <button className="drive-item-action" type="button" onClick={() => api.openServerUrl(`#/files/${file.id}`)}>Open</button>
-                <button className="drive-item-action" type="button" onClick={() => trash("file", file.id, file.name)}>Trash</button>
+                <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "file", value: file })}>Manage</button>
               </div>
             </div>
           ))}
         </div>
       )}
+      {selected && <DriveItemDialog item={selected} onClose={() => setSelected(null)} onChanged={() => loadFolder(current.id)} />}
     </section>
   );
 }

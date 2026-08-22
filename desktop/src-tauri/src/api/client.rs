@@ -170,7 +170,7 @@ impl ApiClient {
 
     pub fn from_auth(auth: &StoredAuth) -> Self {
 
-        Self::from_auth_with_network(auth, "", 0, 0)
+        Self::from_auth_with_network(auth, "", "", "", 0, 0)
 
             .unwrap_or_else(|_| Self::from_auth_unchecked(auth))
 
@@ -178,7 +178,7 @@ impl ApiClient {
 
     fn from_auth_unchecked(auth: &StoredAuth) -> Self {
 
-        Self::from_auth_with_network(auth, "", 0, 0)
+        Self::from_auth_with_network(auth, "", "", "", 0, 0)
 
             .expect("default HTTP client configuration")
 
@@ -189,6 +189,10 @@ impl ApiClient {
         auth: &StoredAuth,
 
         proxy_url: &str,
+
+        proxy_username: &str,
+
+        proxy_password: &str,
 
         upload_limit_kbps: u64,
 
@@ -210,9 +214,13 @@ impl ApiClient {
 
         if !proxy_url.is_empty() {
 
-            let proxy = reqwest::Proxy::all(proxy_url)
+            let mut proxy = reqwest::Proxy::all(proxy_url)
 
                 .map_err(|e| AppError::msg(format!("invalid proxy URL: {e}")))?;
+
+            if !proxy_username.is_empty() {
+                proxy = proxy.basic_auth(proxy_username, proxy_password);
+            }
 
             http_builder = http_builder.proxy(proxy.clone());
 
@@ -254,6 +262,10 @@ impl ApiClient {
 
         proxy_url: &str,
 
+        proxy_username: &str,
+
+        proxy_password: &str,
+
         upload_limit_kbps: u64,
 
         download_limit_kbps: u64,
@@ -283,6 +295,10 @@ impl ApiClient {
             &auth,
 
             proxy_url,
+
+            proxy_username,
+
+            proxy_password,
 
             upload_limit_kbps,
 
@@ -678,6 +694,13 @@ impl ApiClient {
         Ok(resp.items)
     }
 
+    pub async fn get_shared_by_me(&self) -> AppResult<Vec<SharedItem>> {
+        let resp: SharedWithMeResponse = self
+            .request_json(reqwest::Method::GET, "/shares/by-me", None, false, 2)
+            .await?;
+        Ok(resp.items)
+    }
+
     pub async fn logout(&self) -> AppResult<()> {
 
         let refresh_token = self.inner.read().refresh_token.clone();
@@ -851,6 +874,123 @@ impl ApiClient {
             .await
     }
 
+    pub async fn list_all_folders(&self) -> AppResult<Vec<Folder>> {
+        let response: FoldersResponse = self
+            .request_json(reqwest::Method::GET, "/folders/all", None, false, 2)
+            .await?;
+        Ok(response.folders)
+    }
+
+    pub async fn update_drive_item(
+        &self,
+        item_type: &str,
+        item_id: &str,
+        body: serde_json::Value,
+    ) -> AppResult<()> {
+        let collection = if item_type == "folder" { "folders" } else { "files" };
+        let _: serde_json::Value = self
+            .request_json(
+                reqwest::Method::PATCH,
+                &format!("/{collection}/{item_id}"),
+                Some(body),
+                false,
+                2,
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_file_versions(&self, file_id: &str) -> AppResult<Vec<FileVersion>> {
+        let response: FileVersionsResponse = self
+            .request_json(
+                reqwest::Method::GET,
+                &format!("/files/{file_id}/versions"),
+                None,
+                false,
+                2,
+            )
+            .await?;
+        Ok(response.versions)
+    }
+
+    pub async fn restore_file_version(&self, file_id: &str, version: i32) -> AppResult<FileRecord> {
+        self.request_json(
+            reqwest::Method::POST,
+            &format!("/files/{file_id}/versions/{version}/restore"),
+            Some(serde_json::json!({})),
+            false,
+            2,
+        )
+        .await
+    }
+
+    pub async fn create_user_share(
+        &self,
+        item_type: &str,
+        item_id: &str,
+        email: &str,
+        permission: &str,
+    ) -> AppResult<UserShareRecord> {
+        let mut body = serde_json::json!({
+            "shared_email": email,
+            "permission": permission,
+        });
+        body[if item_type == "folder" { "folder_id" } else { "file_id" }] =
+            serde_json::Value::String(item_id.to_owned());
+        self.request_json(reqwest::Method::POST, "/shares/users", Some(body), false, 2)
+            .await
+    }
+
+    pub async fn create_share_link(
+        &self,
+        item_type: &str,
+        item_id: &str,
+        password: &str,
+    ) -> AppResult<ShareLink> {
+        let mut body = serde_json::json!({
+            "permission": "read",
+            "password": password,
+        });
+        body[if item_type == "folder" { "folder_id" } else { "file_id" }] =
+            serde_json::Value::String(item_id.to_owned());
+        self.request_json(reqwest::Method::POST, "/shares/links", Some(body), false, 2)
+            .await
+    }
+
+    pub async fn list_share_links(&self) -> AppResult<Vec<ShareLink>> {
+        let response: ShareLinksResponse = self
+            .request_json(reqwest::Method::GET, "/shares/links", None, false, 2)
+            .await?;
+        Ok(response.links)
+    }
+
+    pub async fn update_user_share(&self, share_id: &str, permission: &str) -> AppResult<()> {
+        let _: UserShareRecord = self
+            .request_json(
+                reqwest::Method::PATCH,
+                &format!("/shares/users/{share_id}"),
+                Some(serde_json::json!({ "permission": permission })),
+                false,
+                2,
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_user_share(&self, share_id: &str) -> AppResult<()> {
+        let _: serde_json::Value = self
+            .request_json(reqwest::Method::DELETE, &format!("/shares/users/{share_id}"), None, false, 2)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_share_link(&self, link_id: &str) -> AppResult<()> {
+        let _: serde_json::Value = self
+            .request_json(reqwest::Method::DELETE, &format!("/shares/links/{link_id}"), None, false, 2)
+            .await?;
+        Ok(())
+    }
+
     /// Fetch every page of folder contents so sync/orphan walks see the full set.
     async fn fetch_all_folder_pages(&self, base_path: &str) -> AppResult<FolderContents> {
         const PAGE_SIZE: u32 = 500;
@@ -1019,6 +1159,7 @@ impl ApiClient {
                 name: name.unwrap_or("").to_string(),
                 parent_id: parent_id.map(|s| s.to_string()),
                 is_trashed: false,
+                is_starred: false,
             });
         }
         Err(AppError::msg(format!(

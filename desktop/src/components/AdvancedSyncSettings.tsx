@@ -4,6 +4,8 @@ import type { DesktopSyncSettings, RemoteSyncFolder } from "../types";
 
 const defaults: DesktopSyncSettings = {
   proxy_url: "",
+  proxy_username: "",
+  proxy_password: "",
   upload_limit_kbps: 0,
   download_limit_kbps: 0,
   excluded_patterns: [],
@@ -74,6 +76,27 @@ export function AdvancedSyncSettings() {
           onChange={(event) => setSettings({ ...settings, proxy_url: event.target.value })}
         />
       </label>
+
+      <div className="advanced-setting-grid">
+        <label className="advanced-setting-field">
+          <span>Proxy username</span>
+          <input
+            autoComplete="off"
+            value={settings.proxy_username}
+            onChange={(event) => setSettings({ ...settings, proxy_username: event.target.value })}
+          />
+        </label>
+        <label className="advanced-setting-field">
+          <span>Proxy password</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={settings.proxy_password}
+            onChange={(event) => setSettings({ ...settings, proxy_password: event.target.value })}
+          />
+        </label>
+      </div>
+      <p className="settings-hint">Credentials are encrypted locally with the OS keyring-backed device key.</p>
 
       <div className="advanced-setting-grid">
         <label className="advanced-setting-field">

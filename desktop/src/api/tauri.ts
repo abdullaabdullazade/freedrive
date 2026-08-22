@@ -25,6 +25,11 @@ import type {
   RemoteSyncFolder,
   DriveContents,
   DriveSearchResult,
+  DriveFileVersion,
+  DriveFolder,
+  DriveShareResult,
+  SyncConflict,
+  DriveItemShares,
 } from "../types";
 
 export const api = {
@@ -86,6 +91,50 @@ export const api = {
     invoke<void>("create_drive_folder", { name, parentId: parent_id }),
   trashDriveItem: (item_type: "file" | "folder", item_id: string) =>
     invoke<void>("trash_drive_item", { itemType: item_type, itemId: item_id }),
+  listDriveFolders: () => invoke<DriveFolder[]>("list_drive_folders"),
+  updateDriveItem: (
+    item_type: "file" | "folder",
+    item_id: string,
+    changes: { name?: string; parent_id?: string | null; starred?: boolean; move_requested?: boolean },
+  ) => invoke<void>("update_drive_item", {
+    itemType: item_type,
+    itemId: item_id,
+    name: changes.name,
+    parentId: changes.parent_id,
+    moveRequested: changes.move_requested ?? false,
+    starred: changes.starred,
+  }),
+  downloadDriveFile: (file_id: string, file_name: string) =>
+    invoke<string>("download_drive_file", { fileId: file_id, fileName: file_name }),
+  getDriveFileVersions: (file_id: string) =>
+    invoke<DriveFileVersion[]>("get_drive_file_versions", { fileId: file_id }),
+  restoreDriveFileVersion: (file_id: string, version: number) =>
+    invoke<void>("restore_drive_file_version", { fileId: file_id, version }),
+  shareDriveItemWithUser: (
+    item_type: "file" | "folder",
+    item_id: string,
+    email: string,
+    permission: "read" | "write",
+  ) => invoke<DriveShareResult>("share_drive_item_with_user", {
+    itemType: item_type, itemId: item_id, email, permission,
+  }),
+  createDriveShareLink: (item_type: "file" | "folder", item_id: string, password = "") =>
+    invoke<DriveShareResult>("create_drive_share_link", {
+      itemType: item_type, itemId: item_id, password,
+    }),
+  getDriveItemShares: (item_type: "file" | "folder", item_id: string) =>
+    invoke<DriveItemShares>("get_drive_item_shares", { itemType: item_type, itemId: item_id }),
+  updateDriveUserShare: (share_id: string, permission: "read" | "write") =>
+    invoke<void>("update_drive_user_share", { shareId: share_id, permission }),
+  revokeDriveUserShare: (share_id: string) =>
+    invoke<void>("revoke_drive_user_share", { shareId: share_id }),
+  revokeDriveShareLink: (link_id: string) =>
+    invoke<void>("revoke_drive_share_link", { linkId: link_id }),
+  getSyncConflicts: () => invoke<SyncConflict[]>("get_sync_conflicts"),
+  resolveSyncConflict: (
+    path: string,
+    resolution: "keep_local" | "use_cloud" | "keep_both",
+  ) => invoke<void>("resolve_sync_conflict", { path, resolution }),
   openSyncLogFolder: () => invoke<void>("open_sync_log_folder"),
   pauseSync: () => invoke<void>("pause_sync"),
   resumeSync: () => invoke<void>("resume_sync"),

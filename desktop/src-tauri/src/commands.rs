@@ -358,6 +358,8 @@ pub fn init_api_from_storage(state: &AppState) -> AppResult<()> {
         let settings = crate::desktop_settings::load(&state.db)?;
         client.configure_network(
             &settings.proxy_url,
+            &settings.proxy_username,
+            &settings.proxy_password,
             settings.upload_limit_kbps,
             settings.download_limit_kbps,
         )?;
@@ -588,6 +590,8 @@ async fn finish_login(
         client
             .configure_network(
                 &settings.proxy_url,
+                &settings.proxy_username,
+                &settings.proxy_password,
                 settings.upload_limit_kbps,
                 settings.download_limit_kbps,
             )
@@ -1039,6 +1043,8 @@ pub fn set_desktop_sync_settings(
         client
             .configure_network(
                 &saved.proxy_url,
+                &saved.proxy_username,
+                &saved.proxy_password,
                 saved.upload_limit_kbps,
                 saved.download_limit_kbps,
             )
@@ -1224,6 +1230,416 @@ pub async fn trash_drive_item(
         return Err("Unknown Drive item type".into());
     }
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_drive_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::api::types::Folder>, String> {
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .list_all_folders()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_drive_item(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+    name: Option<String>,
+    parent_id: Option<String>,
+    move_requested: bool,
+    starred: Option<bool>,
+) -> Result<(), String> {
+    if item_type != "file" && item_type != "folder" {
+        return Err("Unknown Drive item type".into());
+    }
+    let mut body = serde_json::Map::new();
+    if let Some(name) = name {
+        let name = name.trim();
+        if name.is_empty() || name.contains('/') || name.contains('\\') {
+            return Err("Enter a valid name".into());
+        }
+        body.insert("name".into(), serde_json::Value::String(name.into()));
+    }
+    if move_requested {
+        body.insert("move_requested".into(), serde_json::Value::Bool(true));
+        body.insert(
+            if item_type == "folder" {
+                "parent_id"
+            } else {
+                "folder_id"
+            }
+            .into(),
+            parent_id
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        );
+    }
+    if let Some(starred) = starred {
+        body.insert("is_starred".into(), serde_json::Value::Bool(starred));
+    }
+    if body.is_empty() {
+        return Err("No changes supplied".into());
+    }
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .update_drive_item(&item_type, &item_id, serde_json::Value::Object(body))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn current_user_id() -> Result<String, String> {
+    let auth = load_auth()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Not signed in".to_string())?;
+    let user: User = serde_json::from_str(&auth.user_json).map_err(|e| e.to_string())?;
+    Ok(user.id)
+}
+
+#[tauri::command]
+pub async fn download_drive_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    file_id: String,
+    file_name: String,
+) -> Result<String, String> {
+    let safe_name = Path::new(&file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("download.bin")
+        .to_owned();
+    let path = tokio::task::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_file_name(&safe_name)
+            .blocking_save_file()
+            .map(|path| path.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Download cancelled".to_string())?;
+    let client = state.api().map_err(|e| e.to_string())?;
+    let key =
+        crate::account_crypto::resolve_file_key(&client, &state.db, &current_user_id()?, &file_id)
+            .await
+            .map_err(|e| e.to_string())?;
+    client
+        .download_file_to_path(&file_id, Some(&key), Path::new(&path))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+#[tauri::command]
+pub async fn get_drive_file_versions(
+    state: State<'_, AppState>,
+    file_id: String,
+) -> Result<Vec<crate::api::types::FileVersion>, String> {
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .get_file_versions(&file_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn restore_drive_file_version(
+    state: State<'_, AppState>,
+    file_id: String,
+    version: i32,
+) -> Result<crate::api::types::FileRecord, String> {
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .restore_file_version(&file_id, version)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct DriveShareResult {
+    pub id: String,
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DriveItemShares {
+    pub user_shares: Vec<crate::api::types::SharedItem>,
+    pub links: Vec<crate::api::types::ShareLink>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncConflict {
+    pub path: String,
+    pub original_path: String,
+    pub name: String,
+    pub modified_at: Option<String>,
+}
+
+fn original_for_conflict(path: &Path) -> Option<PathBuf> {
+    let file_name = path.file_name()?.to_str()?;
+    let marker = " (FreeDrive conflict ";
+    let marker_start = file_name.find(marker)?;
+    let marker_end = file_name[marker_start..].find(')')? + marker_start;
+    let tail = &file_name[marker_end + 1..];
+    let extension =
+        tail.trim_start_matches(|character: char| character == ' ' || character.is_ascii_digit());
+    Some(path.with_file_name(format!("{}{}", &file_name[..marker_start], extension)))
+}
+
+fn available_sibling(path: &Path, label: &str) -> PathBuf {
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("file");
+    let extension = path.extension().and_then(|value| value.to_str());
+    for suffix in 0..10_000 {
+        let counter = if suffix == 0 {
+            String::new()
+        } else {
+            format!(" {suffix}")
+        };
+        let name = match extension {
+            Some(ext) => format!("{stem} ({label}){counter}.{ext}"),
+            None => format!("{stem} ({label}){counter}"),
+        };
+        let candidate = path.with_file_name(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    path.with_file_name(format!("{stem} ({label} {})", uuid::Uuid::new_v4()))
+}
+
+fn conflict_roots(state: &AppState) -> Result<Vec<PathBuf>, String> {
+    let mut roots = vec![my_drive_path(false).map_err(|e| e.to_string())?];
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    for folder in list_sync_folders(&conn).map_err(|e| e.to_string())? {
+        roots.push(PathBuf::from(folder.local_path));
+    }
+    roots.sort();
+    roots.dedup();
+    Ok(roots)
+}
+
+fn scan_sync_conflicts(roots: Vec<PathBuf>) -> Vec<SyncConflict> {
+    let mut conflicts = Vec::new();
+    for root in roots {
+        let mut pending = vec![root];
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(directory) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
+                    pending.push(path);
+                } else if file_type.is_file() {
+                    let Some(original) = original_for_conflict(&path) else {
+                        continue;
+                    };
+                    let modified_at = entry
+                        .metadata()
+                        .ok()
+                        .and_then(|metadata| metadata.modified().ok())
+                        .map(chrono::DateTime::<chrono::Utc>::from)
+                        .map(|time| time.to_rfc3339());
+                    conflicts.push(SyncConflict {
+                        name: entry.file_name().to_string_lossy().into_owned(),
+                        path: path.to_string_lossy().into_owned(),
+                        original_path: original.to_string_lossy().into_owned(),
+                        modified_at,
+                    });
+                }
+            }
+        }
+    }
+    conflicts.sort_by(|left, right| right.modified_at.cmp(&left.modified_at));
+    conflicts
+}
+
+#[tauri::command]
+pub async fn get_sync_conflicts(state: State<'_, AppState>) -> Result<Vec<SyncConflict>, String> {
+    let roots = conflict_roots(&state)?;
+    tokio::task::spawn_blocking(move || scan_sync_conflicts(roots))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn resolve_sync_conflict(
+    state: State<'_, AppState>,
+    path: String,
+    resolution: String,
+) -> Result<(), String> {
+    let roots = conflict_roots(&state)?;
+    tokio::task::spawn_blocking(move || resolve_sync_conflict_blocking(roots, path, resolution))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn resolve_sync_conflict_blocking(
+    roots: Vec<PathBuf>,
+    path: String,
+    resolution: String,
+) -> Result<(), String> {
+    let conflict = scan_sync_conflicts(roots)
+        .into_iter()
+        .find(|candidate| candidate.path == path)
+        .ok_or_else(|| "Conflict copy was not found in a configured sync folder".to_string())?;
+    let conflict_path = PathBuf::from(&conflict.path);
+    let original_path = PathBuf::from(&conflict.original_path);
+    match resolution.as_str() {
+        "keep_local" => std::fs::remove_file(&conflict_path).map_err(|e| e.to_string())?,
+        "use_cloud" => {
+            if original_path.exists() {
+                let stamp = chrono::Local::now().format("%Y-%m-%d %H%M%S");
+                let backup =
+                    available_sibling(&original_path, &format!("FreeDrive local backup {stamp}"));
+                std::fs::rename(&original_path, backup).map_err(|e| e.to_string())?;
+            }
+            std::fs::rename(&conflict_path, &original_path).map_err(|e| e.to_string())?;
+        }
+        "keep_both" => {
+            let stamp = chrono::Local::now().format("%Y-%m-%d %H%M%S");
+            let destination = available_sibling(&original_path, &format!("cloud copy {stamp}"));
+            std::fs::rename(&conflict_path, destination).map_err(|e| e.to_string())?;
+        }
+        _ => return Err("Unknown conflict resolution".into()),
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn share_drive_item_with_user(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+    email: String,
+    permission: String,
+) -> Result<DriveShareResult, String> {
+    let permission = if permission == "write" {
+        "write"
+    } else {
+        "read"
+    };
+    let share = state
+        .api()
+        .map_err(|e| e.to_string())?
+        .create_user_share(&item_type, &item_id, email.trim(), permission)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(DriveShareResult {
+        id: share.id,
+        url: None,
+    })
+}
+
+#[tauri::command]
+pub async fn create_drive_share_link(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+    password: String,
+) -> Result<DriveShareResult, String> {
+    let client = state.api().map_err(|e| e.to_string())?;
+    let link = client
+        .create_share_link(&item_type, &item_id, &password)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(DriveShareResult {
+        id: link.id,
+        url: Some(format!(
+            "{}/api/v1/public/share/{}/download",
+            client.server_url().trim_end_matches('/'),
+            link.token
+        )),
+    })
+}
+
+#[tauri::command]
+pub async fn get_drive_item_shares(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+) -> Result<DriveItemShares, String> {
+    let client = state.api().map_err(|e| e.to_string())?;
+    let (shares, links) = tokio::try_join!(client.get_shared_by_me(), client.list_share_links())
+        .map_err(|e| e.to_string())?;
+    Ok(DriveItemShares {
+        user_shares: shares
+            .into_iter()
+            .filter(|item| item.item_type == item_type && item.item_id == item_id)
+            .collect(),
+        links: links
+            .into_iter()
+            .filter(|link| {
+                if item_type == "folder" {
+                    link.folder_id.as_deref() == Some(&item_id)
+                } else {
+                    link.file_id.as_deref() == Some(&item_id)
+                }
+            })
+            .collect(),
+    })
+}
+
+#[tauri::command]
+pub async fn update_drive_user_share(
+    state: State<'_, AppState>,
+    share_id: String,
+    permission: String,
+) -> Result<(), String> {
+    let permission = if permission == "write" {
+        "write"
+    } else {
+        "read"
+    };
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .update_user_share(&share_id, permission)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn revoke_drive_user_share(
+    state: State<'_, AppState>,
+    share_id: String,
+) -> Result<(), String> {
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .delete_user_share(&share_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn revoke_drive_share_link(
+    state: State<'_, AppState>,
+    link_id: String,
+) -> Result<(), String> {
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .delete_share_link(&link_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1585,5 +2001,15 @@ mod encryption_export_tests {
         let content = r#"{"version":1,"exported_at":"now","keys":{"file-1":"key"}}"#;
         let decoded = decrypt_keys_export(content, "").unwrap();
         assert_eq!(decoded.keys.get("file-1").map(String::as_str), Some("key"));
+    }
+
+    #[test]
+    fn conflict_name_maps_back_to_original_name() {
+        let conflict = Path::new("/sync/report (FreeDrive conflict 2026-08-22 120000) 2.pdf");
+        assert_eq!(
+            original_for_conflict(conflict),
+            Some(PathBuf::from("/sync/report.pdf"))
+        );
+        assert!(original_for_conflict(Path::new("/sync/report.pdf")).is_none());
     }
 }

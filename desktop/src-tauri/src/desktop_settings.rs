@@ -11,6 +11,10 @@ pub struct DesktopSyncSettings {
     #[serde(default)]
     pub proxy_url: String,
     #[serde(default)]
+    pub proxy_username: String,
+    #[serde(default)]
+    pub proxy_password: String,
+    #[serde(default)]
     pub upload_limit_kbps: u64,
     #[serde(default)]
     pub download_limit_kbps: u64,
@@ -29,6 +33,17 @@ impl DesktopSyncSettings {
             if !matches!(parsed.scheme(), "http" | "https" | "socks5") {
                 return Err(AppError::msg("proxy URL must use http, https, or socks5"));
             }
+            if !parsed.username().is_empty() || parsed.password().is_some() {
+                return Err(AppError::msg(
+                    "enter proxy credentials in the separate username and password fields",
+                ));
+            }
+        }
+        self.proxy_username = self.proxy_username.trim().to_string();
+        if self.proxy_url.is_empty()
+            && (!self.proxy_username.is_empty() || !self.proxy_password.is_empty())
+        {
+            return Err(AppError::msg("proxy credentials require a proxy URL"));
         }
         const MAX_KBPS: u64 = 10 * 1024 * 1024;
         if self.upload_limit_kbps > MAX_KBPS || self.download_limit_kbps > MAX_KBPS {
@@ -70,8 +85,9 @@ fn build_glob_set(patterns: &[String]) -> AppResult<GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         builder.add(
-            Glob::new(pattern)
-                .map_err(|e| AppError::msg(format!("invalid exclusion pattern {pattern:?}: {e}")))?,
+            Glob::new(pattern).map_err(|e| {
+                AppError::msg(format!("invalid exclusion pattern {pattern:?}: {e}"))
+            })?,
         );
     }
     builder.build().map_err(|e| AppError::msg(e.to_string()))
@@ -85,7 +101,11 @@ pub fn load(db: &DbHandle) -> AppResult<DesktopSyncSettings> {
     let (decoded, legacy) = crate::secret_storage::unprotect(&raw)?;
     let settings = serde_json::from_str(&decoded).map_err(AppError::from)?;
     if legacy {
-        config_set(&conn, SETTINGS_KEY, &crate::secret_storage::protect(&decoded)?)?;
+        config_set(
+            &conn,
+            SETTINGS_KEY,
+            &crate::secret_storage::protect(&decoded)?,
+        )?;
     }
     Ok(settings)
 }
@@ -121,5 +141,30 @@ mod tests {
             ..Default::default()
         };
         assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn proxy_credentials_require_separate_fields_and_url() {
+        let mut embedded = DesktopSyncSettings {
+            proxy_url: "https://user:secret@proxy.example".into(),
+            ..Default::default()
+        };
+        assert!(embedded.validate().is_err());
+
+        let mut missing_url = DesktopSyncSettings {
+            proxy_username: "user".into(),
+            proxy_password: "secret".into(),
+            ..Default::default()
+        };
+        assert!(missing_url.validate().is_err());
+
+        let mut valid = DesktopSyncSettings {
+            proxy_url: "https://proxy.example:8443".into(),
+            proxy_username: " user ".into(),
+            proxy_password: "secret".into(),
+            ..Default::default()
+        };
+        assert!(valid.validate().is_ok());
+        assert_eq!(valid.proxy_username, "user");
     }
 }

@@ -128,6 +128,19 @@ pub fn run() {
             commands::search_drive,
             commands::create_drive_folder,
             commands::trash_drive_item,
+            commands::list_drive_folders,
+            commands::update_drive_item,
+            commands::download_drive_file,
+            commands::get_drive_file_versions,
+            commands::restore_drive_file_version,
+            commands::share_drive_item_with_user,
+            commands::create_drive_share_link,
+            commands::get_drive_item_shares,
+            commands::update_drive_user_share,
+            commands::revoke_drive_user_share,
+            commands::revoke_drive_share_link,
+            commands::get_sync_conflicts,
+            commands::resolve_sync_conflict,
             commands::open_server_url,
             commands::open_project_url,
             commands::open_path_in_explorer,
@@ -140,7 +153,16 @@ pub fn run() {
         ])
         .setup(|app| {
             #[cfg(desktop)]
-            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            if app
+                .config()
+                .plugins
+                .0
+                .get("updater")
+                .is_some_and(serde_json::Value::is_object)
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
 
             let state = app.state::<AppState>();
             let _ = commands::init_api_from_storage(&state);

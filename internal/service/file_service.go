@@ -306,6 +306,22 @@ func (s *FileService) ToggleStar(ctx context.Context, fileID, userID string) err
 	return s.fileRepo.Update(ctx, file)
 }
 
+// SetStar sets the starred state without race-prone toggle semantics.
+func (s *FileService) SetStar(ctx context.Context, fileID, userID string, starred bool) error {
+	if err := s.access.CanWriteFile(ctx, fileID, userID); err != nil {
+		return err
+	}
+	file, err := s.fileRepo.GetByID(ctx, fileID)
+	if err != nil {
+		return err
+	}
+	if file == nil {
+		return fmt.Errorf("file not found")
+	}
+	file.IsStarred = starred
+	return s.fileRepo.Update(ctx, file)
+}
+
 // EmptyTrashResult is returned by EmptyTrash.
 type EmptyTrashResult struct {
 	RemovedFiles   int   `json:"removed_files"`

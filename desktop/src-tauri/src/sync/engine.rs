@@ -3181,7 +3181,15 @@ pub fn get_sync_mode(db: &DbHandle) -> String {
 }
 
 pub fn sync_mode_is_mirror(db: &DbHandle) -> bool {
-    get_sync_mode(db) == "mirror"
+    #[cfg(not(windows))]
+    {
+        let _ = db;
+        true
+    }
+    #[cfg(windows)]
+    {
+        get_sync_mode(db) == "mirror"
+    }
 }
 
 pub fn sync_mode_is_stream(db: &DbHandle) -> bool {

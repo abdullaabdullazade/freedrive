@@ -64,6 +64,8 @@ pub struct Folder {
     pub parent_id: Option<String>,
     #[serde(default)]
     pub is_trashed: bool,
+    #[serde(default)]
+    pub is_starred: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +79,8 @@ pub struct FileRecord {
     pub updated_at: String,
     #[serde(default)]
     pub version: i32,
+    #[serde(default)]
+    pub is_starred: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +114,65 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FoldersResponse {
+    #[serde(default)]
+    pub folders: Vec<Folder>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileVersion {
+    pub id: String,
+    pub file_id: String,
+    pub version: i32,
+    pub size: i64,
+    pub created_at: String,
+    pub created_by: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileVersionsResponse {
+    #[serde(default)]
+    pub versions: Vec<FileVersion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserShareRecord {
+    pub id: String,
+    #[serde(default)]
+    pub file_id: Option<String>,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+    pub shared_with: String,
+    pub permission: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareLink {
+    pub id: String,
+    #[serde(default)]
+    pub file_id: Option<String>,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+    pub token: String,
+    pub permission: String,
+    pub has_password: bool,
+    #[serde(default)]
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub max_downloads: Option<i32>,
+    pub download_count: i32,
+    pub is_active: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareLinksResponse {
+    #[serde(default)]
+    pub links: Vec<ShareLink>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageInfo {
     pub used_bytes: i64,
     pub total_bytes: i64,
@@ -120,6 +183,14 @@ pub struct StorageInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserShare {
     pub id: String,
+    #[serde(default)]
+    pub file_id: Option<String>,
+    #[serde(default)]
+    pub folder_id: Option<String>,
+    #[serde(default)]
+    pub shared_with: String,
+    #[serde(default)]
+    pub permission: String,
     #[serde(default)]
     pub created_at: String,
 }

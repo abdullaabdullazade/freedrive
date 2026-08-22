@@ -208,9 +208,10 @@ func (h *FileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
 	var req struct {
-		Name     *string `json:"name"`
-		FolderID *string `json:"folder_id"`
-		Star     *bool   `json:"is_starred"`
+		Name          *string `json:"name"`
+		FolderID      *string `json:"folder_id"`
+		MoveRequested bool    `json:"move_requested"`
+		Star          *bool   `json:"is_starred"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
@@ -224,7 +225,7 @@ func (h *FileHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.FolderID != nil {
+	if req.FolderID != nil || req.MoveRequested {
 		if err := h.fileService.Move(r.Context(), fileID, userID, req.FolderID); err != nil {
 			writeError(w, err.Error(), http.StatusBadRequest)
 			return
@@ -232,7 +233,7 @@ func (h *FileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Star != nil {
-		if err := h.fileService.ToggleStar(r.Context(), fileID, userID); err != nil {
+		if err := h.fileService.SetStar(r.Context(), fileID, userID, *req.Star); err != nil {
 			writeError(w, err.Error(), http.StatusBadRequest)
 			return
 		}

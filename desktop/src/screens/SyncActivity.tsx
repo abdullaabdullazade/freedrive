@@ -1,5 +1,6 @@
 import { formatBytes, formatRelativeTime } from "../api/tauri";
 import { UploadProgressRing } from "../components/UploadProgressRing";
+import { ConflictResolver } from "../components/ConflictResolver";
 import type { ActivityItem, SyncStatus } from "../types";
 
 interface SyncActivityProps {
@@ -94,6 +95,8 @@ export function SyncActivity({
           </div>
         )}
       </div>
+
+      <ConflictResolver />
 
       <table className="sync-table">
         <thead>

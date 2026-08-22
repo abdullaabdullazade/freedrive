@@ -43,7 +43,7 @@ export function AboutDialog({ serverUrl, onClose }: AboutDialogProps) {
     } catch (err) {
       const message = String(err);
       setUpdateState(
-        message.includes("endpoint") || message.includes("configuration")
+        message.includes("endpoint") || message.includes("configuration") || message.includes("plugin updater")
           ? "Updates are enabled in signed release builds."
           : `Update check failed: ${message}`,
       );

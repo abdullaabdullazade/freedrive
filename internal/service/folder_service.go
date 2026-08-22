@@ -440,6 +440,22 @@ func (s *FolderService) ToggleStar(ctx context.Context, folderID, ownerID string
 	return s.folderRepo.Update(ctx, folder)
 }
 
+// SetStar sets the starred state without race-prone toggle semantics.
+func (s *FolderService) SetStar(ctx context.Context, folderID, ownerID string, starred bool) error {
+	if err := s.access.CanWriteFolder(ctx, folderID, ownerID); err != nil {
+		return err
+	}
+	folder, err := s.folderRepo.GetByID(ctx, folderID)
+	if err != nil {
+		return err
+	}
+	if folder == nil {
+		return fmt.Errorf("folder not found")
+	}
+	folder.IsStarred = starred
+	return s.folderRepo.Update(ctx, folder)
+}
+
 // SetColor sets a folder's color label.
 func (s *FolderService) SetColor(ctx context.Context, folderID, ownerID, color string) error {
 	if err := s.access.CanWriteFolder(ctx, folderID, ownerID); err != nil {
