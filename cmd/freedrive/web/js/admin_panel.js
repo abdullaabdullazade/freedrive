@@ -1767,27 +1767,33 @@ const AdminPanel = (() => {
     }
 
     function renderShell() {
+        const app = document.getElementById('app');
         const header = document.getElementById('file-list-header');
         const empty = document.getElementById('empty-state');
         const loading = document.getElementById('loading-state');
         const shared = document.getElementById('shared-filter-bar');
+        const home = document.getElementById('home-page');
         const activity = document.getElementById('activity-page');
         const storage = document.getElementById('storage-page');
         const selection = document.getElementById('selection-bar');
         const grid = document.getElementById('file-grid');
         const chipBar = document.getElementById('md3-chip-bar');
+        const trashBanner = document.getElementById('trash-bin-banner');
 
+        app?.classList.remove('home-active');
         header?.classList.add('hidden');
         empty?.classList.add('hidden');
         loading?.classList.add('hidden');
         shared?.classList.add('hidden');
+        home?.classList.add('hidden');
         activity?.classList.add('hidden');
         storage?.classList.add('hidden');
         selection?.classList.add('hidden');
         chipBar?.classList.add('hidden');
+        trashBanner?.classList.add('hidden');
 
-        grid.classList.remove('hidden');
-        grid.classList.remove('grid-view');
+        if (!grid) return;
+        grid.classList.remove('hidden', 'grid-view');
         grid.innerHTML = `
             <div class="admin-shell" id="admin-shell">
                 <header class="admin-page-header">

@@ -1637,6 +1637,10 @@ svg {
 .app.admin-mode .selection-bar { display: none !important; }
 .app.admin-mode .sidebar .admin-nav-item { display: flex !important; }
 .app.admin-mode .sidebar-nav > *:not(.admin-nav-item) { display: none !important; }
+.app.admin-mode #home-page,
+.app.admin-mode #activity-page,
+.app.admin-mode #storage-page,
+.app.admin-mode #trash-bin-banner { display: none !important; }
 
 /* ── Audio player ── */
 .audio-mini-player {
