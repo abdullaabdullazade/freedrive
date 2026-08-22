@@ -21,9 +21,11 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useVideoPlayer, VideoView } from "expo-video";
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import type { RootStackParamList } from "../navigation/types";
 import { colors, spacing } from "../theme";
 import { SheetEditorView, loadAndSerializeSheet } from "../components/SheetEditorView";
+import { Icon } from "../components/Icon";
 import {
   canPrefetchMedia,
   downloadAndDecrypt,
@@ -61,6 +63,68 @@ function VideoPreview({ uri }: { uri: string }) {
       contentFit="contain"
       fullscreenOptions={{ enable: true }}
     />
+  );
+}
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function AudioPreview({ uri, title }: { uri: string; title: string }) {
+  const player = useAudioPlayer(uri, { updateInterval: 250 });
+  const status = useAudioPlayerStatus(player);
+
+  useEffect(() => {
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      interruptionMode: "doNotMix",
+      allowsRecording: false,
+      shouldPlayInBackground: false,
+      shouldRouteThroughEarpiece: false,
+    });
+    return () => {
+      try {
+        player.pause();
+      } catch {
+        // The native player may already be released while leaving the screen.
+      }
+    };
+  }, [player]);
+
+  const seek = (delta: number) => {
+    const duration = status.duration || 0;
+    const next = Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, status.currentTime + delta));
+    void player.seekTo(next);
+  };
+
+  return (
+    <View style={styles.audioCard}>
+      <View style={styles.audioDisc}>
+        <Icon name="audio" size={52} color="#0B1C2C" />
+      </View>
+      <Text style={styles.audioTitle} numberOfLines={2}>{title}</Text>
+      <Text style={styles.audioTime}>
+        {formatTime(status.currentTime)} / {formatTime(status.duration)}
+      </Text>
+      <View style={styles.audioControls}>
+        <Pressable style={styles.audioSmallButton} onPress={() => seek(-10)}>
+          <Text style={styles.audioSmallText}>-10s</Text>
+        </Pressable>
+        <Pressable
+          style={styles.audioPlayButton}
+          onPress={() => status.playing ? player.pause() : player.play()}
+        >
+          <Text style={styles.audioPlayText}>{status.playing ? "Pause" : "Play"}</Text>
+        </Pressable>
+        <Pressable style={styles.audioSmallButton} onPress={() => seek(10)}>
+          <Text style={styles.audioSmallText}>+10s</Text>
+        </Pressable>
+      </View>
+      {status.error ? <Text style={styles.hint}>{status.error}</Text> : null}
+    </View>
   );
 }
 
@@ -591,6 +655,14 @@ export function FilePreviewScreen({ route, navigation }: Props) {
     );
   }
 
+  if (mode === "audio") {
+    return (
+      <View style={[styles.center, { paddingBottom: insets.bottom, width: "100%" }]}>
+        <AudioPreview uri={initialUri} title={initialTitle} />
+      </View>
+    );
+  }
+
   if (mode === "text") {
     const textBottomPad = {
       paddingBottom: spacing.lg + insets.bottom,
@@ -698,4 +770,30 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 13,
   },
+  audioCard: {
+    width: "88%",
+    maxWidth: 440,
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: spacing.xxl,
+  },
+  audioDisc: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+  },
+  audioTitle: { color: colors.text, fontSize: 18, fontWeight: "600", textAlign: "center" },
+  audioTime: { color: colors.textSecondary, marginTop: spacing.sm, fontVariant: ["tabular-nums"] },
+  audioControls: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xl },
+  audioPlayButton: { backgroundColor: colors.accent, paddingHorizontal: 26, paddingVertical: 14, borderRadius: 999 },
+  audioPlayText: { color: "#0B1C2C", fontWeight: "700", minWidth: 44, textAlign: "center" },
+  audioSmallButton: { backgroundColor: colors.surfaceElevated, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999 },
+  audioSmallText: { color: colors.text, fontWeight: "600" },
 });

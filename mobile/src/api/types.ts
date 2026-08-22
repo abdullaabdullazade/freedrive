@@ -188,6 +188,38 @@ export interface UserShare {
   created_at: string;
 }
 
+export interface FileComment {
+  id: string;
+  file_id: string;
+  user_id: string;
+  username?: string;
+  content: string;
+  parent_id?: string | null;
+  assigned_to?: string | null;
+  assigned_to_username?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FileVersion {
+  id: string;
+  file_id: string;
+  version: number;
+  size: number;
+  iv: string;
+  created_at: string;
+  created_by: string;
+}
+
+export interface FileApproval {
+  id: string;
+  file_id: string;
+  requested_by: string;
+  approver_id: string;
+  status: "pending" | "approved" | "rejected" | string;
+  created_at: string;
+}
+
 export interface CryptoAccount {
   has_crypto: boolean;
   has_recovery?: boolean;

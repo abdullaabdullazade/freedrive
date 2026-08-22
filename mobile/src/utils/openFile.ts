@@ -149,6 +149,12 @@ export function isVideoFile(file: Pick<FileItem, "name" | "mime_type">): boolean
   return /\.(mp4|webm|mkv|mov|m4v|avi|3gp)$/i.test(file.name);
 }
 
+export function isAudioFile(file: Pick<FileItem, "name" | "mime_type">): boolean {
+  const mime = (file.mime_type || "").toLowerCase();
+  if (mime.startsWith("audio/")) return true;
+  return /\.(mp3|m4a|aac|wav|flac|ogg|opus|oga|wma|amr)$/i.test(file.name);
+}
+
 function isImage(mime: string): boolean {
   return mime.toLowerCase().startsWith("image/");
 }
@@ -164,9 +170,8 @@ function isText(mime: string, name: string): boolean {
   return (
     m.startsWith("text/") ||
     m.includes("json") ||
-    n.endsWith(".md") ||
-    n.endsWith(".txt") ||
-    n.endsWith(".json")
+    /\.(txt|md|markdown|json|jsonc|ya?ml|toml|ini|cfg|conf|env|log|csv|tsv|xml|html?|css|scss|sass|less|js|jsx|mjs|cjs|ts|tsx|py|pyw|rb|php|go|rs|java|kt|kts|swift|c|h|cc|cpp|cxx|hpp|cs|fs|fsx|sh|bash|zsh|fish|ps1|sql|graphql|gql|vue|svelte|dart|lua|r|dockerfile|gitignore|gitattributes)$/i.test(n) ||
+    /(^|\/)(dockerfile|makefile|license|readme)$/i.test(n)
   );
 }
 
@@ -417,6 +422,17 @@ export async function openFile(
       return;
     }
 
+    if (navigation && isAudioFile(file)) {
+      navigation.navigate("FilePreview", {
+        title: file.name,
+        uri,
+        mime,
+        mode: "audio",
+        fileId: file.id,
+      });
+      return;
+    }
+
     if (navigation && isSpreadsheetFile(file.name, mime)) {
       navigation.navigate("FilePreview", {
         title: file.name,
@@ -459,6 +475,43 @@ export async function openFile(
     }
   } catch (err) {
     Alert.alert("Cannot open file", err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** Open an already-decrypted persistent local file without contacting the server. */
+export async function openLocalFile(
+  file: FileItem,
+  uri: string,
+  mime: string,
+  navigation: PreviewNav,
+): Promise<void> {
+  if (isImage(mime) || isImageFile(file)) {
+    navigation.navigate("FilePreview", { title: file.name, uri, mime, mode: "image", fileId: file.id });
+    return;
+  }
+  if (isVideo(mime) || isVideoFile(file)) {
+    navigation.navigate("FilePreview", { title: file.name, uri, mime, mode: "video", fileId: file.id });
+    return;
+  }
+  if (isAudioFile(file)) {
+    navigation.navigate("FilePreview", { title: file.name, uri, mime, mode: "audio", fileId: file.id });
+    return;
+  }
+  if (isSpreadsheetFile(file.name, mime)) {
+    navigation.navigate("FilePreview", { title: file.name, uri, mime, mode: "sheet", fileId: file.id });
+    return;
+  }
+  if (isText(mime, file.name)) {
+    const text = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+    navigation.navigate("FilePreview", { title: file.name, uri, mime, mode: "text", text, fileId: file.id });
+    return;
+  }
+  if (isPdf(mime, file.name)) {
+    navigation.navigate("FilePreview", { title: file.name, uri, mime, mode: "pdf", fileId: file.id });
+    return;
+  }
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, { mimeType: mime, dialogTitle: file.name });
   }
 }
 

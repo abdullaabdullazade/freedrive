@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -30,16 +32,6 @@ export function TrashScreen({ navigation }: Props) {
   const [folders, setFolders] = useState<FolderItem[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
 
-  useEffect(() => {
-    navigation.setOptions({
-      title: "Bin",
-      headerStyle: { backgroundColor: colors.bg },
-      headerTintColor: colors.text,
-      headerTitleStyle: { fontWeight: "600" },
-      headerShadowVisible: false,
-    });
-  }, [navigation]);
-
   const load = useCallback(async () => {
     setError("");
     try {
@@ -56,6 +48,91 @@ export function TrashScreen({ navigation }: Props) {
       setRefreshing(false);
     }
   }, []);
+
+  const showItemActions = useCallback(
+    (entry: ListEntry) => {
+      const label = entry.item.name;
+      Alert.alert(label, "Choose an action", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          onPress: async () => {
+            try {
+              if (entry.kind === "file") await api.restoreFile(entry.item.id);
+              else await api.restoreFolder(entry.item.id);
+              await load();
+            } catch (err) {
+              Alert.alert("Restore failed", err instanceof Error ? err.message : String(err));
+            }
+          },
+        },
+        {
+          text: "Delete forever",
+          style: "destructive",
+          onPress: () =>
+            Alert.alert("Delete forever?", `${label} cannot be recovered.`, [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete forever",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    if (entry.kind === "file") await api.permanentlyDeleteFile(entry.item.id);
+                    else await api.permanentlyDeleteFolder(entry.item.id);
+                    await load();
+                  } catch (err) {
+                    Alert.alert("Delete failed", err instanceof Error ? err.message : String(err));
+                  }
+                },
+              },
+            ]),
+        },
+      ]);
+    },
+    [load],
+  );
+
+  useEffect(() => {
+    navigation.setOptions({
+      title: "Bin",
+      headerStyle: { backgroundColor: colors.bg },
+      headerTintColor: colors.text,
+      headerTitleStyle: { fontWeight: "600" },
+      headerShadowVisible: false,
+      headerRight: () => (
+        <Pressable
+          disabled={folders.length === 0 && files.length === 0}
+          hitSlop={8}
+          onPress={() =>
+            Alert.alert("Empty bin?", "Every item in the bin will be deleted forever.", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Empty bin",
+                style: "destructive",
+                onPress: async () => {
+                  try {
+                    await api.emptyTrash();
+                    await load();
+                  } catch (err) {
+                    Alert.alert("Empty bin failed", err instanceof Error ? err.message : String(err));
+                  }
+                },
+              },
+            ])
+          }
+        >
+          <Text
+            style={{
+              color: folders.length === 0 && files.length === 0 ? colors.textSecondary : colors.danger,
+              fontWeight: "600",
+            }}
+          >
+            Empty
+          </Text>
+        </Pressable>
+      ),
+    });
+  }, [files.length, folders.length, load, navigation]);
 
   useEffect(() => {
     load();
@@ -82,9 +159,17 @@ export function TrashScreen({ navigation }: Props) {
           keyExtractor={(item) => `${item.kind}-${item.item.id}`}
           renderItem={({ item }) =>
             item.kind === "folder" ? (
-              <FolderRow folder={item.item} onPress={() => undefined} />
+              <FolderRow
+                folder={item.item}
+                onPress={() => showItemActions(item)}
+                onMenuPress={() => showItemActions(item)}
+              />
             ) : (
-              <FileRow file={item.item} />
+              <FileRow
+                file={item.item}
+                onPress={() => showItemActions(item)}
+                onMenuPress={() => showItemActions(item)}
+              />
             )
           }
           contentContainerStyle={entries.length === 0 ? styles.emptyContainer : undefined}

@@ -21,6 +21,8 @@ function iconFor(mime: string): { bg: string; name: IconName } {
       return { bg: colors.image, name: "image" };
     case "video":
       return { bg: colors.video, name: "video" };
+    case "audio":
+      return { bg: "#0B8043", name: "audio" };
     case "sheet":
       return { bg: colors.sheet, name: "sheet" };
     case "doc":

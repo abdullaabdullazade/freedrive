@@ -1,4 +1,4 @@
-# FreeDrive Mobile (MVP)
+# FreeDrive Mobile
 
 React Native + Expo client for [FreeDrive](https://github.com/marcinx98x/freedrive). Android-first. Sign in to your self-hosted server and browse My Drive, Computers, Starred, Shared, Recent, and Bin.
 
@@ -13,19 +13,22 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **Files stack** — Files tab hosts My Drive home + nested Folder screens (Drive-like); Shared can deep-link into a folder under Files
 - **Files** — My Drive | Computers, folder navigation, list/grid, sort chip; folder listings use server pagination and load more on scroll (same contract as web/desktop)
 - **Grid tiles** — square previews (`aspectRatio: 1`); column count scales with content width so landscape tiles stay phone-sized
-- **Create FAB** — nearest the `+`: Folder, Upload, Spreadsheet (`.xlsx`), Document (`.txt`) on Files / Folder (camera stub reserved); FAB respects safe-area insets; landscape NavRail `+` uses the same order
+- **Create FAB** — Camera, Folder, Upload, Spreadsheet (`.xlsx`), and Document (`.txt`) on Files / Folder; camera photos are encrypted before upload; FAB respects safe-area insets and landscape NavRail uses the same actions
 - **Upload** — multi-file picker; client-side AES-GCM encrypt, write ciphertext to cache, then upload (multipart under 32 MiB; resumable 8 MiB chunks above that for Cloudflare)
 - **New folder** — dialog → `POST /api/v1/folders` in the current folder (or My Drive root)
 - **New Document / Spreadsheet** — encrypted empty `Document.txt` / `Spreadsheet.xlsx`; Document opens in the text editor; Spreadsheet opens in the in-app sheet grid
-- **Drawer** — hamburger slides in Recent, Bin, Settings, Help, and storage usage from `GET /api/v1/me/storage` (reconciled used + quota)
+- **Drawer** — hamburger slides in Recent, Activity, Offline, Approvals, Bin, Settings, Help, and Storage
 - **Search** — search files by name from the top bar
 - **Branding** — same FreeDrive logo as desktop (`scripts/generate-assets.mjs`); SVG icons aligned with desktop `NavIcons`
 - **User avatar** — photo from `avatar_url` on `GET /api/v1/me`, or initials fallback
 - **Profile menu** — avatar, Sign out, storage bar (`{used} of {total} used`) from `/me/storage`, Manage storage link to the web UI
 - **Devices** — appears as `Mobile (…)` and keeps a stable installation ID, so re-login updates the same entry in the account Devices list instead of creating a duplicate
-- **File actions** — item menu for opening, sharing a copy, downloading, starring, and **Move to bin** (soft-delete on the server — item appears in Bin / Trash on web and mobile; permanent delete is from Bin). Desktop My Drive poll removes matching Explorer placeholders within ~20s; creating the same name again does not revive the trashed folder into My Drive.
+- **File actions** — sharing, access management, public links, downloading, offline copies, starring, comments, version history/restore, approval requests, rename, move, information, and **Move to bin**
+- **Bin management** — restore individual files/folders, permanently delete them, or empty the entire bin after confirmation
+- **Approvals** — request file approval by email and approve/reject requests assigned to the signed-in user
 - **Client-side decryption** — account and per-file keys sync from the server so encrypted files can be opened on Android; larger files download to disk and decrypt via native AES-GCM (avoids JS heap OOM)
-- **In-app preview** — images, video (native-controls player via `expo-video`), plain text (Markdown/JSON), spreadsheets (`.xlsx` / `.xls` / `.csv`), and PDF (open with another app)
+- **In-app preview** — images, video, audio, PDF, spreadsheets (`.xlsx` / `.xls` / `.csv`), and text/code/config files including Markdown, JSON, YAML, Python, JavaScript, TypeScript, shell, Rust, Go, Java, C/C++, and common project files
+- **Offline files** — store decrypted local copies explicitly, browse them without a connection, open them locally, and remove the offline copy without deleting the server file
 - **Large media limit** — images/videos **over 100 MiB** are not opened in the in-app player (avoids crashes); tapping shows Save / Share / Cancel instead
 - **Spreadsheet editor** — SheetJS grid with formula bar and sheet tabs; Edit / Save re-encrypts and uploads via `POST /api/v1/files/{id}/content` (same path as text)
 - **Image gallery** — swipe left/right between photos in the same loaded list (Folder / Files / Starred / Home); counter shows position; neighbors decrypt in the background (skips files over the preview size limit); bottom counter and image pad above the Android system nav bar
@@ -37,7 +40,7 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **Download** — native HTTP stream + MediaStore save via `FreeDriveDownloads` (progress shows MB/total for large files); stream decrypt + copy from decrypted path; ongoing download notification then tappable “Download complete”; Android 13+ asks for notification permission
 - **Status notifications** — no persistent “app is running” icon (not appropriate for a Drive client); status-bar presence only for downloads and while a video is playing (media session / native controls)
 
-Offline files are planned for later releases. Full Docs/Photos parity and PDF annotation remain out of scope for the mobile MVP (Sheets-style grid for xlsx/csv is included).
+Server administration stays in the web admin panel. Platform-specific office-suite co-editing and PDF annotation are not implemented; FreeDrive can still decrypt, preview, download, or hand those files to an installed native app.
 
 ## Requirements
 

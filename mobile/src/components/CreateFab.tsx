@@ -10,6 +10,7 @@ import { Icon } from "./Icon";
 import { colors, radii, spacing } from "../theme";
 
 type Props = {
+  onCamera: () => void;
   onUpload: () => void;
   onFolder: () => void;
   onDocument: () => void;
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export function CreateFab({
+  onCamera,
   onUpload,
   onFolder,
   onDocument,
@@ -40,7 +42,8 @@ export function CreateFab({
         <Pressable
           style={styles.camera}
           onPress={() => {
-            /* Camera not wired yet */
+            close();
+            onCamera();
           }}
           accessibilityLabel="Camera"
         >

@@ -1,5 +1,6 @@
 const {
   withDangerousMod,
+  withAndroidManifest,
   createRunOncePlugin,
 } = require("expo/config-plugins");
 const fs = require("fs");
@@ -68,6 +69,14 @@ function ensureBcprovDependency(androidProjectRoot) {
 }
 
 function withFreedriveDownloads(config) {
+  config = withAndroidManifest(config, (cfg) => {
+    const application = cfg.modResults.manifest.application?.[0];
+    if (application) {
+      application.$["android:usesCleartextTraffic"] = "true";
+    }
+    return cfg;
+  });
+
   return withDangerousMod(config, [
     "android",
     async (cfg) => {

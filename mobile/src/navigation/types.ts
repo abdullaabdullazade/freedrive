@@ -29,12 +29,16 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   Search: { query: string };
   Recent: undefined;
+  Activity: undefined;
+  Storage: undefined;
+  Offline: undefined;
+  Approvals: undefined;
   Trash: undefined;
   FilePreview: {
     title: string;
     uri: string;
     mime: string;
-    mode: "image" | "text" | "pdf" | "video" | "sheet";
+    mode: "image" | "text" | "pdf" | "video" | "audio" | "sheet";
     text?: string;
     fileId?: string;
     gallery?: Array<{

@@ -17,7 +17,7 @@ import { formatBytes } from "../utils/format";
 import { Icon, type IconName } from "./Icon";
 import { Logo } from "./Logo";
 
-export type DrawerRoute = "Recent" | "Trash";
+export type DrawerRoute = "Recent" | "Activity" | "Storage" | "Offline" | "Approvals" | "Trash";
 
 interface AppDrawerProps {
   visible: boolean;
@@ -147,6 +147,9 @@ export function AppDrawer({ visible, onClose, onNavigate, onSettings }: AppDrawe
           <View style={styles.divider} />
 
           <DrawerItem icon="clock" label="Recent" onPress={() => go("Recent")} />
+          <DrawerItem icon="sync" label="Activity" onPress={() => go("Activity")} />
+          <DrawerItem icon="cloud" label="Offline" onPress={() => go("Offline")} />
+          <DrawerItem icon="person_add" label="Approvals" onPress={() => go("Approvals")} />
           <DrawerItem icon="trash" label="Bin" onPress={() => go("Trash")} />
           <DrawerItem
             icon="settings"
@@ -159,7 +162,7 @@ export function AppDrawer({ visible, onClose, onNavigate, onSettings }: AppDrawe
           <DrawerItem icon="help" label="Help and feedback" onPress={onClose} />
 
           <View style={styles.divider} />
-          <View style={styles.storage}>
+          <Pressable style={styles.storage} onPress={() => go("Storage")}>
             <View style={styles.storageRow}>
               <Icon name="cloud" size={20} color={colors.text} />
               <Text style={styles.itemLabel}>
@@ -172,7 +175,7 @@ export function AppDrawer({ visible, onClose, onNavigate, onSettings }: AppDrawe
             <Text style={styles.storageMeta}>
               {formatBytes(used)} of {formatBytes(total)} used
             </Text>
-          </View>
+          </Pressable>
         </Animated.View>
       </View>
     </Modal>

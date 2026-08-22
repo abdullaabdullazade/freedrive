@@ -9,6 +9,10 @@ import { FilePreviewScreen } from "../screens/FilePreviewScreen";
 import { LoginApprovalScreen } from "../screens/LoginApprovalScreen";
 import { LoginScreen } from "../screens/LoginScreen";
 import { RecentScreen } from "../screens/RecentScreen";
+import { ActivityScreen } from "../screens/ActivityScreen";
+import { ApprovalsScreen } from "../screens/ApprovalsScreen";
+import { OfflineScreen } from "../screens/OfflineScreen";
+import { StorageScreen } from "../screens/StorageScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 import { TrashScreen } from "../screens/TrashScreen";
 import { TwoFactorScreen } from "../screens/TwoFactorScreen";
@@ -172,6 +176,10 @@ export function RootNavigator() {
               component={RecentScreen}
               options={{ headerShown: true }}
             />
+            <Stack.Screen name="Activity" component={ActivityScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Storage" component={StorageScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Offline" component={OfflineScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Approvals" component={ApprovalsScreen} options={{ headerShown: true }} />
             <Stack.Screen
               name="Trash"
               component={TrashScreen}

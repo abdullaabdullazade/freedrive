@@ -36,10 +36,11 @@ export function formatBytes(bytes: number): string {
   return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
 }
 
-export function mimeCategory(mime: string): "image" | "video" | "sheet" | "doc" | "other" {
+export function mimeCategory(mime: string): "image" | "video" | "audio" | "sheet" | "doc" | "other" {
   const m = (mime || "").toLowerCase();
   if (m.startsWith("image/")) return "image";
   if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
   if (m.includes("sheet") || m.includes("excel") || m.includes("csv")) return "sheet";
   if (m.includes("pdf") || m.startsWith("text/") || m.includes("document") || m.includes("word")) {
     return "doc";

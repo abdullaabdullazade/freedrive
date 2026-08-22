@@ -16,11 +16,25 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, ApiError } from "../api/client";
-import type { FileItem, FolderItem, ShareLink, SharedItem } from "../api/types";
+import type {
+  FileComment,
+  FileItem,
+  FileVersion,
+  FolderItem,
+  ShareLink,
+  SharedItem,
+} from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { colors, radii, spacing } from "../theme";
 import { formatBytes, formatRelativeDate } from "../utils/format";
-import { copyText, downloadFileToDevice, downloadFileToShare } from "../utils/openFile";
+import {
+  copyText,
+  downloadAndDecrypt,
+  downloadFileToDevice,
+  downloadFileToShare,
+} from "../utils/openFile";
+import { uploadLocalFile } from "../utils/uploadFiles";
+import { isFileOffline, removeOfflineFile, saveFileOffline } from "../offline/files";
 import { Icon, type IconName } from "./Icon";
 
 export type ItemTarget =
@@ -33,7 +47,16 @@ interface ItemActionsSheetProps {
   onChanged: () => void;
 }
 
-type Dialog = "none" | "rename" | "move" | "info" | "color" | "share";
+type Dialog =
+  | "none"
+  | "rename"
+  | "move"
+  | "info"
+  | "color"
+  | "share"
+  | "comments"
+  | "versions"
+  | "approval";
 
 type ActionRow = {
   key: string;
@@ -72,6 +95,11 @@ export function ItemActionsSheet({ target, onClose, onChanged }: ItemActionsShee
   const [shareEmail, setShareEmail] = useState("");
   const [shares, setShares] = useState<SharedItem[]>([]);
   const [links, setLinks] = useState<ShareLink[]>([]);
+  const [offline, setOffline] = useState(false);
+  const [comments, setComments] = useState<FileComment[]>([]);
+  const [commentValue, setCommentValue] = useState("");
+  const [versions, setVersions] = useState<FileVersion[]>([]);
+  const [approvalEmail, setApprovalEmail] = useState("");
   const progress = useRef(new Animated.Value(0)).current;
   const closingRef = useRef(false);
 
@@ -82,6 +110,11 @@ export function ItemActionsSheet({ target, onClose, onChanged }: ItemActionsShee
       setDialog("none");
       setRenameValue(target.item.name);
       setRendered(true);
+      if (target.kind === "file") {
+        void isFileOffline(target.item.id).then(setOffline).catch(() => setOffline(false));
+      } else {
+        setOffline(false);
+      }
     } else if (rendered && !closingRef.current) {
       closingRef.current = true;
       Animated.timing(progress, {
@@ -120,6 +153,11 @@ export function ItemActionsSheet({ target, onClose, onChanged }: ItemActionsShee
     },
     { key: "link", label: "Copy link", icon: "link", dividerAfter: true },
     { key: "download", label: "Download", icon: "download" },
+    { key: "offline", label: offline ? "Remove offline copy" : "Available offline", icon: "cloud" },
+    { key: "copy", label: "Make a copy", icon: "file" },
+    { key: "comments", label: "Comments", icon: "people" },
+    { key: "versions", label: "Version history", icon: "clock" },
+    { key: "approval", label: "Request approval", icon: "person_add", dividerAfter: true },
     { key: "rename", label: "Rename", icon: "rename" },
     { key: "move", label: "Move", icon: "move" },
     { key: "info", label: "View information", icon: "info", dividerAfter: true },
@@ -201,6 +239,25 @@ export function ItemActionsSheet({ target, onClose, onChanged }: ItemActionsShee
       setDialog("color");
       return;
     }
+    if (key === "comments" && target.kind === "file") {
+      setDialog("comments");
+      api.listComments(target.item.id).then(setComments).catch((err) =>
+        Alert.alert("Error", err instanceof Error ? err.message : String(err)),
+      );
+      return;
+    }
+    if (key === "versions" && target.kind === "file") {
+      setDialog("versions");
+      api.listVersions(target.item.id).then(setVersions).catch((err) =>
+        Alert.alert("Error", err instanceof Error ? err.message : String(err)),
+      );
+      return;
+    }
+    if (key === "approval" && target.kind === "file") {
+      setApprovalEmail("");
+      setDialog("approval");
+      return;
+    }
     if (key === "star") {
       void run(async () => {
         if (target.kind === "file") {
@@ -233,6 +290,38 @@ export function ItemActionsSheet({ target, onClose, onChanged }: ItemActionsShee
     if (key === "download" && target.kind === "file") {
       onClose();
       void downloadFileToDevice(target.item);
+      return;
+    }
+    if (key === "offline" && target.kind === "file") {
+      void run(async () => {
+        if (offline) {
+          await removeOfflineFile(target.item.id);
+          setOffline(false);
+          Alert.alert("Offline copy removed", target.item.name);
+        } else {
+          await saveFileOffline(target.item);
+          setOffline(true);
+          Alert.alert("Available offline", target.item.name);
+        }
+        onChanged();
+        onClose();
+      });
+      return;
+    }
+    if (key === "copy" && target.kind === "file") {
+      void run(async () => {
+        const local = await downloadAndDecrypt(target.item);
+        const copy = await uploadLocalFile({
+          uri: local.uri,
+          name: `Copy of ${target.item.name}`,
+          mimeType: local.mime || target.item.mime_type || "application/octet-stream",
+          size: target.item.size,
+          folderId: target.item.folder_id ?? null,
+        });
+        Alert.alert("Copy created", copy.name);
+        onChanged();
+        onClose();
+      });
       return;
     }
     if (key === "link") {
@@ -556,6 +645,154 @@ export function ItemActionsSheet({ target, onClose, onChanged }: ItemActionsShee
               </Pressable>
             </View>
           ) : null}
+
+          {dialog === "comments" && target.kind === "file" ? (
+            <View style={styles.dialog}>
+              <Text style={styles.dialogTitle}>Comments</Text>
+              <FlatList
+                data={comments}
+                keyExtractor={(comment) => comment.id}
+                style={{ maxHeight: 240 }}
+                ListEmptyComponent={<Text style={styles.sub}>No comments yet.</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.commentRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.commentAuthor}>{item.username || "User"}</Text>
+                      <Text style={styles.commentText}>{item.content}</Text>
+                      <Text style={styles.sub}>{formatRelativeDate(item.created_at)}</Text>
+                    </View>
+                    <Pressable
+                      hitSlop={8}
+                      onPress={() =>
+                        Alert.alert("Delete comment?", item.content, [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () =>
+                              void run(async () => {
+                                await api.deleteComment(target.item.id, item.id);
+                                setComments(await api.listComments(target.item.id));
+                                onChanged();
+                              }),
+                          },
+                        ])
+                      }
+                    >
+                      <Icon name="trash" size={19} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                )}
+              />
+              <TextInput
+                style={[styles.input, { marginTop: spacing.md }]}
+                placeholder="Add a comment"
+                placeholderTextColor={colors.textSecondary}
+                value={commentValue}
+                onChangeText={setCommentValue}
+                multiline
+              />
+              <View style={styles.dialogActions}>
+                <Pressable onPress={() => setDialog("none")}>
+                  <Text style={styles.linkBtn}>Back</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    void run(async () => {
+                      const content = commentValue.trim();
+                      if (!content) return;
+                      await api.createComment(target.item.id, content);
+                      setCommentValue("");
+                      setComments(await api.listComments(target.item.id));
+                      onChanged();
+                    })
+                  }
+                >
+                  <Text style={styles.linkBtnPrimary}>Comment</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
+          {dialog === "versions" && target.kind === "file" ? (
+            <View style={styles.dialog}>
+              <Text style={styles.dialogTitle}>Version history</Text>
+              <FlatList
+                data={versions}
+                keyExtractor={(version) => version.id}
+                style={{ maxHeight: 300 }}
+                ListEmptyComponent={<Text style={styles.sub}>No previous versions.</Text>}
+                renderItem={({ item }) => (
+                  <View style={styles.versionRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rowLabel}>Version {item.version}</Text>
+                      <Text style={styles.sub}>
+                        {formatBytes(item.size)} · {formatRelativeDate(item.created_at)}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() =>
+                        Alert.alert("Restore this version?", `Version ${item.version}`, [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Restore",
+                            onPress: () =>
+                              void run(async () => {
+                                await api.restoreVersion(target.item.id, item.version);
+                                onChanged();
+                                onClose();
+                              }),
+                          },
+                        ])
+                      }
+                    >
+                      <Text style={styles.linkBtnPrimary}>Restore</Text>
+                    </Pressable>
+                  </View>
+                )}
+              />
+              <Pressable onPress={() => setDialog("none")} style={{ marginTop: spacing.md }}>
+                <Text style={styles.linkBtn}>Back</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {dialog === "approval" && target.kind === "file" ? (
+            <View style={styles.dialog}>
+              <Text style={styles.dialogTitle}>Request approval</Text>
+              <Text style={[styles.sub, { marginBottom: spacing.md }]}>
+                Enter the email address of the person who should approve this file.
+              </Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Approver email"
+                placeholderTextColor={colors.textSecondary}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={approvalEmail}
+                onChangeText={setApprovalEmail}
+              />
+              <View style={styles.dialogActions}>
+                <Pressable onPress={() => setDialog("none")}>
+                  <Text style={styles.linkBtn}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    void run(async () => {
+                      const email = approvalEmail.trim().toLowerCase();
+                      if (!email) return;
+                      await api.requestApproval(target.item.id, email);
+                      Alert.alert("Approval requested", email);
+                      onChanged();
+                      onClose();
+                    })
+                  }
+                >
+                  <Text style={styles.linkBtnPrimary}>Send</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </Animated.View>
       </View>
     </Modal>
@@ -645,5 +882,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: 8,
+  },
+  commentRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  commentAuthor: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  commentText: { color: colors.text, fontSize: 15, lineHeight: 20, marginVertical: 3 },
+  versionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
 });

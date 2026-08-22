@@ -13,6 +13,7 @@ import { Icon } from "../components/Icon";
 import { colors, radii, spacing } from "../theme";
 
 export type CreateHandlers = {
+  onCamera: () => void;
   onUpload: () => void;
   onFolder: () => void;
   onDocument: () => void;
@@ -38,19 +39,20 @@ export function useCreateActions(): CreateActionsContextValue {
 export function useRegisterCreateHandlers(handlers: CreateHandlers | null) {
   const { registerCreateHandlers } = useCreateActions();
   const onUpload = handlers?.onUpload;
+  const onCamera = handlers?.onCamera;
   const onFolder = handlers?.onFolder;
   const onDocument = handlers?.onDocument;
   const onSpreadsheet = handlers?.onSpreadsheet;
 
   useFocusEffect(
     useCallback(() => {
-      if (!onUpload || !onFolder || !onDocument || !onSpreadsheet) {
+      if (!onCamera || !onUpload || !onFolder || !onDocument || !onSpreadsheet) {
         registerCreateHandlers(null);
         return () => registerCreateHandlers(null);
       }
-      registerCreateHandlers({ onUpload, onFolder, onDocument, onSpreadsheet });
+      registerCreateHandlers({ onCamera, onUpload, onFolder, onDocument, onSpreadsheet });
       return () => registerCreateHandlers(null);
-    }, [registerCreateHandlers, onUpload, onFolder, onDocument, onSpreadsheet]),
+    }, [registerCreateHandlers, onCamera, onUpload, onFolder, onDocument, onSpreadsheet]),
   );
 }
 
@@ -106,6 +108,16 @@ export function CreateActionsProvider({ children, onNeedFilesTab }: ProviderProp
             ]}
             pointerEvents="box-none"
           >
+            <Pressable
+              style={styles.pill}
+              onPress={() => {
+                close();
+                handlersRef.current?.onCamera();
+              }}
+            >
+              <Icon name="camera" size={20} color={colors.text} />
+              <Text style={styles.pillText}>Camera</Text>
+            </Pressable>
             <Pressable
               style={styles.pill}
               onPress={() => {

@@ -20,7 +20,6 @@
     "android": {
       "package": "com.freedrive.mobile",
       "versionCode": 46,
-      "usesCleartextTraffic": true,
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -60,7 +59,24 @@
           "backgroundColor": "#121212"
         }
       ],
-      "./plugins/with-freedrive-downloads/withFreedriveDownloads.js"
+      "./plugins/with-freedrive-downloads/withFreedriveDownloads.js",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": false,
+          "cameraPermission": "Allow FreeDrive to take a photo for encrypted upload.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-asset"
     ]
   }
 }

@@ -1,5 +1,6 @@
 import { Alert, NativeModules, Platform } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { api } from "../api/client";
 import type { FileItem } from "../api/types";
@@ -12,6 +13,11 @@ import {
 
 /** Above this, in-memory JS encrypt (plain + cipher + base64) OOMs on typical phones. */
 export const JS_ENCRYPT_MAX_BYTES = 8 * 1024 * 1024;
+
+type UploadAsset = Pick<
+  DocumentPicker.DocumentPickerAsset,
+  "uri" | "name" | "mimeType" | "size"
+>;
 
 type EncryptNativeModule = {
   encryptAesGcmFile?(
@@ -60,7 +66,7 @@ function formatBytes(n: number): string {
 }
 
 async function uploadOneJs(
-  asset: DocumentPicker.DocumentPickerAsset,
+  asset: UploadAsset,
   folderId: string | null,
 ): Promise<FileItem> {
   const name = asset.name || "file";
@@ -94,7 +100,7 @@ async function uploadOneJs(
 }
 
 async function uploadOneNative(
-  asset: DocumentPicker.DocumentPickerAsset,
+  asset: UploadAsset,
   folderId: string | null,
   native: EncryptNativeModule,
 ): Promise<FileItem> {
@@ -127,7 +133,7 @@ async function uploadOneNative(
 }
 
 async function uploadOne(
-  asset: DocumentPicker.DocumentPickerAsset,
+  asset: UploadAsset,
   folderId: string | null,
 ): Promise<FileItem> {
   const info = await FileSystem.getInfoAsync(asset.uri);
@@ -150,6 +156,58 @@ async function uploadOne(
   }
 
   return uploadOneJs(asset, folderId);
+}
+
+/** Encrypt and upload an existing local plaintext file. */
+export function uploadLocalFile(opts: {
+  uri: string;
+  name: string;
+  mimeType: string;
+  size?: number;
+  folderId: string | null;
+}): Promise<FileItem> {
+  return uploadOne(
+    {
+      uri: opts.uri,
+      name: opts.name,
+      mimeType: opts.mimeType,
+      size: opts.size,
+    },
+    opts.folderId,
+  );
+}
+
+/** Capture one photo, encrypt it, and upload it into the selected folder. */
+export async function captureAndUploadPhoto(
+  folderId: string | null,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<FileItem | null> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    Alert.alert("Camera permission required", "Allow camera access to take and upload a photo.");
+    return null;
+  }
+
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ["images"],
+    quality: 0.92,
+    exif: false,
+  });
+  if (result.canceled || !result.assets[0]) return null;
+
+  const photo = result.assets[0];
+  const extension = photo.mimeType === "image/png" ? "png" : "jpg";
+  const name = photo.fileName || `Photo_${new Date().toISOString().replace(/[:.]/g, "-")}.${extension}`;
+  onProgress?.({ current: 1, total: 1, name });
+  return uploadOne(
+    {
+      uri: photo.uri,
+      name,
+      mimeType: photo.mimeType || `image/${extension === "jpg" ? "jpeg" : extension}`,
+      size: photo.fileSize,
+    },
+    folderId,
+  );
 }
 
 export type UploadProgress = {

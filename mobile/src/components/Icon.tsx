@@ -31,6 +31,7 @@ export type IconName =
   | "doc"
   | "image"
   | "video"
+  | "audio"
   | "sheet"
   | "file"
   | "share"
@@ -84,6 +85,8 @@ const paths: Record<IconName, string> = {
   image:
     "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z",
   video: "M8 5v14l11-7z",
+  audio:
+    "M12 3v10.55A4 4 0 1014 17V7h4V3h-6zm-2 16a2 2 0 110-4 2 2 0 010 4z",
   sheet:
     "M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM8 20H4v-4h4v4zm0-6H4v-4h4v4zm0-6H4V4h4v4zm6 12h-4v-4h4v4zm0-6h-4v-4h4v4zm0-6h-4V4h4v4zm6 12h-4v-4h4v4zm0-6h-4v-4h4v4zm0-6h-4V4h4v4z",
   file: "M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z",

@@ -14,6 +14,7 @@ import { EmptyState } from "../components/EmptyState";
 import { FileRow } from "../components/FileRow";
 import type { RootStackParamList } from "../navigation/types";
 import { colors, spacing } from "../theme";
+import { openFile } from "../utils/openFile";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Recent">;
 
@@ -59,7 +60,9 @@ export function RecentScreen({ navigation }: Props) {
         <FlatList
           data={files}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <FileRow file={item} />}
+          renderItem={({ item }) => (
+            <FileRow file={item} onPress={() => void openFile(item, navigation, { gallery: files })} />
+          )}
           contentContainerStyle={files.length === 0 ? styles.emptyContainer : undefined}
           refreshControl={
             <RefreshControl

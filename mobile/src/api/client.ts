@@ -13,7 +13,10 @@ import type {
   Computer,
   CryptoAccount,
   EncryptionKeyEntry,
+  FileApproval,
+  FileComment,
   FileItem,
+  FileVersion,
   FilesListResponse,
   FolderContents,
   FolderItem,
@@ -577,6 +580,61 @@ export const api = {
     const data = await request<{ folders: FolderItem[] | null }>("GET", "/folders/trash");
     return data.folders ?? [];
   },
+
+  restoreFile: (id: string) => request<FileItem>("POST", `/files/${id}/restore`),
+
+  permanentlyDeleteFile: (id: string) => request("DELETE", `/files/${id}/permanent`),
+
+  restoreFolder: (id: string) => request<FolderItem>("POST", `/folders/${id}/restore`),
+
+  permanentlyDeleteFolder: (id: string) => request("DELETE", `/folders/${id}/permanent`),
+
+  emptyTrash: () => request("POST", "/trash/empty"),
+
+  listComments: async (fileId: string) => {
+    const data = await request<{ comments?: FileComment[] | null }>(
+      "GET",
+      `/files/${fileId}/comments`,
+    );
+    return data.comments ?? [];
+  },
+
+  createComment: (fileId: string, content: string, assignedToEmail?: string) =>
+    request<FileComment>("POST", `/files/${fileId}/comments`, {
+      content,
+      ...(assignedToEmail ? { assigned_to_email: assignedToEmail } : {}),
+    }),
+
+  deleteComment: (fileId: string, commentId: string) =>
+    request("DELETE", `/files/${fileId}/comments/${commentId}`),
+
+  listVersions: async (fileId: string) => {
+    const data = await request<{ versions?: FileVersion[] | null }>(
+      "GET",
+      `/files/${fileId}/versions`,
+    );
+    return data.versions ?? [];
+  },
+
+  restoreVersion: (fileId: string, version: number) =>
+    request<FileItem>("POST", `/files/${fileId}/versions/${version}/restore`),
+
+  requestApproval: (fileId: string, approverEmail: string) =>
+    request<FileApproval>("POST", `/files/${fileId}/approvals`, {
+      approver_email: approverEmail,
+    }),
+
+  listApprovals: async (status?: string) => {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    const data = await request<{ approvals?: FileApproval[] | null }>(
+      "GET",
+      `/approvals${query}`,
+    );
+    return data.approvals ?? [];
+  },
+
+  updateApproval: (id: string, status: "approved" | "rejected") =>
+    request<FileApproval>("PATCH", `/approvals/${id}`, { status }),
 
   sharedWithMe: async () => {
     const data = await request<SharedItem[] | { shares?: SharedItem[]; items?: SharedItem[] }>(

@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -40,6 +41,7 @@ import type { FilesStackParamList, MainTabParamList, RootStackParamList } from "
 import { colors, spacing } from "../theme";
 import { openFile } from "../utils/openFile";
 import {
+  captureAndUploadPhoto,
   createEncryptedBinaryFile,
   createEncryptedTextFile,
   pickAndUploadFiles,
@@ -317,6 +319,22 @@ export function FilesScreen({ navigation }: Props) {
     }
   }, [refreshTab]);
 
+  const handleCamera = useCallback(async () => {
+    setUploading(true);
+    setUploadLabel("Opening camera…");
+    try {
+      const uploaded = await captureAndUploadPhoto(null, (p) => {
+        setUploadLabel(`Uploading ${p.name}`);
+      });
+      if (uploaded) await refreshTab({ soft: true });
+    } catch (err) {
+      Alert.alert("Camera upload failed", err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+      setUploadLabel("");
+    }
+  }, [refreshTab]);
+
   const openFolderDialog = useCallback(() => setFolderDialog(true), []);
 
   const handleCreateDocument = useCallback(async () => {
@@ -360,6 +378,9 @@ export function FilesScreen({ navigation }: Props) {
   }, [navigation, refreshTab]);
 
   useRegisterCreateHandlers({
+    onCamera: () => {
+      void handleCamera();
+    },
     onUpload: () => {
       void handleUpload();
     },
@@ -505,6 +526,7 @@ export function FilesScreen({ navigation }: Props) {
 
       {tab === "my-drive" && !isWide ? (
         <CreateFab
+          onCamera={() => void handleCamera()}
           onUpload={() => void handleUpload()}
           onFolder={() => setFolderDialog(true)}
           onDocument={() => void handleCreateDocument()}
