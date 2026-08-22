@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:tauri": "node scripts/install-linux-dev-icon.mjs && vite",
     "build": "tsc && vite build",
     "test": "vitest run",
     "build:exe": "npm run icons && npm run tauri build",

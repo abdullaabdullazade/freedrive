@@ -109,8 +109,13 @@ export function FileViewer({ fileId, fallbackName, onClose }: FileViewerProps) {
 
   const toggleFullscreen = async () => {
     const next = !fullscreen;
-    setFullscreen(next);
-    await getCurrentWindow().setFullscreen(next).catch(() => {});
+    try {
+      const window = getCurrentWindow();
+      await window.setFullscreen(next);
+      setFullscreen(await window.isFullscreen());
+    } catch (err) {
+      setError(`Could not change the FreeDrive window mode: ${String(err)}`);
+    }
   };
 
   useEffect(() => {

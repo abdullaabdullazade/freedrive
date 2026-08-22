@@ -4,7 +4,7 @@
   "version": "0.1.26",
   "identifier": "com.freedrive.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "npm run dev:tauri",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
@@ -16,7 +16,10 @@
         "title": "FreeDrive",
         "width": 1100,
         "height": 720,
-        "resizable": false,
+        "minWidth": 760,
+        "minHeight": 520,
+        "resizable": true,
+        "maximizable": true,
         "decorations": true
       },
       {
@@ -24,13 +27,14 @@
         "title": "FreeDrive Preferences",
         "width": 960,
         "height": 640,
-        "resizable": false,
+        "resizable": true,
+        "maximizable": true,
         "decorations": true,
         "visible": false
       }
     ],
     "security": {
-      "csp": "default-src 'self' customprotocol: asset:; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: blob: https: http:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'",
+      "csp": "default-src 'self' customprotocol: asset:; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: blob: https: http:; media-src 'self' customprotocol: asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'",
       "freezePrototype": true
     }
   },

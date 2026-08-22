@@ -170,6 +170,16 @@ pub fn run() {
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
             }
 
+            // Apply the bundled FreeDrive icon to every native window as well
+            // as the installer/executable and tray icon.
+            if let Some(icon) = app.default_window_icon().cloned() {
+                for label in ["main", "preferences"] {
+                    if let Some(window) = app.get_webview_window(label) {
+                        let _ = window.set_icon(icon.clone());
+                    }
+                }
+            }
+
             let state = app.state::<AppState>();
             let _ = commands::init_api_from_storage(&state);
 
