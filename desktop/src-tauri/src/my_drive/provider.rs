@@ -343,7 +343,7 @@ fn resolve_encryption_key(db: &DbHandle, file_id: &str) -> AppResult<String> {
     }
 
     Err(AppError::msg(
-        "encryption key not available on this device (uploaded via web?)",
+        "this file's encryption key is missing from the server; open FreeDrive in the original browser/device to sync its keys, or re-upload the original file",
     ))
 }
 

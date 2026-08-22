@@ -4780,7 +4780,12 @@ const FileManager = (() => {
 
     async function uploadEncryptedBlob(blob, fileName, mimeType, folderId) {
         const cryptoModule = window.CryptoModule;
+        if (!window.CryptoSync?.requireReadyForUpload) {
+            throw new Error('Encryption key sync is unavailable. Reload FreeDrive and sign in again.');
+        }
+        CryptoSync.requireReadyForUpload();
         const canEncrypt = Boolean(cryptoModule?.canEncrypt?.() && cryptoModule?.generateKey);
+        if (!canEncrypt) throw new Error('Secure browser encryption is unavailable. Use HTTPS or the FreeDrive desktop app.');
 
         let key = null;
         let payload;
@@ -4811,7 +4816,13 @@ const FileManager = (() => {
         });
         if (key) {
             await cryptoModule.storeKey(result.id, key);
-            if (window.CryptoSync?.pushFileKey) await CryptoSync.pushFileKey(result.id, key);
+            try {
+                await CryptoSync.pushFileKey(result.id, key);
+            } catch (keyError) {
+                await API.files.permanentDelete(result.id).catch(() => API.files.delete(result.id).catch(() => {}));
+                await cryptoModule.deleteKey?.(result.id).catch(() => {});
+                throw new Error(`Upload rolled back because its encryption key could not be synced: ${keyError.message || keyError}`);
+            }
         }
         addFileActivity(result.id, 'uploaded', result.name);
         createNotification('File uploaded successfully', new Date().toISOString(), true, currentUserLabel());
@@ -4822,7 +4833,12 @@ const FileManager = (() => {
         const oldName = file.name;
         const nameToUse = newName || file.name;
         const cryptoModule = window.CryptoModule;
+        if (!window.CryptoSync?.requireReadyForUpload) {
+            throw new Error('Encryption key sync is unavailable. Reload FreeDrive and sign in again.');
+        }
+        CryptoSync.requireReadyForUpload();
         const canEncrypt = Boolean(cryptoModule?.canEncrypt?.() && cryptoModule?.generateKey);
+        if (!canEncrypt) throw new Error('Secure browser encryption is unavailable. Use HTTPS or the FreeDrive desktop app.');
 
         let key = null;
         let payload;
@@ -4844,6 +4860,10 @@ const FileManager = (() => {
         }
 
         try {
+            if (key) {
+                await cryptoModule.storeKey(file.id, key);
+                await CryptoSync.pushFileKey(file.id, key);
+            }
             await API.uploadBytes({
                 data: payload,
                 name: nameToUse,
@@ -4852,10 +4872,6 @@ const FileManager = (() => {
                 iv: ivB64,
                 fileId: file.id,
             });
-            if (key) {
-                await cryptoModule.storeKey(file.id, key);
-                if (window.CryptoSync?.pushFileKey) await CryptoSync.pushFileKey(file.id, key);
-            }
             if (nameToUse !== oldName) {
                 await API.files.update(file.id, { name: nameToUse });
             }

@@ -76,6 +76,17 @@ var CryptoSync = window.CryptoSync = (() => {
         return Boolean(uekRaw && uekRaw.length === 32);
     }
 
+    function requireReadyForUpload() {
+        if (!canUse()) {
+            throw new Error('Secure browser encryption is unavailable. Use HTTPS or the FreeDrive desktop app.');
+        }
+        if (!isUnlocked()) {
+            const err = new Error('Encryption keys are locked. Sign out and sign in again before uploading.');
+            err.code = ERR_UNLOCK_REQUIRED;
+            throw err;
+        }
+    }
+
     function lock() {
         uekRaw = null;
         recoveryKeyRaw = null;
@@ -361,9 +372,10 @@ var CryptoSync = window.CryptoSync = (() => {
     }
 
     async function pushFileKey(fileId, key) {
-        if (!isUnlocked() || !fileId || !key) return;
+        requireReadyForUpload();
+        if (!fileId || !key) throw new Error('Cannot sync an empty file encryption key');
         const wrapped = await wrapFileKeyForUpload(key);
-        if (!wrapped) return;
+        if (!wrapped) throw new Error('Could not wrap the file encryption key');
         await API.crypto.putFileKey(fileId, wrapped);
     }
 
@@ -502,6 +514,7 @@ var CryptoSync = window.CryptoSync = (() => {
     return {
         canUse,
         isUnlocked,
+        requireReadyForUpload,
         lock,
         lockAndClearDevice,
         unlockWithPassword,
