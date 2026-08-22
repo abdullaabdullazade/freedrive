@@ -168,14 +168,6 @@ svg {
   border-color: #0b57d0;
 }
 .auth-action-panel .btn-primary:hover { background: #0a4ebd; }
-.auth-footer { margin-top: 28px; text-align: left; }
-.encryption-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #5f6368;
-}
 .btn-loader { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

@@ -5843,6 +5843,7 @@ const FileManager = (() => {
 
         editorState.onSave = async () => true;
         editorState.onReset = () => {};
+        editorState.cleanup = () => URL.revokeObjectURL(url);
     }
 
     async function openVideoPlayer(file) {

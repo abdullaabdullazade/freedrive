@@ -385,7 +385,85 @@
 .gd-pagination-wrap {
     margin-top: 16px;
     border-top: 1px solid var(--border-light, #f1f3f4);
-    padding-top: 16px;
+    padding: 16px 0 0;
+}
+
+.gd-pagination-wrap .admin-table-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 40px;
+}
+
+.gd-pagination-wrap .admin-table-count {
+    color: #5f6368;
+    font-size: 13px;
+    line-height: 20px;
+    white-space: nowrap;
+}
+
+.gd-pagination-wrap .admin-table-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.gd-pagination-wrap .admin-page-nav,
+.gd-pagination-wrap .admin-page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid #dadce0;
+    border-radius: 50%;
+    background: #fff;
+    color: #3c4043;
+    font: inherit;
+    cursor: pointer;
+}
+
+.gd-pagination-wrap .admin-page-btn.active {
+    border-color: #1a73e8;
+    background: #e8f0fe;
+    color: #1967d2;
+    font-weight: 500;
+}
+
+.gd-pagination-wrap .admin-page-nav:disabled {
+    border-color: transparent;
+    background: #f8f9fa;
+    color: #bdc1c6;
+    cursor: default;
+}
+
+.gd-pagination-wrap select {
+    height: 36px;
+    min-width: 104px;
+    padding: 0 30px 0 12px;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    background-color: #fff;
+    color: #3c4043;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+@media (max-width: 680px) {
+    .gd-pagination-wrap .admin-table-pager {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .gd-pagination-wrap .admin-table-controls {
+        justify-content: flex-start;
+        width: 100%;
+    }
 }
 
 /* Tooltip on meter */
@@ -1528,4 +1606,3 @@
     height: 24px;
     background: var(--border-light, #DADCE0);
 }
-
