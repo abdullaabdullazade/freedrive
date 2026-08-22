@@ -3,9 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
+	"github.com/abdullaabdullazade/freedrive/internal/adminsettings"
 	"github.com/abdullaabdullazade/freedrive/internal/api/middleware"
 	"github.com/abdullaabdullazade/freedrive/internal/domain"
 	"github.com/abdullaabdullazade/freedrive/internal/repository"
@@ -16,19 +20,27 @@ import (
 
 // FileHandler handles file endpoints.
 type FileHandler struct {
-	fileService *service.FileService
-	fileRepo    repository.FileRepository
-	storage     *storage.DiskStorage
-	maxUpload   int64
+	fileService  *service.FileService
+	fileRepo     repository.FileRepository
+	storage      *storage.DiskStorage
+	maxUpload    int64
+	mutationRepo repository.ClientMutationRepository
 }
 
 // NewFileHandler creates a new file handler.
-func NewFileHandler(fileService *service.FileService, fileRepo repository.FileRepository, store *storage.DiskStorage, maxUpload int64) *FileHandler {
+func NewFileHandler(
+	fileService *service.FileService,
+	fileRepo repository.FileRepository,
+	store *storage.DiskStorage,
+	maxUpload int64,
+	mutationRepo repository.ClientMutationRepository,
+) *FileHandler {
 	return &FileHandler{
-		fileService: fileService,
-		fileRepo:    fileRepo,
-		storage:     store,
-		maxUpload:   maxUpload,
+		fileService:  fileService,
+		fileRepo:     fileRepo,
+		storage:      store,
+		maxUpload:    maxUpload,
+		mutationRepo: mutationRepo,
 	}
 }
 
@@ -36,10 +48,11 @@ func NewFileHandler(fileService *service.FileService, fileRepo repository.FileRe
 func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
-	// Limit upload size
-	r.Body = http.MaxBytesReader(w, r.Body, h.maxUpload)
+	// Limit upload size (config + admin setting)
+	maxBytes := adminsettings.EffectiveMaxUploadBytes(h.maxUpload)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil { // 32MB memory
+	if err := r.ParseMultipartForm(64 << 20); err != nil { // 64MB memory
 		writeError(w, "file too large or invalid form", http.StatusBadRequest)
 		return
 	}
@@ -55,6 +68,16 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	if name == "" {
 		name = header.Filename
+	}
+
+	if !adminsettings.AllowedTypesUnlimited() {
+		if allowed := adminsettings.AllowedTypes(); len(allowed) > 0 {
+			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+			if ext == "" || !containsString(allowed, ext) {
+				writeError(w, "file type not allowed", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	mimeType := r.FormValue("mime_type")
 	if mimeType == "" {
@@ -114,11 +137,14 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 
 	readerIface, err := getReader()
 	if err != nil {
-		writeError(w, "failed to read file", http.StatusInternalServerError)
+		log.Printf("download blob missing file_id=%s blob_path=%s: %v", fileID, file.BlobPath, err)
+		writeError(w, "blob missing", http.StatusNotFound)
 		return
 	}
 	reader := readerIface.(io.ReadCloser)
 	defer reader.Close()
+
+	h.fileService.RecordDownload(r.Context(), userID, file.ID, file.Name)
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
@@ -167,9 +193,10 @@ func (h *FileHandler) List(w http.ResponseWriter, r *http.Request) {
 // Get handles GET /api/v1/files/{id}
 func (h *FileHandler) Get(w http.ResponseWriter, r *http.Request) {
 	fileID := chi.URLParam(r, "id")
-	file, err := h.fileRepo.GetByID(r.Context(), fileID)
-	if err != nil || file == nil {
-		writeError(w, "file not found", http.StatusNotFound)
+	userID := middleware.GetUserID(r.Context())
+	file, err := h.fileService.Get(r.Context(), fileID, userID)
+	if err != nil {
+		writeError(w, err.Error(), http.StatusForbidden)
 		return
 	}
 	writeJSON(w, http.StatusOK, file)
@@ -220,6 +247,11 @@ func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	fileID := chi.URLParam(r, "id")
 	userID := middleware.GetUserID(r.Context())
 
+	if !acceptClientMutation(r.Context(), h.mutationRepo, r) {
+		writeJSON(w, http.StatusOK, map[string]string{"message": "moved to trash"})
+		return
+	}
+
 	if err := h.fileService.Delete(r.Context(), fileID, userID); err != nil {
 		writeError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -267,8 +299,9 @@ func (h *FileHandler) UpdateContent(w http.ResponseWriter, r *http.Request) {
 	fileID := chi.URLParam(r, "id")
 	userID := middleware.GetUserID(r.Context())
 
-	r.Body = http.MaxBytesReader(w, r.Body, h.maxUpload)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	maxBytes := adminsettings.EffectiveMaxUploadBytes(h.maxUpload)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	if err := r.ParseMultipartForm(64 << 20); err != nil { // 64MB memory
 		writeError(w, "file too large or invalid form", http.StatusBadRequest)
 		return
 	}
@@ -283,6 +316,15 @@ func (h *FileHandler) UpdateContent(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	if name == "" {
 		name = header.Filename
+	}
+	if !adminsettings.AllowedTypesUnlimited() {
+		if allowed := adminsettings.AllowedTypes(); len(allowed) > 0 {
+			ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+			if ext == "" || !containsString(allowed, ext) {
+				writeError(w, "file type not allowed", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 	mimeType := r.FormValue("mime_type")
 	if mimeType == "" {
@@ -333,4 +375,24 @@ func (h *FileHandler) Trash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"files": files})
+}
+
+// EmptyTrash handles POST /api/v1/trash/empty
+func (h *FileHandler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	result, err := h.fileService.EmptyTrash(r.Context(), userID)
+	if err != nil {
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func containsString(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }

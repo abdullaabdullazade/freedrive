@@ -29,11 +29,29 @@ func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	user.CreatedAt = now
 	user.UpdatedAt = now
 
+	suspended := 0
+	if user.Suspended {
+		suspended = 1
+	}
+	email2fa := 0
+	if user.Email2FAEnabled {
+		email2fa = 1
+	}
+	totpEnabled := 0
+	if user.TotpEnabled {
+		totpEnabled = 1
+	}
+	loginApproval := 0
+	if user.LoginApprovalEnabled {
+		loginApproval = 1
+	}
 	_, err := r.writer.ExecContext(ctx,
-		`INSERT INTO users (id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO users (id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled, login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.Email, user.Username, user.PasswordHash, user.Role,
-		user.QuotaBytes, user.UsedBytes, user.AvatarURL, user.CreatedAt, user.UpdatedAt,
+		user.QuotaBytes, user.UsedBytes, user.AvatarURL, suspended, email2fa, loginApproval,
+		nullIfEmpty(user.TotpSecret), totpEnabled, user.TotpEnrolledAt,
+		user.CreatedAt, user.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create user: %w", err)
@@ -41,13 +59,48 @@ func (r *UserRepo) Create(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-func (r *UserRepo) GetByID(ctx context.Context, id string) (*domain.User, error) {
+func nullIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func scanUser(row interface {
+	Scan(dest ...interface{}) error
+}) (*domain.User, error) {
 	user := &domain.User{}
-	err := r.reader.QueryRowContext(ctx,
-		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, created_at, updated_at, last_login_at
+	var suspended, email2fa, loginApproval, totpEnabled int
+	var totpSecret sql.NullString
+	var totpEnrolledAt sql.NullTime
+	err := row.Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Role,
+		&user.QuotaBytes, &user.UsedBytes, &user.AvatarURL, &suspended, &email2fa, &loginApproval,
+		&totpSecret, &totpEnabled, &totpEnrolledAt,
+		&user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt)
+	if err != nil {
+		return nil, err
+	}
+	user.Suspended = suspended != 0
+	user.Email2FAEnabled = email2fa != 0
+	user.LoginApprovalEnabled = loginApproval != 0
+	user.TotpEnabled = totpEnabled != 0
+	if totpSecret.Valid {
+		user.TotpSecret = totpSecret.String
+	}
+	if totpEnrolledAt.Valid {
+		t := totpEnrolledAt.Time
+		user.TotpEnrolledAt = &t
+	}
+	return user, nil
+}
+
+func (r *UserRepo) GetByID(ctx context.Context, id string) (*domain.User, error) {
+	row := r.reader.QueryRowContext(ctx,
+		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled,
+		        login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
 		 FROM users WHERE id = ?`, id,
-	).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Role,
-		&user.QuotaBytes, &user.UsedBytes, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt)
+	)
+	user, err := scanUser(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -58,12 +111,12 @@ func (r *UserRepo) GetByID(ctx context.Context, id string) (*domain.User, error)
 }
 
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	user := &domain.User{}
-	err := r.reader.QueryRowContext(ctx,
-		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, created_at, updated_at, last_login_at
-		 FROM users WHERE email = ?`, email,
-	).Scan(&user.ID, &user.Email, &user.Username, &user.PasswordHash, &user.Role,
-		&user.QuotaBytes, &user.UsedBytes, &user.AvatarURL, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt)
+	row := r.reader.QueryRowContext(ctx,
+		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled,
+		        login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
+		 FROM users WHERE email = ? COLLATE NOCASE`, email,
+	)
+	user, err := scanUser(row)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -75,11 +128,30 @@ func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, 
 
 func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = time.Now()
+	suspended := 0
+	if user.Suspended {
+		suspended = 1
+	}
+	email2fa := 0
+	if user.Email2FAEnabled {
+		email2fa = 1
+	}
+	totpEnabled := 0
+	if user.TotpEnabled {
+		totpEnabled = 1
+	}
+	loginApproval := 0
+	if user.LoginApprovalEnabled {
+		loginApproval = 1
+	}
 	_, err := r.writer.ExecContext(ctx,
-		`UPDATE users SET email=?, username=?, password_hash=?, role=?, quota_bytes=?, used_bytes=?, avatar_url=?, updated_at=?, last_login_at=?
+		`UPDATE users SET email=?, username=?, password_hash=?, role=?, quota_bytes=?, used_bytes=?, avatar_url=?, suspended=?,
+		 email_2fa_enabled=?, login_approval_enabled=?, totp_secret=?, totp_enabled=?, totp_enrolled_at=?, updated_at=?, last_login_at=?
 		 WHERE id=?`,
 		user.Email, user.Username, user.PasswordHash, user.Role,
-		user.QuotaBytes, user.UsedBytes, user.AvatarURL, user.UpdatedAt, user.LastLoginAt, user.ID,
+		user.QuotaBytes, user.UsedBytes, user.AvatarURL, suspended, email2fa, loginApproval,
+		nullIfEmpty(user.TotpSecret), totpEnabled, user.TotpEnrolledAt,
+		user.UpdatedAt, user.LastLoginAt, user.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update user: %w", err)
@@ -88,16 +160,60 @@ func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
 }
 
 func (r *UserRepo) Delete(ctx context.Context, id string) error {
-	_, err := r.writer.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
+	tx, err := r.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete user tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Clear FK references that lack ON DELETE CASCADE, then remove all owned
+	// content explicitly so user deletion always wipes their files/folders.
+	type delStmt struct {
+		q    string
+		args []interface{}
+	}
+	stmts := []delStmt{
+		{`DELETE FROM invite_links WHERE created_by = ?`, []interface{}{id}},
+		{`DELETE FROM share_links WHERE created_by = ?`, []interface{}{id}},
+		{`DELETE FROM user_shares WHERE shared_by = ? OR shared_with = ?`, []interface{}{id, id}},
+		{`DELETE FROM comments WHERE user_id = ? OR assigned_to = ?`, []interface{}{id, id}},
+		{`DELETE FROM activity_log WHERE user_id = ?`, []interface{}{id}},
+		{`DELETE FROM file_approvals WHERE requested_by = ? OR approver_id = ?`, []interface{}{id, id}},
+		// Versions created by this user (incl. on others' files) block user DELETE.
+		{`DELETE FROM file_versions WHERE created_by = ?`, []interface{}{id}},
+		// Owned storage — explicit so files are gone even if CASCADE is incomplete.
+		{`DELETE FROM file_versions WHERE file_id IN (SELECT id FROM files WHERE owner_id = ?)`, []interface{}{id}},
+		{`DELETE FROM files WHERE owner_id = ?`, []interface{}{id}},
+		{`DELETE FROM computers WHERE owner_id = ?`, []interface{}{id}},
+		{`DELETE FROM folders WHERE owner_id = ?`, []interface{}{id}},
+		{`DELETE FROM notifications WHERE user_id = ?`, []interface{}{id}},
+		{`DELETE FROM refresh_tokens WHERE user_id = ?`, []interface{}{id}},
+		{`DELETE FROM user_crypto WHERE user_id = ?`, []interface{}{id}},
+	}
+	for _, s := range stmts {
+		if _, err := tx.ExecContext(ctx, s.q, s.args...); err != nil {
+			return fmt.Errorf("delete user cleanup: %w", err)
+		}
+	}
+
+	res, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("user not found")
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete user: %w", err)
 	}
 	return nil
 }
 
 func (r *UserRepo) List(ctx context.Context) ([]domain.User, error) {
 	rows, err := r.reader.QueryContext(ctx,
-		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, created_at, updated_at, last_login_at
+		`SELECT id, email, username, password_hash, role, quota_bytes, used_bytes, avatar_url, suspended, email_2fa_enabled,
+		        login_approval_enabled, totp_secret, totp_enabled, totp_enrolled_at, created_at, updated_at, last_login_at
 		 FROM users ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -107,12 +223,11 @@ func (r *UserRepo) List(ctx context.Context) ([]domain.User, error) {
 
 	var users []domain.User
 	for rows.Next() {
-		var u domain.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.Role,
-			&u.QuotaBytes, &u.UsedBytes, &u.AvatarURL, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt); err != nil {
+		u, err := scanUser(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
-		users = append(users, u)
+		users = append(users, *u)
 	}
 	return users, nil
 }
@@ -171,6 +286,11 @@ func (r *UserRepo) DeleteUserRefreshTokens(ctx context.Context, userID string) e
 	return err
 }
 
+func (r *UserRepo) DeleteAllRefreshTokens(ctx context.Context) error {
+	_, err := r.writer.ExecContext(ctx, "DELETE FROM refresh_tokens")
+	return err
+}
+
 // --- Invite Links ---
 
 func (r *UserRepo) CreateInvite(ctx context.Context, invite *domain.InviteLink) error {
@@ -180,9 +300,9 @@ func (r *UserRepo) CreateInvite(ctx context.Context, invite *domain.InviteLink) 
 	invite.CreatedAt = time.Now()
 
 	_, err := r.writer.ExecContext(ctx,
-		`INSERT INTO invite_links (id, code, created_by, role, quota_bytes, max_uses, used_count, expires_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		invite.ID, invite.Code, invite.CreatedBy, invite.Role, invite.QuotaBytes,
+		`INSERT INTO invite_links (id, code, created_by, email, role, quota_bytes, max_uses, used_count, expires_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		invite.ID, invite.Code, invite.CreatedBy, invite.Email, invite.Role, invite.QuotaBytes,
 		invite.MaxUses, invite.UsedCount, invite.ExpiresAt, invite.CreatedAt,
 	)
 	return err
@@ -191,9 +311,9 @@ func (r *UserRepo) CreateInvite(ctx context.Context, invite *domain.InviteLink) 
 func (r *UserRepo) GetInviteByCode(ctx context.Context, code string) (*domain.InviteLink, error) {
 	inv := &domain.InviteLink{}
 	err := r.reader.QueryRowContext(ctx,
-		`SELECT id, code, created_by, role, quota_bytes, max_uses, used_count, expires_at, created_at
+		`SELECT id, code, created_by, email, role, quota_bytes, max_uses, used_count, expires_at, created_at
 		 FROM invite_links WHERE code = ?`, code,
-	).Scan(&inv.ID, &inv.Code, &inv.CreatedBy, &inv.Role, &inv.QuotaBytes,
+	).Scan(&inv.ID, &inv.Code, &inv.CreatedBy, &inv.Email, &inv.Role, &inv.QuotaBytes,
 		&inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -209,7 +329,7 @@ func (r *UserRepo) IncrementInviteUsage(ctx context.Context, id string) error {
 
 func (r *UserRepo) ListInvites(ctx context.Context) ([]domain.InviteLink, error) {
 	rows, err := r.reader.QueryContext(ctx,
-		`SELECT id, code, created_by, role, quota_bytes, max_uses, used_count, expires_at, created_at
+		`SELECT id, code, created_by, email, role, quota_bytes, max_uses, used_count, expires_at, created_at
 		 FROM invite_links ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -219,7 +339,7 @@ func (r *UserRepo) ListInvites(ctx context.Context) ([]domain.InviteLink, error)
 	var invites []domain.InviteLink
 	for rows.Next() {
 		var inv domain.InviteLink
-		if err := rows.Scan(&inv.ID, &inv.Code, &inv.CreatedBy, &inv.Role, &inv.QuotaBytes,
+		if err := rows.Scan(&inv.ID, &inv.Code, &inv.CreatedBy, &inv.Email, &inv.Role, &inv.QuotaBytes,
 			&inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -231,4 +351,45 @@ func (r *UserRepo) ListInvites(ctx context.Context) ([]domain.InviteLink, error)
 func (r *UserRepo) DeleteInvite(ctx context.Context, id string) error {
 	_, err := r.writer.ExecContext(ctx, "DELETE FROM invite_links WHERE id = ?", id)
 	return err
+}
+
+func (r *UserRepo) DeleteAllInvites(ctx context.Context) error {
+	_, err := r.writer.ExecContext(ctx, "DELETE FROM invite_links")
+	return err
+}
+
+func (r *UserRepo) WipeAllDataExcept(ctx context.Context, keepUserID string) error {
+	tx, err := r.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin wipe tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmts := []string{
+		"DELETE FROM file_approvals",
+		"DELETE FROM share_links",
+		"DELETE FROM user_shares",
+		"DELETE FROM comments",
+		"DELETE FROM file_versions",
+		"DELETE FROM files",
+		"DELETE FROM folders",
+		"DELETE FROM computers",
+		"DELETE FROM notifications",
+		"DELETE FROM activity_log",
+		"DELETE FROM refresh_tokens",
+		"DELETE FROM invite_links",
+	}
+	for _, q := range stmts {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return fmt.Errorf("wipe: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE users SET used_bytes = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", keepUserID); err != nil {
+		return fmt.Errorf("wipe admin quota: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id != ?", keepUserID); err != nil {
+		return fmt.Errorf("wipe users: %w", err)
+	}
+	return tx.Commit()
 }

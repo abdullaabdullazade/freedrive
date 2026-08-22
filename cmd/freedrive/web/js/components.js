@@ -88,20 +88,8 @@ const Components = (() => {
         return new Promise((resolve) => {
             showModal(title, `<p style="color:var(--fd-text-muted);font-size:13px;line-height:1.5;">${escapeHtml(message)}</p>`, [
                 { text: 'Cancel', action: () => resolve(false) },
-                { text: confirmText, class: confirmText === 'Delete' ? 'btn-danger' : 'btn-primary', action: () => resolve(true) },
+                { text: confirmText, class: ['Delete', 'Delete forever'].includes(confirmText) ? 'btn-danger' : 'btn-primary', action: () => resolve(true) },
             ]);
-            const onKey = (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    e.stopImmediatePropagation();
-                    document.removeEventListener('keydown', onKey, true);
-                    hideModal();
-                    resolve(true);
-                } else if (e.key === 'Escape') {
-                    document.removeEventListener('keydown', onKey, true);
-                }
-            };
-            document.addEventListener('keydown', onKey, true);
         });
     }
 

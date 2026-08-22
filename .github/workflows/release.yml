@@ -3,7 +3,7 @@ name: Build And Release Binaries
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]*"
   workflow_dispatch:
     inputs:
       tag:

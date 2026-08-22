@@ -38,5 +38,7 @@
   --fd-radius-pill: 24px;
   --fd-row-h: 36px;
   --fd-sidebar-w: var(--sidebar-w);
+  --fd-grid-tile-min: 200px;
+  --fd-grid-tile-max: 250px;
   --fd-topbar-h: var(--topbar-h);
 }

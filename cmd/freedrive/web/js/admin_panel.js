@@ -1,6 +1,6 @@
 const AdminPanel = (() => {
-    const LOCAL_KEY = 'fd_admin_panel_state_v1';
-    const INVITE_KEY = 'fd_admin_invites_local_v1';
+    const UI_PREFS_KEY = 'fd_admin_ui_prefs_v1';
+    const ALLOWED_TYPES_VERSION = 1;
 
     const DEFAULT_SETTINGS = {
         general: {
@@ -10,7 +10,32 @@ const AdminPanel = (() => {
             default_quota_gb: 10,
             registration: 'invite',
             max_upload_mb: 512,
-            allowed_types: ['png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'md', 'csv', 'zip', 'mp4', 'mp3'],
+            allowed_types_unlimited: false,
+            allowed_types: [
+                // Obrazy
+                'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'tif', 'ico', 'heic', 'heif', 'avif', 'raw',
+                // Dokumenty
+                'pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'tex', 'epub', 'mobi', 'pages',
+                // Arkusze
+                'xls', 'xlsx', 'ods', 'csv', 'tsv', 'numbers',
+                // Prezentacje
+                'ppt', 'pptx', 'odp', 'key',
+                // Archiwa
+                'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz', 'iso',
+                // Audio
+                'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'opus', 'aiff',
+                // Wideo
+                'mp4', 'mkv', 'mov', 'avi', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', '3gp',
+                // Kod / dane
+                'html', 'css', 'js', 'ts', 'jsx', 'tsx', 'json', 'xml', 'yaml', 'yml',
+                'py', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rb', 'php', 'sh', 'sql', 'rs', 'swift', 'kt',
+                // Design
+                'psd', 'ai', 'eps', 'xd', 'fig', 'sketch',
+                // Fonty
+                'ttf', 'otf', 'woff', 'woff2',
+                // Instalatory / binaria
+                'apk', 'exe', 'dmg', 'deb', 'rpm', 'msi', 'bin',
+            ],
         },
         email: {
             smtp_server: '',
@@ -64,6 +89,8 @@ const AdminPanel = (() => {
         usersPerPage: 25,
         usersMenuOpen: '',
         drawerUserId: '',
+        drawerBreakdown: null,
+        storageBreakdown: null,
         storageUserPage: 1,
         storageUserPerPage: 25,
         activityFilters: {
@@ -85,6 +112,7 @@ const AdminPanel = (() => {
         settingsErrors: {},
         settingsSavedUntil: 0,
         invites: [],
+        backups: [],
         initialized: false,
         loading: false,
     };
@@ -95,6 +123,12 @@ const AdminPanel = (() => {
 
     function esc(value) {
         return Components.escapeHtml(value || '');
+    }
+
+    function formatPurgeTrashResult(res, prefix = 'Purged') {
+        const files = res?.removed_files || 0;
+        const folders = res?.removed_folders || 0;
+        return `${prefix} ${files} file(s) and ${folders} folder(s)`;
     }
 
     function initials(name) {
@@ -108,6 +142,48 @@ const AdminPanel = (() => {
     function asNumber(value, fallback = 0) {
         const n = Number(value);
         return Number.isFinite(n) ? n : fallback;
+    }
+
+    const QUOTA_OPTIONS_GB = [15, 256, 512, 1024, 2048, 5120];
+
+    function quotaLabel(gb) {
+        return gb >= 1024 ? `${gb / 1024} TB` : `${gb} GB`;
+    }
+
+    function quotaOptionsHtml(currentGb) {
+        const sel = QUOTA_OPTIONS_GB.includes(Number(currentGb)) ? Number(currentGb) : 15;
+        return QUOTA_OPTIONS_GB
+            .map((gb) => `<option value="${gb}" ${gb === sel ? 'selected' : ''}>${quotaLabel(gb)}</option>`)
+            .join('');
+    }
+
+    const MAX_UPLOAD_OPTIONS_MB = [
+        { mb: 512 * 1024, label: '512 GB' },
+        { mb: 1024 * 1024, label: '1 TB' },
+        { mb: 4 * 1024 * 1024, label: '4 TB' },
+        { mb: 7 * 1024 * 1024, label: '7 TB' },
+        { mb: 10 * 1024 * 1024, label: '10 TB' },
+    ];
+
+    function maxUploadOptionsHtml(currentMb) {
+        const values = MAX_UPLOAD_OPTIONS_MB.map((o) => o.mb);
+        const sel = values.includes(Number(currentMb)) ? Number(currentMb) : values[0];
+        return MAX_UPLOAD_OPTIONS_MB
+            .map((o) => `<option value="${o.mb}" ${o.mb === sel ? 'selected' : ''}>${o.label}</option>`)
+            .join('');
+    }
+
+    function promptQuota(title, currentGb) {
+        return new Promise((resolve) => {
+            Components.showModal(
+                title,
+                `<div class="gd-input-group"><label>Storage quota</label><select id="quota-select" class="gd-input">${quotaOptionsHtml(currentGb)}</select></div>`,
+                [
+                    { text: 'Cancel', action: () => resolve(null) },
+                    { text: 'OK', class: 'btn-primary', action: () => resolve(asNumber(document.getElementById('quota-select')?.value, null)) },
+                ]
+            );
+        });
     }
 
     function getCurrentUser() {
@@ -192,35 +268,97 @@ const AdminPanel = (() => {
         `;
     }
 
-    function saveLocalState() {
-        const payload = {
-            userMeta: state.userMeta,
-            settings: state.settings,
-            security: state.settings.security,
+    function saveLocalUiState() {
+        const prefs = {
+            activityFilters: state.activityFilters,
+            usersFilter: state.usersFilter,
+            usersPerPage: state.usersPerPage,
+            activityPerPage: state.activityPerPage,
         };
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
-        localStorage.setItem(INVITE_KEY, JSON.stringify(state.invites));
+        localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs));
     }
 
-    function loadLocalState() {
+    function loadLocalUiState() {
         try {
-            const raw = JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}');
-            if (raw.userMeta && typeof raw.userMeta === 'object') state.userMeta = raw.userMeta;
-            if (raw.settings && typeof raw.settings === 'object') {
-                state.settings = deepMerge(clone(DEFAULT_SETTINGS), raw.settings);
-                state.settingsDraft = clone(state.settings);
+            const raw = JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}');
+            if (raw.activityFilters && typeof raw.activityFilters === 'object') {
+                state.activityFilters = { ...state.activityFilters, ...raw.activityFilters };
+                const allowed = new Set(['all', 'login', 'failed_login']);
+                if (!allowed.has(String(state.activityFilters.action || ''))) {
+                    state.activityFilters.action = 'all';
+                }
             }
+            if (raw.usersFilter) state.usersFilter = raw.usersFilter;
+            if (raw.usersPerPage) state.usersPerPage = asNumber(raw.usersPerPage, state.usersPerPage);
+            if (raw.activityPerPage) state.activityPerPage = asNumber(raw.activityPerPage, state.activityPerPage);
         } catch {
-            state.userMeta = {};
+            // ignore corrupt UI prefs
+        }
+    }
+
+    async function fetchServerSettings() {
+        const res = await fetch('/api/v1/admin/settings', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('fd_access_token') || ''}` },
+        });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        if (!data || typeof data !== 'object' || Object.keys(data).length === 0) return null;
+        return data;
+    }
+
+    function applyServerSettings(data) {
+        state.settings = deepMerge(clone(DEFAULT_SETTINGS), data);
+        state.settingsDraft = clone(state.settings);
+        state.settingsDirty = false;
+    }
+
+    async function saveSettingsToServer(settings = state.settings) {
+        const res = await fetch('/api/v1/admin/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${localStorage.getItem('fd_access_token') || ''}`,
+            },
+            body: JSON.stringify(settings),
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `Settings save failed (${res.status})`);
+        }
+    }
+
+    async function persistSettingsNow({ silent = false } = {}) {
+        state.settings = clone(state.settingsDraft);
+        state.settingsDirty = false;
+        await saveSettingsToServer(state.settings);
+        state.settingsSavedUntil = Date.now() + 3000;
+        if (!silent) {
+            Components.toast('Settings saved', 'success', { duration: 3000 });
+        }
+    }
+
+    function migrateAllowedTypes() {
+        if (!state.settings.general) state.settings.general = {};
+        const gen = state.settings.general;
+        if (gen.allowed_types_version === ALLOWED_TYPES_VERSION) return false;
+        gen.allowed_types = clone(DEFAULT_SETTINGS.general.allowed_types);
+        gen.allowed_types_version = ALLOWED_TYPES_VERSION;
+        state.settingsDraft = clone(state.settings);
+        return true;
+    }
+
+    async function loadServerSettings() {
+        const data = await fetchServerSettings().catch(() => null);
+        if (data) {
+            applyServerSettings(data);
+        } else {
             state.settings = clone(DEFAULT_SETTINGS);
             state.settingsDraft = clone(DEFAULT_SETTINGS);
+            state.settingsDirty = false;
         }
-
-        try {
-            const invites = JSON.parse(localStorage.getItem(INVITE_KEY) || '[]');
-            state.invites = Array.isArray(invites) ? invites : [];
-        } catch {
-            state.invites = [];
+        if (migrateAllowedTypes()) {
+            state.settingsDraft = clone(state.settings);
+            await saveSettingsToServer(state.settings);
         }
     }
 
@@ -292,9 +430,9 @@ const AdminPanel = (() => {
             const userFiles = state.files.filter((f) => String(f.owner_id || f.user_id || '') === String(u.id));
             if (!state.userMeta[u.id]) {
                 state.userMeta[u.id] = {
-                    status: 'active',
+                    status: u.suspended ? 'suspended' : 'active',
                     last_active: u.last_login_at || u.updated_at || u.created_at || nowISO(),
-                    twofa: Boolean(state.userMeta[u.id]?.twofa),
+                    twofa: Boolean(u.email_2fa_enabled) || Boolean(u.totp_enabled),
                     files_count: userFiles.length,
                     bandwidth_month: asNumber(state.userMeta[u.id]?.bandwidth_month, 0),
                 };
@@ -302,17 +440,21 @@ const AdminPanel = (() => {
                 state.userMeta[u.id].last_active = state.userMeta[u.id].last_active || u.last_login_at || u.updated_at || u.created_at || nowISO();
                 state.userMeta[u.id].files_count = userFiles.length;
                 state.userMeta[u.id].bandwidth_month = asNumber(state.userMeta[u.id].bandwidth_month, 0);
+                state.userMeta[u.id].twofa = Boolean(u.email_2fa_enabled) || Boolean(u.totp_enabled);
             }
         });
     }
 
     async function hydrateData() {
-        const [statsRes, usersRes, diskRes, activityRes, filesRes] = await Promise.all([
+        const [statsRes, usersRes, diskRes, activityRes, filesRes, invitesRes, backupsRes, breakdownRes] = await Promise.all([
             API.admin.stats().catch(() => ({})),
             API.admin.users().catch(() => ({ users: [] })),
             API.diskStats().catch(() => ({})),
             API.admin.activity(1, 300).catch(() => ({ activities: [] })),
             API.files.list({ page_size: '800' }).catch(() => ({ files: [] })),
+            API.admin.invites().catch(() => ({ invites: [] })),
+            API.admin.listBackups().catch(() => ({ backups: [] })),
+            API.admin.storageBreakdown().catch(() => ({ breakdown: null })),
         ]);
 
         state.stats = statsRes.stats || statsRes || {};
@@ -320,14 +462,33 @@ const AdminPanel = (() => {
         state.disk = diskRes || {};
         state.activities = Array.isArray(activityRes.activities) ? activityRes.activities : [];
         state.files = Array.isArray(filesRes.files) ? filesRes.files : [];
+        state.invites = (Array.isArray(invitesRes.invites) ? invitesRes.invites : []).map(mapInviteRecord);
+        state.backups = Array.isArray(backupsRes.backups) ? backupsRes.backups : [];
+        state.storageBreakdown = breakdownRes?.breakdown || null;
 
         ensureUserMeta();
-        saveLocalState();
+        saveLocalUiState();
+    }
+
+    function mapInviteRecord(inv) {
+        const maxUses = Number(inv?.max_uses || 1);
+        const used = Number(inv?.used_count || 0);
+        const quotaBytes = Number(inv?.quota_bytes || 0);
+        return {
+            id: inv?.id || '',
+            email: inv?.email || '',
+            role: inv?.role || 'user',
+            quota: Math.max(1, Math.round(quotaBytes / 1073741824) || 10),
+            message: '',
+            code: inv?.code || '',
+            status: maxUses > 0 && used >= maxUses ? 'used' : 'pending',
+            created_at: inv?.created_at || nowISO(),
+        };
     }
 
 
     const AdminFileIcons = {
-        folder: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fbbc04"><path d="M10 4H4c-1.1 0-2 .9-2 2v2h20V8c0-1.1-.9-2-2-2h-8l-2-2z"/><path d="M22 10H2v8c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-8z" fill="#f4b400"/></svg>',
+        folder: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#5f6368"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>',
         image: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#34a853"><path d="M21 19V5c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2zM8.5 11.5A1.5 1.5 0 1 1 8.5 8a1.5 1.5 0 0 1 0 3.5zM5 18l3.5-4.5 2.5 3 3.5-4.5 4.5 6H5z"/></svg>',
         video: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#ea4335"><path d="M17 10.5V7c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10c1.1 0 2-.9 2-2v-3.5l4 4v-11l-4 4z"/></svg>',
         audio: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#a142f4"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55a4 4 0 1 0 4 4V7h4V3h-6z"/></svg>',
@@ -350,8 +511,8 @@ const AdminPanel = (() => {
         return AdminFileIcons.document;
     }
 
-    function estimateFileTypeBuckets() {
-        const buckets = {
+    function emptyFileTypeBuckets() {
+        return {
             Images: { size: 0, count: 0, color: '#1967D2' },
             Videos: { size: 0, count: 0, color: '#188038' },
             Documents: { size: 0, count: 0, color: '#E37400' },
@@ -359,40 +520,36 @@ const AdminPanel = (() => {
             Archives: { size: 0, count: 0, color: '#E53935' },
             Other: { size: 0, count: 0, color: '#5F6368' },
         };
+    }
 
-        state.files.forEach((f) => {
-            const mime = String(f.mime_type || '').toLowerCase();
-            const size = asNumber(f.size, 0);
-            if (mime.startsWith('image/')) {
-                buckets.Images.size += size;
-                buckets.Images.count += 1;
-                return;
-            }
-            if (mime.startsWith('video/')) {
-                buckets.Videos.size += size;
-                buckets.Videos.count += 1;
-                return;
-            }
-            if (mime.startsWith('audio/')) {
-                buckets.Audio.size += size;
-                buckets.Audio.count += 1;
-                return;
-            }
-            if (mime.includes('zip') || mime.includes('rar') || mime.includes('tar') || mime.includes('7z')) {
-                buckets.Archives.size += size;
-                buckets.Archives.count += 1;
-                return;
-            }
-            if (mime.includes('pdf') || mime.includes('text') || mime.includes('sheet') || mime.includes('word') || mime.includes('csv') || mime.includes('markdown')) {
-                buckets.Documents.size += size;
-                buckets.Documents.count += 1;
-                return;
-            }
-            buckets.Other.size += size;
-            buckets.Other.count += 1;
+    function bucketsFromApiBreakdown(breakdown) {
+        const buckets = emptyFileTypeBuckets();
+        if (!breakdown || typeof breakdown !== 'object') return buckets;
+        const map = {
+            images: 'Images',
+            videos: 'Videos',
+            documents: 'Documents',
+            audio: 'Audio',
+            archives: 'Archives',
+            other: 'Other',
+        };
+        Object.entries(map).forEach(([apiKey, label]) => {
+            const item = breakdown[apiKey];
+            if (!item) return;
+            buckets[label].size = asNumber(item.size, 0);
+            buckets[label].count = asNumber(item.count, 0);
         });
-
         return buckets;
+    }
+
+    function estimateFileTypeBuckets(sourceBreakdown) {
+        if (sourceBreakdown) {
+            return bucketsFromApiBreakdown(sourceBreakdown);
+        }
+        if (state.storageBreakdown) {
+            return bucketsFromApiBreakdown(state.storageBreakdown);
+        }
+        return emptyFileTypeBuckets();
     }
 
     function generateStorageTrend() {
@@ -466,12 +623,11 @@ const AdminPanel = (() => {
             return `${b.color} ${start.toFixed(2)}deg ${angle.toFixed(2)}deg`;
         }).join(', ');
 
-        const recent = (state.activities || []).slice(0, 5);
+        const recent = (state.activities || []).filter((a) => isAuthActivity(a.action)).slice(0, 5);
 
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero">
-                    <h2 class="gd-storage-hero-title">Dashboard</h2>
                     <p class="gd-storage-hero-subtitle">Summary of your FreeDrive workspace.</p>
                 </div>
 
@@ -512,8 +668,8 @@ const AdminPanel = (() => {
                         </div>
                         <div class="gd-metric-content">
                             <span class="gd-metric-label">Bandwidth</span>
-                            <span class="gd-metric-value">${Components.formatSize(users.reduce((sum, u) => sum + asNumber(state.userMeta?.[u.id]?.bandwidth_month, 0), 0))}</span>
-                            <span class="gd-metric-sub">this month</span>
+                            <span class="gd-metric-value">—</span>
+                            <span class="gd-metric-sub">Not tracked yet</span>
                         </div>
                     </div>
                 </div>
@@ -565,14 +721,11 @@ const AdminPanel = (() => {
     }
 
     function getUserStatus(user) {
-        return state.userMeta[user.id]?.status || 'active';
-    }
-
-    function setUserStatus(userId, status) {
-        if (!state.userMeta[userId]) state.userMeta[userId] = {};
-        state.userMeta[userId].status = status;
-        state.userMeta[userId].last_active = nowISO();
-        saveLocalState();
+        if (user && typeof user === 'object') {
+            return user.suspended ? 'suspended' : 'active';
+        }
+        const found = state.users.find((u) => u.id === user);
+        return found?.suspended ? 'suspended' : 'active';
     }
 
     function renderUsersSection() {
@@ -600,7 +753,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <h2 class="gd-storage-hero-title">Manage Users</h2>
                     <p class="gd-storage-hero-subtitle">Add, suspend, or change user roles and permissions.</p>
                 </div>
 
@@ -713,9 +865,19 @@ const AdminPanel = (() => {
         if (!u) return '';
         const meta = state.userMeta[u.id] || {};
         const status = meta.status || 'active';
-        const breakdown = estimateFileTypeBuckets();
+        const twofaEnabled = Boolean(u.email_2fa_enabled);
+        const totpEnabled = Boolean(u.totp_enabled);
+        const global2FA = Boolean(state.settings?.security?.require_2fa);
+        const email2faDisabled = global2FA && !totpEnabled ? 'disabled' : '';
+        const email2faHint = global2FA && !totpEnabled
+            ? 'Required for all users (enable authenticator to turn email off)'
+            : (global2FA ? 'Optional when authenticator is enabled' : 'Require email code at sign-in');
+        const breakdown = estimateFileTypeBuckets(state.drawerBreakdown);
         const bItems = Object.entries(breakdown).slice(0, 4);
-        const recent = state.activities.filter((a) => (a.user_id || '') === u.id || (a.username || '') === (u.username || '')).slice(0, 5);
+        const recent = (state.activities || [])
+            .filter((a) => isAuthActivity(a.action))
+            .filter((a) => (a.user_id || '') === u.id || (a.username || '') === (u.username || ''))
+            .slice(0, 5);
 
         return `
             <div class="gd-drawer-header">
@@ -758,8 +920,19 @@ const AdminPanel = (() => {
                             </select>
                         </div>
                         <div class="gd-input-group">
-                            <label>Storage quota (GB)</label>
-                            <input type="number" class="gd-input" min="1" id="drawer-quota" value="${Math.max(1, Math.round(asNumber(u.quota_bytes, 0) / (1024 ** 3)))}">
+                            <label>Storage quota</label>
+                            <select class="gd-input" id="drawer-quota">${quotaOptionsHtml(Math.max(1, Math.round(asNumber(u.quota_bytes, 0) / (1024 ** 3))))}</select>
+                        </div>
+                        <div class="gd-input-group">
+                            <label>Authenticator app (TOTP)</label>
+                            <span style="font-size:13px;color:${totpEnabled ? '#137333' : '#5f6368'};">${totpEnabled ? 'Enabled' : 'Not enabled'} — users set this up in Security</span>
+                        </div>
+                        <div class="gd-input-group">
+                            <label>Email two-factor authentication</label>
+                            <label class="live-toggle" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" id="drawer-2fa" ${twofaEnabled ? 'checked' : ''} ${email2faDisabled}>
+                                <span style="font-size:13px;color:#5f6368;">${email2faHint}</span>
+                            </label>
                         </div>
                         <div style="display:flex; justify-content: flex-end;">
                            <button type="button" class="gd-btn-primary" data-admin-action="save-inline-edit" data-user-id="${u.id}">Save changes</button>
@@ -840,7 +1013,6 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero">
-                    <h2 class="gd-storage-hero-title">Storage</h2>
                     <div class="gd-meter-container">
                         <div class="gd-meter-header">
                             <span class="gd-meter-used">${Components.formatSize(used)}</span>
@@ -883,7 +1055,7 @@ const AdminPanel = (() => {
                         </div>
                         <div class="gd-cleanup-actions">
                             <div class="gd-cleanup-item">
-                                <span>Trash older than 30 days</span>
+                                <span>Trashed items older than 30 days</span>
                                 <button class="gd-btn-outline" data-admin-action="cleanup-trash">Review</button>
                             </div>
                             <div class="gd-cleanup-item">
@@ -892,7 +1064,7 @@ const AdminPanel = (() => {
                             </div>
                             <div class="gd-cleanup-item">
                                 <span>Never opened (90+ days)</span>
-                                <button class="gd-btn-outline" data-admin-action="cleanup-notify">Notify</button>
+                                <button class="gd-btn-outline" disabled title="Not available yet">Notify</button>
                             </div>
                         </div>
                     </div>
@@ -1010,11 +1182,17 @@ const AdminPanel = (() => {
         };
     }
 
+    function isAuthActivity(action) {
+        const a = String(action || '').toLowerCase();
+        return a === 'login' || a === 'failed_login';
+    }
+
     function filteredActivityList() {
         const filters = state.activityFilters;
         return state.activities
             .map(decorateActivity)
             .filter((a) => {
+                if (!isAuthActivity(a.action)) return false;
                 if (filters.users.length && !filters.users.includes(String(a.user_id || a.username || ''))) return false;
                 if (filters.action !== 'all' && String(a.action || '').toLowerCase() !== filters.action) return false;
                 if (filters.from) {
@@ -1058,8 +1236,7 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <h2 class="gd-storage-hero-title">Activity log</h2>
-                    <p class="gd-storage-hero-subtitle">Monitor user activity and system events in real-time.</p>
+                    <p class="gd-storage-hero-subtitle">Authentication and sign-in events across all users.</p>
                 </div>
 
                 <div class="gd-card" style="margin-bottom: 24px; padding: 16px 24px;">
@@ -1073,7 +1250,11 @@ const AdminPanel = (() => {
                         <div class="gd-input-group">
                             <label>Action type</label>
                             <select class="gd-input" id="admin-activity-action">
-                                ${['all', 'upload', 'download', 'delete', 'share', 'login', 'failed login'].map((a) => `<option value="${a}" ${state.activityFilters.action === a ? 'selected' : ''}>${a[0].toUpperCase()}${a.slice(1)}</option>`).join('')}
+                                ${[
+                                    ['all', 'All'],
+                                    ['login', 'Login'],
+                                    ['failed_login', 'Failed login'],
+                                ].map(([value, label]) => `<option value="${value}" ${state.activityFilters.action === value ? 'selected' : ''}>${label}</option>`).join('')}
                             </select>
                         </div>
                         <div class="gd-input-group">
@@ -1088,7 +1269,7 @@ const AdminPanel = (() => {
 
                     <div class="activity-filter-row">
                         <div class="activity-active-filters">
-                            ${state.activityFilters.action !== 'all' ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="action">${esc(state.activityFilters.action)} ×</button>` : ''}
+                            ${state.activityFilters.action !== 'all' ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="action">${esc(state.activityFilters.action === 'failed_login' ? 'Failed login' : state.activityFilters.action)} ×</button>` : ''}
                             ${state.activityFilters.from ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="from">From ${esc(state.activityFilters.from)} ×</button>` : ''}
                             ${state.activityFilters.to ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="to">To ${esc(state.activityFilters.to)} ×</button>` : ''}
                         </div>
@@ -1210,12 +1391,28 @@ const AdminPanel = (() => {
     function renderSecuritySection() {
         const fails = getFailedLogins();
         const sessions = getActiveSessions();
+        const sec = state.settingsDraft?.security || state.settings?.security || {};
+        const require2FA = Boolean(sec.require_2fa);
+        const lastRotation = sec.last_key_rotation ? Components.formatDate(sec.last_key_rotation) : 'Never';
 
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <h2 class="gd-storage-hero-title">Security & access</h2>
-                    <p class="gd-storage-hero-subtitle">Monitor suspicious activity and active sessions.</p>
+                    <p class="gd-storage-hero-subtitle">Monitor suspicious activity, sessions, and authentication policy.</p>
+                </div>
+
+                <div class="gd-card" style="padding:24px;margin-bottom:24px;">
+                    <h3 style="margin:0 0 8px;font-size:16px;">Two-factor authentication</h3>
+                    <p style="margin:0 0 16px;color:#5f6368;font-size:14px;">Require a second factor at sign-in for every user (authenticator app or email code).</p>
+                    <label class="live-toggle" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;">
+                        <input type="checkbox" data-admin-action="toggle-require-2fa" ${require2FA ? 'checked' : ''}>
+                        <span style="font-weight:500;color:#3c4043;">Require 2FA for all users</span>
+                    </label>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;">
+                        <button class="gd-btn-outline" data-admin-action="send-2fa-reminder">Remind users without 2FA</button>
+                        <button class="gd-btn-outline" data-admin-action="rotate-keys">Record key rotation</button>
+                    </div>
+                    <p style="margin:12px 0 0;font-size:12px;color:#5f6368;">Last recorded key rotation: ${esc(lastRotation)}. Full encryption key rotation is not automated yet — this only updates the timestamp.</p>
                 </div>
 
                 <div class="gd-cards-layout">
@@ -1270,14 +1467,14 @@ const AdminPanel = (() => {
                                                 <div style="display:flex; align-items:center; gap:8px;">
                                                     <span class="gd-avatar" style="width:24px; height:24px; font-size:10px; background-color:hsl(${((s.user || '').length * 137) % 360},60%,50%)">${esc(initials(s.user))}</span>
                                                     ${esc(s.user)}
-                                                    ${s.is_current ? '<span style="font-size:10px; font-weight:600; padding:2px 6px; background:#CEEAD6; color:#188038; border-radius:10px;">This device</span>' : ''}
+                                                    ${s.is_me ? '<span style="font-size:10px; font-weight:600; padding:2px 6px; background:#CEEAD6; color:#188038; border-radius:10px;">This device</span>' : ''}
                                                 </div>
                                             </td>
                                             <td>${esc(s.device)}</td>
                                             <td style="font-family:monospace; font-size:12px; color:#5F6368;">${esc(s.ip)}</td>
                                             <td style="color:#5F6368;">${Components.formatDate(s.started)}</td>
                                             <td style="color:#5F6368;">${Components.formatDate(s.last_active)}</td>
-                                            <td>${!s.is_current ? `<button class="gd-icon-btn" data-admin-action="revoke-session" data-session-id="${esc(s.id)}" title="Revoke"><svg width="18" height="18" viewBox="0 0 24 24" fill="#D93025"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>` : ''}</td>
+                                            <td></td>
                                         </tr>
                                     `).join('') || '<tr><td colspan="6" class="gd-empty-table">No active sessions</td></tr>'}
                                 </tbody>
@@ -1312,8 +1509,8 @@ const AdminPanel = (() => {
                     </select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Default quota (GB)</label>
-                    <input class="admin-input" type="number" min="1" data-setting="general.default_quota_gb" value="${g.default_quota_gb}">
+                    <label>Default quota</label>
+                    <select class="admin-input" data-setting="general.default_quota_gb">${quotaOptionsHtml(g.default_quota_gb)}</select>
                 </div>
                 <div class="admin-form-group">
                     <label>Registration</label>
@@ -1322,17 +1519,21 @@ const AdminPanel = (() => {
                     </select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Max file size (MB)</label>
-                    <input class="admin-input" type="number" min="1" data-setting="general.max_upload_mb" value="${g.max_upload_mb}">
+                    <label>Max file size</label>
+                    <select class="admin-input" data-setting="general.max_upload_mb">${maxUploadOptionsHtml(g.max_upload_mb)}</select>
                 </div>
             </div>
             <div class="types-chip-wrap">
                 <h4>Allowed file types</h4>
-                <div class="chip-row" id="allowed-type-chip-row">
+                <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer;">
+                    <input type="checkbox" data-setting="general.allowed_types_unlimited" ${g.allowed_types_unlimited ? 'checked' : ''} style="width:18px; height:18px;">
+                    <span>Without limits — accept all file types</span>
+                </label>
+                <div class="chip-row" id="allowed-type-chip-row" style="${g.allowed_types_unlimited ? 'opacity:0.5; pointer-events:none;' : ''}">
                     ${g.allowed_types.map((t) => `<span class="admin-chip">.${esc(t)} <button data-admin-action="remove-type-chip" data-type="${esc(t)}">×</button></span>`).join('')}
                 </div>
-                <div class="chip-add-row">
-                    <input class="admin-input filetype-input" id="new-type-chip" placeholder="Add file type... e.g. .webp">
+                <div class="chip-add-row" style="${g.allowed_types_unlimited ? 'opacity:0.5; pointer-events:none;' : ''}">
+                    <input class="admin-input filetype-input" id="new-type-chip" placeholder="Add file type... e.g. .webp" ${g.allowed_types_unlimited ? 'disabled' : ''}>
                     <span class="enter-hint">↵</span>
                 </div>
             </div>
@@ -1427,9 +1628,11 @@ const AdminPanel = (() => {
 
     function renderBackupTab() {
         const b = state.settingsDraft.backup;
+        const backups = state.backups || [];
         return `
+            <p class="settings-hint" style="margin:0 0 12px; color:#5f6368; font-size:13px;">Settings backup — exports admin settings JSON only (not database or file blobs).</p>
             <div class="backup-top-row">
-                <button class="gd-btn-primary" data-admin-action="run-backup-now">Create backup now</button>
+                <button class="gd-btn-primary" data-admin-action="run-backup-now">Create settings backup</button>
                 <div class="backup-progress"><span id="backup-progress-fill"></span></div>
             </div>
             <div class="backup-form-grid">
@@ -1455,15 +1658,15 @@ const AdminPanel = (() => {
                 <table class="admin-table">
                     <thead><tr><th>Date</th><th>Size</th><th></th></tr></thead>
                     <tbody>
-                        ${(b.history || []).map((h, idx) => `
+                        ${backups.map((h) => `
                             <tr>
-                                <td>${Components.formatAbsoluteDate(h.at)}</td>
-                                <td>${h.size}</td>
+                                <td>${Components.formatAbsoluteDate(h.created_at)}</td>
+                                <td>${Components.formatSize(h.size)}</td>
                                 <td>
                                     <div class="backup-row-actions">
-                                        <button class="gd-btn-outline" data-admin-action="backup-download" data-backup-idx="${idx}">Download</button>
-                                        <button class="gd-btn-outline" data-admin-action="backup-restore" data-backup-idx="${idx}">Restore</button>
-                                        <button class="danger-outline-btn" data-admin-action="backup-delete" data-backup-idx="${idx}">Delete</button>
+                                        <button class="gd-btn-outline" data-admin-action="backup-download" data-backup-filename="${esc(h.filename)}">Download</button>
+                                        <button class="gd-btn-outline" data-admin-action="backup-restore" data-backup-filename="${esc(h.filename)}">Restore settings</button>
+                                        <button class="danger-outline-btn" data-admin-action="backup-delete" data-backup-filename="${esc(h.filename)}">Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -1583,20 +1786,6 @@ const AdminPanel = (() => {
         selection?.classList.add('hidden');
         chipBar?.classList.add('hidden');
 
-        const cu = getCurrentUser();
-        let savedPhoto = localStorage.getItem('fd_profile_photo');
-        if (!savedPhoto) {
-            try {
-                const prefs = JSON.parse(localStorage.getItem('fd_user_prefs') || '{}');
-                if (prefs.profileAvatar) savedPhoto = prefs.profileAvatar;
-            } catch (e) {}
-        }
-        savedPhoto = savedPhoto || cu.avatar_url;
-
-        const avatarHtml = savedPhoto 
-            ? `<img src="${esc(savedPhoto)}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
-            : esc(initials(cu.username || cu.email || 'A'));
-
         grid.classList.remove('hidden');
         grid.classList.remove('grid-view');
         grid.innerHTML = `
@@ -1604,24 +1793,7 @@ const AdminPanel = (() => {
                 <header class="admin-page-header">
                     <div class="admin-header-left">
                         <div class="admin-breadcrumb">
-                            <span class="admin-breadcrumb-logo" onclick="window.location.href='/#/files'" style="cursor: pointer;"><svg viewBox="0 0 87.3 78" width="16" height="16" aria-hidden="true"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>Drive</span>
-                            <span class="admin-breadcrumb-sep">/</span>
-                            <h2>Admin Panel</h2>
-                            <span class="admin-header-badge">Admin</span>
-                        </div>
-                    </div>
-                    <div class="admin-head-actions">
-                        <button class="gd-btn-outline admin-exit-btn" data-admin-action="exit-admin">Back to Drive</button>
-                        <div class="admin-profile-wrap">
-                            <button class="admin-profile-btn" data-admin-action="toggle-admin-profile-menu">
-                                <span class="admin-profile-pill-avatar">${avatarHtml}</span>
-                                <span>${esc(cu.username || cu.email || 'Admin')}</span>
-                            </button>
-                            <div class="admin-profile-menu hidden" id="admin-profile-menu">
-                                <button data-admin-action="open-admin-profile">Profile</button>
-                                <button data-admin-action="open-admin-settings">Settings</button>
-                                <button data-admin-action="admin-logout">Logout</button>
-                            </div>
+                            <h2 id="admin-page-title"></h2>
                         </div>
                     </div>
                 </header>
@@ -1634,9 +1806,23 @@ const AdminPanel = (() => {
         return document.getElementById('admin-section-root');
     }
 
+    function sectionTitle(section) {
+        switch (normalizeSection(section)) {
+            case 'users': return 'Manage Users';
+            case 'storage': return 'Storage';
+            case 'activity': return 'Activity log';
+            case 'security': return 'Security & access';
+            case 'settings': return 'Settings';
+            default: return 'Dashboard';
+        }
+    }
+
     function renderSection() {
         const root = getSectionRoot();
         if (!root) return;
+
+        const titleEl = document.getElementById('admin-page-title');
+        if (titleEl) titleEl.textContent = sectionTitle(state.section);
 
         if (state.section === 'dashboard') {
             root.innerHTML = renderDashboardSection();
@@ -1666,23 +1852,15 @@ const AdminPanel = (() => {
 
         state.section = normalizeSection(section);
         if (!state.initialized) {
-            loadLocalState();
+            loadLocalUiState();
             state.initialized = true;
-            // Try loading settings from backend (non-blocking)
-            fetch('/api/v1/admin/settings', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('fd_access_token') || ''}` },
-            }).then((r) => r.ok ? r.json() : null).then((data) => {
-                if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-                    state.settings = deepMerge(clone(DEFAULT_SETTINGS), data);
-                    state.settingsDraft = clone(state.settings);
-                }
-            }).catch(() => {});
         }
 
         state.loading = true;
         renderShell();
         const root = getSectionRoot();
         if (root) root.innerHTML = renderSectionSkeleton(state.section);
+        await loadServerSettings();
         await hydrateData();
         state.loading = false;
         renderShell();
@@ -1742,31 +1920,39 @@ const AdminPanel = (() => {
         if (action === 'change-role') {
             const role = await Components.prompt('Change role', String(user.role || 'user'));
             if (!role) return;
-            await API.admin.updateUser(userId, { role: role.toLowerCase() }).catch((err) => {
-                Components.toast(err.message, 'error');
-            });
-            Components.toast('Role updated', 'success');
-            await load(state.section);
+            try {
+                await API.admin.updateUser(userId, { role: role.toLowerCase() });
+                Components.toast('Role updated', 'success');
+                await load(state.section);
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to update role', 'error');
+            }
             return;
         }
 
         if (action === 'adjust-quota') {
-            const gb = await Components.prompt('Adjust quota (GB)', String(Math.max(1, Math.round(asNumber(user.quota_bytes, 0) / (1024 ** 3)))));
+            const gb = await promptQuota('Adjust quota', Math.max(1, Math.round(asNumber(user.quota_bytes, 0) / (1024 ** 3))));
             if (!gb) return;
             const quota = Math.max(1, asNumber(gb, 10));
-            await API.admin.updateUser(userId, { quota_bytes: Math.round(quota * (1024 ** 3)) }).catch((err) => {
-                Components.toast(err.message, 'error');
-            });
-            Components.toast('Quota updated', 'success');
-            await load(state.section);
+            try {
+                await API.admin.updateUser(userId, { quota_bytes: Math.round(quota * (1024 ** 3)) });
+                Components.toast('Quota updated', 'success');
+                await load(state.section);
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to update quota', 'error');
+            }
             return;
         }
 
         if (action === 'toggle-suspend') {
-            const status = getUserStatus(user);
-            setUserStatus(userId, status === 'suspended' ? 'active' : 'suspended');
-            Components.toast(status === 'suspended' ? 'User unsuspended' : 'User suspended', 'success');
-            renderSection();
+            const suspended = !user.suspended;
+            try {
+                await API.admin.updateUser(userId, { suspended });
+                Components.toast(suspended ? 'User suspended' : 'User unsuspended', 'success');
+                await load(state.section);
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to update user', 'error');
+            }
             return;
         }
 
@@ -1780,14 +1966,18 @@ const AdminPanel = (() => {
         }
 
         if (action === 'delete-user') {
-            const ok = await Components.confirm('Delete user', 'This action is irreversible and will remove user access permanently.', 'Delete');
+            const ok = await Components.confirm(
+                'Delete user',
+                'This permanently deletes the account and all of their files, folders, and devices. This cannot be undone.',
+                'Delete',
+            );
             if (!ok) return;
             await API.admin.deleteUser(userId).catch((err) => {
                 Components.toast(err.message, 'error');
                 throw err;
             });
             state.userSelection.delete(userId);
-            Components.toast('User deleted', 'success');
+            Components.toast('User and all their files deleted', 'success');
             await load(state.section);
             return;
         }
@@ -1808,8 +1998,8 @@ const AdminPanel = (() => {
                         <option value="guest">Guest</option>
                     </select>
 
-                    <label class="modal-label" for="invite-quota">Quota (GB)</label>
-                    <input id="invite-quota" class="admin-input" type="number" min="1" value="10">
+                    <label class="modal-label" for="invite-quota">Quota</label>
+                    <select id="invite-quota" class="admin-input">${quotaOptionsHtml(10)}</select>
 
                     <label class="modal-label" for="invite-message">Welcome message (optional)</label>
                     <textarea id="invite-message" class="admin-input invite-message-input" rows="3" placeholder="Welcome to FreeDrive..."></textarea>
@@ -1877,17 +2067,12 @@ const AdminPanel = (() => {
                         if (!inviteCode) {
                             throw new Error('Invite code could not be generated');
                         }
-                        state.invites.push({
-                            id: Components.uuid(),
+                        state.invites.push(mapInviteRecord({
+                            ...invite,
                             email,
                             role,
-                            quota,
-                            message,
-                            code: inviteCode,
-                            status: 'pending',
-                            created_at: nowISO(),
-                        });
-                        saveLocalState();
+                            quota_bytes: quota * 1073741824,
+                        }));
                         
                         // Transform the modal to show the link
                         const link = invite?.invite_url || `${window.location.origin}?invite=${inviteCode}`;
@@ -1993,11 +2178,19 @@ const AdminPanel = (() => {
                         }).catch((err) => {
                             Components.toast(err?.message || 'Failed to resend invite', 'error');
                         });
-                    } else {
-                        row.status = 'cancelled';
-                        saveLocalState();
-                        Components.hideModal();
-                        openInviteModal();
+                    } else if (inviteAction === 'cancel') {
+                        if (!row.id) {
+                            Components.toast('Invite id missing', 'error');
+                            return;
+                        }
+                        API.admin.deleteInvite(row.id).then(async () => {
+                            Components.toast('Invite cancelled', 'success');
+                            await hydrateData();
+                            Components.hideModal();
+                            openInviteModal();
+                        }).catch((err) => {
+                            Components.toast(err?.message || 'Failed to cancel invite', 'error');
+                        });
                     }
                 });
             });
@@ -2044,12 +2237,6 @@ const AdminPanel = (() => {
                 const action = btn.getAttribute('data-admin-action');
                 const userId = btn.getAttribute('data-user-id') || '';
 
-                if (action === 'exit-admin') {
-                    history.pushState(null, '', '/#/files');
-                    window.dispatchEvent(new Event('popstate'));
-                    return;
-                }
-
                 if (action === 'users-filter') {
                     state.usersFilter = btn.getAttribute('data-filter') || 'all';
                     state.usersPage = 1;
@@ -2094,7 +2281,18 @@ const AdminPanel = (() => {
                 if (['open-user-drawer', 'change-role', 'reset-password', 'adjust-quota', 'toggle-suspend', 'delete-user'].includes(action)) {
                     if (action === 'open-user-drawer') {
                         state.drawerUserId = userId;
+                        state.drawerBreakdown = null;
                         renderSection();
+                        API.admin.storageBreakdown(userId)
+                            .then((res) => {
+                                if (state.drawerUserId !== userId) return;
+                                state.drawerBreakdown = res?.breakdown || null;
+                                renderSection();
+                            })
+                            .catch(() => {
+                                if (state.drawerUserId !== userId) return;
+                                state.drawerBreakdown = null;
+                            });
                         return;
                     }
                     await handleUserAction(action, userId);
@@ -2103,6 +2301,7 @@ const AdminPanel = (() => {
 
                 if (action === 'close-user-drawer') {
                     state.drawerUserId = '';
+                    state.drawerBreakdown = null;
                     renderSection();
                     return;
                 }
@@ -2120,22 +2319,30 @@ const AdminPanel = (() => {
                     const email = String(document.getElementById('drawer-email')?.value || '').trim();
                     const role = String(document.getElementById('drawer-role')?.value || 'user').toLowerCase();
                     const quotaGb = Math.max(1, asNumber(document.getElementById('drawer-quota')?.value, 10));
+                    const email2fa = Boolean(document.getElementById('drawer-2fa')?.checked);
                     if (!name || !email.includes('@')) {
                         Components.toast('Please fill valid name and e-mail', 'error');
                         return;
                     }
                     await API.admin.updateUser(userId, {
                         username: name,
+                        email,
                         role,
                         quota_bytes: Math.round(quotaGb * (1024 ** 3)),
+                        email_2fa_enabled: email2fa,
                     }).catch((err) => {
                         Components.toast(err.message, 'error');
                         throw err;
                     });
-                    user.email = email;
                     Components.toast('User updated', 'success');
                     await load('users');
                     state.drawerUserId = userId;
+                    try {
+                        const res = await API.admin.storageBreakdown(userId);
+                        state.drawerBreakdown = res?.breakdown || null;
+                    } catch (_) {
+                        state.drawerBreakdown = null;
+                    }
                     renderSection();
                     return;
                 }
@@ -2146,21 +2353,43 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'bulk-suspend') {
-                    state.userSelection.forEach((id) => setUserStatus(id, 'suspended'));
-                    Components.toast('Selected users suspended', 'success');
-                    renderSection();
+                    try {
+                        await Promise.all([...state.userSelection].map((id) => API.admin.updateUser(id, { suspended: true })));
+                        Components.toast('Selected users suspended', 'success');
+                        state.userSelection.clear();
+                        await load(state.section);
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to suspend users', 'error');
+                    }
                     return;
                 }
 
                 if (action === 'bulk-delete') {
-                    const ok = await Components.confirm('Delete selected users', 'This action cannot be undone.', 'Delete');
+                    const ok = await Components.confirm(
+                        'Delete selected users',
+                        'This permanently deletes the selected accounts and all of their files, folders, and devices. This cannot be undone.',
+                        'Delete',
+                    );
                     if (!ok) return;
+                    let deleted = 0;
+                    const failures = [];
                     for (const id of state.userSelection) {
-                        await API.admin.deleteUser(id).catch(() => {});
+                        try {
+                            await API.admin.deleteUser(id);
+                            deleted += 1;
+                        } catch (err) {
+                            failures.push(err?.message || 'failed');
+                        }
                     }
                     state.userSelection.clear();
                     await load('users');
-                    Components.toast('Selected users deleted', 'success');
+                    if (failures.length && deleted === 0) {
+                        Components.toast(failures[0], 'error');
+                    } else if (failures.length) {
+                        Components.toast(`Deleted ${deleted}; ${failures.length} failed (${failures[0]})`, 'warning');
+                    } else {
+                        Components.toast(`Deleted ${deleted} user(s) and their files`, 'success');
+                    }
                     return;
                 }
 
@@ -2176,7 +2405,7 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'bulk-quota') {
-                    const quota = await Components.prompt('New quota in GB', '10');
+                    const quota = await promptQuota('New quota', 10);
                     if (!quota) return;
                     const bytes = Math.round(Math.max(1, asNumber(quota, 10)) * (1024 ** 3));
                     for (const id of state.userSelection) {
@@ -2230,17 +2459,30 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'cleanup-trash') {
-                    const ok = await Components.confirm('Empty all trash', 'Deleted data cannot be recovered.', 'Empty');
+                    const ok = await Components.confirm('Empty trash older than 30 days', 'Trashed files and folders older than 30 days will be permanently deleted.', 'Empty');
                     if (!ok) return;
-                    Components.toast('Trash cleanup started', 'info');
+                    try {
+                        const res = await API.admin.purgeTrash(30);
+                        Components.toast(formatPurgeTrashResult(res), 'success');
+                        await load('storage');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Trash cleanup failed', 'error');
+                    }
                     return;
                 }
                 if (action === 'cleanup-duplicates') {
-                    Components.toast('Duplicate review queued', 'info');
+                    const ok = await Components.confirm('Remove duplicate files', 'In each duplicate group the newest copy is kept; older copies are permanently deleted.', 'Remove');
+                    if (!ok) return;
+                    try {
+                        const res = await API.admin.purgeDuplicates();
+                        Components.toast(`Removed ${res.removed_files || 0} duplicate file(s)`, 'success');
+                        await load('storage');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Duplicate cleanup failed', 'error');
+                    }
                     return;
                 }
                 if (action === 'cleanup-notify') {
-                    Components.toast('Owners notified for inactive files', 'success');
                     return;
                 }
 
@@ -2248,7 +2490,8 @@ const AdminPanel = (() => {
                     const select = document.getElementById('admin-activity-users');
                     const selected = Array.from(select?.selectedOptions || []).map((o) => o.value);
                     state.activityFilters.users = selected;
-                    state.activityFilters.action = String(document.getElementById('admin-activity-action')?.value || 'all');
+                    const nextAction = String(document.getElementById('admin-activity-action')?.value || 'all');
+                    state.activityFilters.action = ['all', 'login', 'failed_login'].includes(nextAction) ? nextAction : 'all';
                     state.activityFilters.from = String(document.getElementById('admin-activity-from')?.value || '');
                     state.activityFilters.to = String(document.getElementById('admin-activity-to')?.value || '');
                     state.activityPage = 1;
@@ -2288,28 +2531,6 @@ const AdminPanel = (() => {
                     renderSection();
                     return;
                 }
-                if (action === 'toggle-admin-profile-menu') {
-                    document.getElementById('admin-profile-menu')?.classList.toggle('hidden');
-                    return;
-                }
-                if (action === 'open-admin-profile') {
-                    document.getElementById('admin-profile-menu')?.classList.add('hidden');
-                    Components.toast('Profile panel coming soon', 'info');
-                    return;
-                }
-                if (action === 'open-admin-settings') {
-                    state.section = 'settings';
-                    state.settingsTab = 'general';
-                    document.getElementById('admin-profile-menu')?.classList.add('hidden');
-                    renderSection();
-                    return;
-                }
-                if (action === 'admin-logout') {
-                    await API.auth.logout().catch(() => {});
-                    window.location.reload();
-                    return;
-                }
-
                 if (action === 'toggle-live') {
                     state.activityLive = btn.checked;
                     if (state.liveTimer) {
@@ -2357,29 +2578,38 @@ const AdminPanel = (() => {
                 if (action === 'revoke-all-sessions') {
                     const ok = await Components.confirm('Revoke all sessions', 'All active sessions will be terminated. This cannot be undone.', 'Revoke');
                     if (!ok) return;
-                    Components.toast('All sessions revoked', 'success');
+                    try {
+                        await API.admin.revokeAllSessions();
+                        Components.toast('All sessions revoked', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to revoke sessions', 'error');
+                    }
                     return;
                 }
 
                 if (action === 'revoke-session') {
-                    const ok = await Components.confirm('Revoke session', 'Session will be terminated immediately.', 'Revoke');
-                    if (!ok) return;
-                    Components.toast('Session revoked', 'success');
+                    Components.toast('Per-session revoke is not available yet. Use Revoke all.', 'info');
                     return;
                 }
 
-                if (action === 'toggle-ip-block') {
+                if (action === 'toggle-ip-block' || action === 'toggle-block-ip') {
                     const ip = btn.getAttribute('data-ip');
                     if (!ip) return;
-                    const blocked = btn.getAttribute('data-blocked') === '1';
-                    const list = state.settings.security.blocklist || [];
+                    const blocked = btn.type === 'checkbox' ? btn.checked : btn.getAttribute('data-blocked') === '1';
+                    const list = state.settingsDraft.security.blocklist || [];
                     if (blocked) {
-                        state.settings.security.blocklist = list.filter((x) => x.ip !== ip);
+                        if (!list.some((x) => x.ip === ip)) {
+                            state.settingsDraft.security.blocklist.push({ ip, by: getCurrentUser().username || 'admin', at: nowISO(), note: 'Blocked from security panel' });
+                        }
                     } else {
-                        state.settings.security.blocklist.push({ ip, by: getCurrentUser().username || 'admin', at: nowISO(), note: 'Auto from failed login' });
+                        state.settingsDraft.security.blocklist = list.filter((x) => x.ip !== ip);
                     }
-                    state.settingsDraft = clone(state.settings);
-                    saveLocalState();
+                    try {
+                        await persistSettingsNow({ silent: true });
+                        Components.toast('IP blocklist updated', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to save blocklist', 'error');
+                    }
                     renderSection();
                     return;
                 }
@@ -2399,15 +2629,19 @@ const AdminPanel = (() => {
                         return;
                     }
                     const key = state.listTab === 'allowlist' ? 'allowlist' : 'blocklist';
-                    const list = state.settings.security[key] || [];
+                    const list = state.settingsDraft.security[key] || [];
                     if (list.some((x) => x.ip === ip)) {
                         Components.toast('IP already exists in list', 'warning');
                         return;
                     }
                     list.push({ ip, by: getCurrentUser().username || 'admin', at: nowISO(), note });
-                    state.settings.security[key] = list;
-                    state.settingsDraft = clone(state.settings);
-                    saveLocalState();
+                    state.settingsDraft.security[key] = list;
+                    try {
+                        await persistSettingsNow({ silent: true });
+                        Components.toast('IP list updated', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to save IP list', 'error');
+                    }
                     renderSection();
                     return;
                 }
@@ -2416,34 +2650,51 @@ const AdminPanel = (() => {
                     const tab = btn.getAttribute('data-tab');
                     const ip = btn.getAttribute('data-ip');
                     if (!tab || !ip) return;
-                    state.settings.security[tab] = (state.settings.security[tab] || []).filter((x) => x.ip !== ip);
-                    state.settingsDraft = clone(state.settings);
-                    saveLocalState();
+                    state.settingsDraft.security[tab] = (state.settingsDraft.security[tab] || []).filter((x) => x.ip !== ip);
+                    try {
+                        await persistSettingsNow({ silent: true });
+                        Components.toast('IP list updated', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to save IP list', 'error');
+                    }
                     renderSection();
                     return;
                 }
 
                 if (action === 'toggle-require-2fa') {
-                    state.settings.security.require_2fa = btn.checked;
-                    state.settingsDraft = clone(state.settings);
-                    saveLocalState();
-                    Components.toast('2FA requirement updated', 'success');
+                    const next = btn.type === 'checkbox' ? !btn.checked : Boolean(btn.checked);
+                    state.settingsDraft.security.require_2fa = next;
+                    try {
+                        await persistSettingsNow({ silent: true });
+                        Components.toast('2FA requirement saved', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to save 2FA setting', 'error');
+                    }
                     renderSection();
                     return;
                 }
 
                 if (action === 'send-2fa-reminder') {
-                    Components.toast('2FA reminders sent', 'success');
+                    try {
+                        const result = await API.admin.send2FAReminder();
+                        const sent = Number(result?.sent || 0);
+                        Components.toast(sent > 0 ? `2FA reminders sent to ${sent} user(s)` : (result?.message || 'No reminders sent'), sent > 0 ? 'success' : 'info');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to send reminders', 'error');
+                    }
                     return;
                 }
 
                 if (action === 'rotate-keys') {
-                    const ok = await Components.confirm('Rotate encryption keys', 'This is a sensitive operation. It may take time and cannot be canceled once started.', 'Rotate');
+                    const ok = await Components.confirm('Record key rotation', 'This only saves a rotation timestamp in settings. It does not re-encrypt stored files yet.', 'Record');
                     if (!ok) return;
-                    state.settings.security.last_key_rotation = nowISO();
-                    state.settingsDraft = clone(state.settings);
-                    saveLocalState();
-                    Components.toast('Key rotation started', 'success');
+                    state.settingsDraft.security.last_key_rotation = nowISO();
+                    try {
+                        await persistSettingsNow({ silent: true });
+                        Components.toast('Key rotation timestamp saved', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to save setting', 'error');
+                    }
                     renderSection();
                     return;
                 }
@@ -2455,6 +2706,7 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'add-type-chip') {
+                    if (state.settingsDraft.general.allowed_types_unlimited) return;
                     const input = document.getElementById('new-type-chip');
                     const value = String(input?.value || '').replace(/^\./, '').trim().toLowerCase();
                     if (!value) return;
@@ -2468,6 +2720,7 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'remove-type-chip') {
+                    if (state.settingsDraft.general.allowed_types_unlimited) return;
                     const type = btn.getAttribute('data-type');
                     state.settingsDraft.general.allowed_types = state.settingsDraft.general.allowed_types.filter((x) => x !== type);
                     state.settingsDirty = true;
@@ -2550,14 +2803,9 @@ const AdminPanel = (() => {
                         const data = await res.json().catch(() => ({}));
                         if (!res.ok) throw new Error(data.error || 'Backup failed');
                         if (progress) progress.style.width = '100%';
-                        if (!Array.isArray(state.settingsDraft.backup.history)) state.settingsDraft.backup.history = [];
-                        state.settingsDraft.backup.history.unshift({
-                            at: data.at || new Date().toISOString(),
-                            size: data.size || '—',
-                            filename: data.filename || 'backup.json',
-                        });
-                        state.settingsDirty = true;
-                        Components.toast('Backup created successfully', 'success');
+                        const list = await API.admin.listBackups().catch(() => ({ backups: [] }));
+                        state.backups = Array.isArray(list.backups) ? list.backups : [];
+                        Components.toast('Settings backup created', 'success');
                         renderSection();
                     } catch (err) {
                         if (progress) progress.style.width = '0%';
@@ -2567,21 +2815,47 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'backup-download') {
-                    Components.toast('Backup download started', 'info');
+                    const filename = btn.getAttribute('data-backup-filename');
+                    if (!filename) return;
+                    try {
+                        await API.admin.downloadBackup(filename);
+                        Components.toast('Download started', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Download failed', 'error');
+                    }
                     return;
                 }
                 if (action === 'backup-restore') {
-                    const ok = await Components.confirm('Restore backup', 'This will overwrite current data. Continue?', 'Restore');
+                    const filename = btn.getAttribute('data-backup-filename');
+                    if (!filename) return;
+                    const ok = await Components.confirm('Restore settings backup', 'This will merge saved admin settings into the server. Continue?', 'Restore');
                     if (!ok) return;
-                    Components.toast('Backup restore started', 'warning');
+                    try {
+                        await API.admin.restoreBackup(filename);
+                        const data = await fetchServerSettings();
+                        if (data) {
+                            applyServerSettings(data);
+                        }
+                        Components.toast('Settings restored from backup', 'success');
+                        renderSection();
+                    } catch (err) {
+                        Components.toast(err?.message || 'Restore failed', 'error');
+                    }
                     return;
                 }
                 if (action === 'backup-delete') {
-                    const idx = asNumber(btn.getAttribute('data-backup-idx'), -1);
-                    if (idx < 0) return;
-                    state.settingsDraft.backup.history.splice(idx, 1);
-                    state.settingsDirty = true;
-                    renderSection();
+                    const filename = btn.getAttribute('data-backup-filename');
+                    if (!filename) return;
+                    const ok = await Components.confirm('Delete backup', `Delete ${filename}?`, 'Delete');
+                    if (!ok) return;
+                    try {
+                        await API.admin.deleteBackup(filename);
+                        state.backups = state.backups.filter((b) => b.filename !== filename);
+                        Components.toast('Backup deleted', 'success');
+                        renderSection();
+                    } catch (err) {
+                        Components.toast(err?.message || 'Delete failed', 'error');
+                    }
                     return;
                 }
 
@@ -2603,41 +2877,38 @@ const AdminPanel = (() => {
                         renderSection();
                         return;
                     }
-                    state.settings = clone(state.settingsDraft);
-                    state.settingsDirty = false;
-                    state.settingsSavedUntil = Date.now() + 3000;
-                    saveLocalState();
                     try {
-                        const res = await fetch('/api/v1/admin/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('fd_access_token') || ''}` },
-                            body: JSON.stringify(state.settings),
-                        });
-                        if (!res.ok) {
-                            const data = await res.json().catch(() => ({}));
-                            throw new Error(data.error || `Settings backend save failed (${res.status})`);
-                        }
+                        await persistSettingsNow();
                     } catch (e) {
-                        Components.toast(e?.message || 'Settings backend save failed', 'error');
-                        console.warn('Settings backend save failed, using localStorage only', e);
+                        Components.toast(e?.message || 'Settings save failed', 'error');
                         return;
                     }
-                    Components.toast('Settings saved', 'success', { duration: 3000 });
                     renderSection();
                     return;
                 }
 
                 if (action === 'danger-clear-trash') {
-                    const ok = await Components.confirm('Clear all trash', 'This cannot be undone and all trashed files will be permanently deleted.', 'Clear');
+                    const ok = await Components.confirm('Clear all trash', 'This cannot be undone and all trashed files and folders will be permanently deleted.', 'Clear');
                     if (!ok) return;
-                    Components.toast('Trash cleared', 'success');
+                    try {
+                        const res = await API.admin.purgeTrash(0);
+                        Components.toast(formatPurgeTrashResult(res, 'Cleared'), 'success');
+                        await load('storage');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to clear trash', 'error');
+                    }
                     return;
                 }
 
                 if (action === 'danger-reset-sessions') {
                     const ok = await Components.confirm('Reset all user sessions', 'All users will be logged out immediately.', 'Reset');
                     if (!ok) return;
-                    Components.toast('All user sessions reset', 'success');
+                    try {
+                        await API.admin.revokeAllSessions();
+                        Components.toast('All user sessions reset', 'success');
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to reset sessions', 'error');
+                    }
                     return;
                 }
 
@@ -2647,9 +2918,16 @@ const AdminPanel = (() => {
                         Components.toast('Type WIPE to proceed', 'warning');
                         return;
                     }
-                    const finalOk = await Components.confirm('Final confirmation', 'All files and database data will be irreversibly destroyed.', 'Wipe');
+                    const finalOk = await Components.confirm('Final confirmation', 'All files and user data will be irreversibly destroyed. Your admin account and settings are kept.', 'Wipe');
                     if (!finalOk) return;
-                    Components.toast('Wipe queued. This operation is irreversible.', 'error');
+                    try {
+                        await API.admin.wipeAllData();
+                        Components.toast('All data wiped', 'success');
+                        history.pushState(null, '', '/#/files');
+                        window.dispatchEvent(new Event('popstate'));
+                    } catch (err) {
+                        Components.toast(err?.message || 'Wipe failed', 'error');
+                    }
                     return;
                 }
             });
@@ -2674,6 +2952,10 @@ const AdminPanel = (() => {
                 }
                 state.settingsDirty = JSON.stringify(state.settingsDraft) !== JSON.stringify(state.settings);
                 validateSettings();
+                if (key === 'general.allowed_types_unlimited' && state.section === 'settings' && state.settingsTab === 'general') {
+                    renderSection();
+                    return;
+                }
                 if (state.section === 'settings') {
                     const saveBtn = document.querySelector('[data-admin-action="save-settings"]');
                     if (saveBtn) saveBtn.disabled = !state.settingsDirty || Object.keys(state.settingsErrors).length > 0;
@@ -2696,6 +2978,7 @@ const AdminPanel = (() => {
         if (typeInput) {
             typeInput.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter') return;
+                if (state.settingsDraft.general.allowed_types_unlimited) return;
                 e.preventDefault();
                 const value = String(typeInput.value || '').replace(/^\./, '').trim().toLowerCase();
                 if (!value) return;
@@ -2722,9 +3005,6 @@ const AdminPanel = (() => {
         shell?.addEventListener('click', (e) => {
             if (!e.target.closest('[data-admin-action="toggle-user-menu"]') && !e.target.closest('.gd-popup-menu')) {
                 closeAllRowMenus();
-            }
-            if (!e.target.closest('.admin-profile-wrap')) {
-                document.getElementById('admin-profile-menu')?.classList.add('hidden');
             }
         });
     }

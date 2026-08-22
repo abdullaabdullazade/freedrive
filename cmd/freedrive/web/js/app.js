@@ -13,34 +13,200 @@ const App = (() => {
         localStorage.setItem(USER_PREFS_KEY, JSON.stringify(next || {}));
     }
 
+    function resolveAvatar(user, prefs) {
+        const fromUser = String(user?.avatar_url || '').trim();
+        if (fromUser) return fromUser;
+        const fromPrefs = String(prefs?.profileAvatar || '').trim();
+        if (fromPrefs) return fromPrefs;
+        return String(localStorage.getItem('fd_profile_photo') || '').trim();
+    }
+
+    function syncAvatarCache(avatarUrl) {
+        const prefs = getUserPrefs();
+        const next = { ...prefs, profileAvatar: avatarUrl || '' };
+        setUserPrefs(next);
+        if (avatarUrl) {
+            localStorage.setItem('fd_profile_photo', avatarUrl);
+        } else {
+            localStorage.removeItem('fd_profile_photo');
+        }
+    }
+
+    function resizeAvatarDataURL(dataUrl, maxSize = 256, quality = 0.85) {
+        return new Promise((resolve) => {
+            if (!dataUrl || !String(dataUrl).startsWith('data:image/')) {
+                resolve(dataUrl || '');
+                return;
+            }
+            const img = new Image();
+            img.onload = () => {
+                const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+                const w = Math.max(1, Math.round(img.width * scale));
+                const h = Math.max(1, Math.round(img.height * scale));
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve(dataUrl);
+                    return;
+                }
+                ctx.drawImage(img, 0, 0, w, h);
+                try {
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                } catch {
+                    resolve(dataUrl);
+                }
+            };
+            img.onerror = () => resolve(dataUrl);
+            img.src = dataUrl;
+        });
+    }
+
+    async function refreshProfileFromServer() {
+        try {
+            const user = await API.me();
+            if (user?.id) {
+                API.setUser(user);
+                syncAvatarCache(user.avatar_url || '');
+                return user;
+            }
+        } catch {
+            /* ignore */
+        } finally {
+            refreshUserUI();
+        }
+        return null;
+    }
+
+    function isAdminUser(user) {
+        return String(user?.role || '').toLowerCase() === 'admin';
+    }
+
+    function syncAdminBtnVisibility() {
+        const app = document.getElementById('app');
+        const btn = document.getElementById('admin-btn');
+        if (!app || !btn) return;
+
+        const user = API.getUser();
+        const inDriveMode = !app.classList.contains('admin-mode');
+        const show = inDriveMode && isAdminUser(user);
+
+        app.classList.toggle('admin-drive-access', show);
+        btn.classList.toggle('hidden', !show);
+        btn.disabled = !show;
+        btn.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function profileDisplayName(user) {
+        if (!user) return 'User';
+        const username = String(user.username || '').trim();
+        if (username) return username;
+        const email = String(user.email || '');
+        const at = email.indexOf('@');
+        return at > 0 ? email.slice(0, at) : (email || 'User');
+    }
+
+    async function refreshProfileStorage() {
+        const storageEl = document.getElementById('profile-storage');
+        const textEl = document.getElementById('profile-storage-text');
+        const warnEl = document.getElementById('profile-storage-warn');
+        const fillEl = document.getElementById('profile-storage-bar-fill');
+        if (!storageEl || !textEl || !fillEl) return;
+
+        try {
+            const stats = await API.myStorage();
+            const used = Number(stats?.used_bytes || 0);
+            const total = Number(stats?.total_bytes || 0);
+            if (!(total > 0)) {
+                storageEl.classList.add('hidden');
+                return;
+            }
+            const pct = Math.min(100, Math.round((used / total) * 100));
+            textEl.textContent = `${Components.formatSize(used)} of ${Components.formatSize(total)} used`;
+            fillEl.style.width = `${pct}%`;
+            warnEl?.classList.toggle('hidden', pct < 80);
+            storageEl.classList.remove('hidden');
+        } catch {
+            storageEl.classList.add('hidden');
+        }
+    }
+
+    function populateProfileDropdown() {
+        const user = API.getUser?.() || {};
+        const displayName = profileDisplayName(user);
+        const greeting = document.getElementById('profile-greeting');
+        const emailEl = document.getElementById('profile-email');
+        if (greeting) greeting.textContent = `Hi, ${displayName}!`;
+        if (emailEl) emailEl.textContent = user.email || '';
+
+        const initial = Components.initials(displayName || user.email || 'U');
+        const lgAvatar = document.getElementById('profile-avatar-lg');
+        const prefs = getUserPrefs();
+        const savedPhoto = resolveAvatar(user, prefs);
+
+        if (lgAvatar) {
+            if (savedPhoto) {
+                lgAvatar.textContent = '';
+                lgAvatar.style.backgroundImage = `url(${savedPhoto})`;
+                lgAvatar.style.backgroundSize = 'cover';
+                lgAvatar.style.backgroundPosition = 'center';
+            } else {
+                lgAvatar.style.backgroundImage = '';
+                lgAvatar.textContent = initial;
+            }
+        }
+
+        refreshProfileStorage();
+    }
+
     function refreshUserUI() {
         const user = API.getUser();
-        if (!user) return;
-        const prefs = getUserPrefs();
-        const initial = Components.initials(user.username || user.email || 'U');
-        const ua = document.getElementById('user-avatar');
-        const ta = document.getElementById('topbar-avatar');
-        const savedPhoto = prefs.profileAvatar || localStorage.getItem('fd_profile_photo');
-        
-        if (ua) {
-            ua.textContent = savedPhoto ? '' : initial;
-            ua.style.backgroundImage = savedPhoto ? `url(${savedPhoto})` : '';
-            ua.style.backgroundSize = savedPhoto ? 'cover' : '';
-            ua.style.backgroundPosition = savedPhoto ? 'center' : '';
-            ua.style.color = savedPhoto ? 'transparent' : '';
+        if (user) {
+            const prefs = getUserPrefs();
+            const initial = Components.initials(user.username || user.email || 'U');
+            const ua = document.getElementById('user-avatar');
+            const ta = document.getElementById('topbar-avatar');
+            const savedPhoto = resolveAvatar(user, prefs);
+
+            if (ua) {
+                ua.textContent = savedPhoto ? '' : initial;
+                ua.style.backgroundImage = savedPhoto ? `url(${savedPhoto})` : '';
+                ua.style.backgroundSize = savedPhoto ? 'cover' : '';
+                ua.style.backgroundPosition = savedPhoto ? 'center' : '';
+                ua.style.color = savedPhoto ? 'transparent' : '';
+            }
+            if (ta) {
+                ta.innerHTML = '';
+                ta.textContent = savedPhoto ? '' : initial;
+                ta.style.backgroundImage = savedPhoto ? `url(${savedPhoto})` : '';
+                ta.style.backgroundSize = savedPhoto ? 'cover' : '';
+                ta.style.backgroundPosition = savedPhoto ? 'center' : '';
+                ta.style.color = savedPhoto ? 'transparent' : '';
+            }
+            const un = document.getElementById('user-name');
+            if (un) un.textContent = user.username || user.email;
+            const ur = document.getElementById('user-role');
+            if (ur) ur.textContent = user.role;
+
+            const greeting = document.getElementById('profile-greeting');
+            if (greeting) greeting.textContent = `Hi, ${profileDisplayName(user)}!`;
+            const emailEl = document.getElementById('profile-email');
+            if (emailEl) emailEl.textContent = user.email || '';
+            const lgAvatar = document.getElementById('profile-avatar-lg');
+            if (lgAvatar) {
+                if (savedPhoto) {
+                    lgAvatar.textContent = '';
+                    lgAvatar.style.backgroundImage = `url(${savedPhoto})`;
+                    lgAvatar.style.backgroundSize = 'cover';
+                    lgAvatar.style.backgroundPosition = 'center';
+                } else {
+                    lgAvatar.style.backgroundImage = '';
+                    lgAvatar.textContent = initial;
+                }
+            }
         }
-        if (ta) {
-            ta.innerHTML = '';
-            ta.textContent = savedPhoto ? '' : initial;
-            ta.style.backgroundImage = savedPhoto ? `url(${savedPhoto})` : '';
-            ta.style.backgroundSize = savedPhoto ? 'cover' : '';
-            ta.style.backgroundPosition = savedPhoto ? 'center' : '';
-            ta.style.color = savedPhoto ? 'transparent' : '';
-        }
-        const un = document.getElementById('user-name');
-        if (un) un.textContent = user.username || user.email;
-        const ur = document.getElementById('user-role');
-        if (ur) ur.textContent = user.role;
+        syncAdminBtnVisibility();
     }
 
     function applyTheme(theme) {
@@ -51,7 +217,18 @@ const App = (() => {
         document.body.dataset.fdTheme = t;
     }
 
-    function openDriveSettings() {
+    function formatEmailExpiry(iso) {
+        if (!iso) return 'soon';
+        try {
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return 'soon';
+            return d.toLocaleString();
+        } catch {
+            return 'soon';
+        }
+    }
+
+    async function openDriveSettings() {
         const user = API.getUser() || {};
         const prefs = getUserPrefs();
         const esc = Components.escapeHtml;
@@ -59,7 +236,20 @@ const App = (() => {
         const nameParts = currentName.split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
-        const previewAvatar = prefs.profileAvatar || '';
+        const previewAvatar = resolveAvatar(user, prefs);
+        const currentEmail = String(user.email || '').trim().toLowerCase();
+
+        let pendingStatus = { pending: false };
+        try {
+            pendingStatus = await API.emailChangeStatus();
+        } catch { /* ignore */ }
+
+        const pendingBanner = pendingStatus.pending
+            ? `<div id="settings-email-pending" style="margin-top:12px;padding:12px 14px;border-radius:8px;background:#e8f0fe;color:#174ea6;font-size:13px;line-height:1.45;">
+                Check your inbox at <strong>${esc(pendingStatus.new_email_masked || 'your new address')}</strong>.
+                The confirmation link expires ${esc(formatEmailExpiry(pendingStatus.expires_at))}.
+            </div>`
+            : '';
 
         Components.showModal('Settings', `
             <div class="drive-settings-modal" style="padding: 8px 0;">
@@ -83,6 +273,26 @@ const App = (() => {
                         <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Last name</span>
                         <input id="settings-last-name" type="text" value="${esc(lastName)}" placeholder="Last name" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
                     </label>
+                    <label class="drive-settings-field drive-settings-field-full">
+                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Email</span>
+                        <input id="settings-email" type="email" value="${esc(user.email || '')}" placeholder="Email" autocomplete="email" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
+                        <span style="display:block;margin-top:6px;font-size:12px;color:#5f6368;">Confirmation link will be sent to the new address.</span>
+                    </label>
+                    <label class="drive-settings-field drive-settings-field-full hidden" id="settings-email-password-wrap">
+                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Current password</span>
+                        <input id="settings-email-password" type="password" placeholder="Required to change email" autocomplete="current-password" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
+                    </label>
+                    <button type="button" class="btn btn-secondary drive-settings-confirm-btn" id="settings-send-email-confirm">Confirm</button>
+                    ${pendingBanner}
+                    <div style="margin-top:8px;padding-top:20px;border-top:1px solid #e8eaed;">
+                        <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:8px;">Keyboard shortcuts</div>
+                        <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
+                            View keyboard shortcuts for navigating and managing files.
+                        </p>
+                        <button type="button" class="btn btn-secondary" id="settings-keyboard-shortcuts-btn">
+                            Keyboard shortcuts
+                        </button>
+                    </div>
                 </div>
                 <input id="settings-avatar-input" type="file" accept="image/*" hidden>
             </div>
@@ -91,22 +301,37 @@ const App = (() => {
             {
                 text: 'Save',
                 class: 'btn-primary',
+                close: false,
                 action: async () => {
                     const first = String(document.getElementById('settings-first-name')?.value || '').trim();
                     const last = String(document.getElementById('settings-last-name')?.value || '').trim();
                     const fullName = [first, last].filter(Boolean).join(' ');
-                    const avatar = document.getElementById('settings-avatar-preview')?.dataset.avatar || prefs.profileAvatar || '';
-
-                    if (fullName) {
-                        user.username = fullName;
-                        API.setUser(user);
+                    if (!fullName) {
+                        Components.toast('First or last name is required', 'error');
+                        return;
                     }
 
-                    const nextPrefs = { ...prefs, profileAvatar: avatar };
-                    setUserPrefs(nextPrefs);
-                    
-                    refreshUserUI();
-                    Components.toast('Profile updated', 'success');
+                    const preview = document.getElementById('settings-avatar-preview');
+                    const avatarRaw = preview && Object.prototype.hasOwnProperty.call(preview.dataset, 'avatar')
+                        ? String(preview.dataset.avatar || '')
+                        : resolveAvatar(user, prefs);
+
+                    try {
+                        const avatar = avatarRaw
+                            ? await resizeAvatarDataURL(avatarRaw)
+                            : '';
+                        const updated = await API.updateMe({
+                            username: fullName,
+                            avatar_url: avatar,
+                        });
+                        API.setUser(updated);
+                        syncAvatarCache(updated.avatar_url || '');
+                        refreshUserUI();
+                        Components.toast('Profile updated', 'success');
+                        Components.hideModal();
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to save profile', 'error');
+                    }
                 },
             },
         ]);
@@ -114,14 +339,15 @@ const App = (() => {
         const fileInput = document.getElementById('settings-avatar-input');
         const avatarPreview = document.getElementById('settings-avatar-preview');
         const removeBtn = document.getElementById('settings-avatar-remove');
-        if (avatarPreview && previewAvatar) avatarPreview.dataset.avatar = previewAvatar;
+        if (avatarPreview) avatarPreview.dataset.avatar = previewAvatar || '';
 
-        fileInput?.addEventListener('change', () => {
+        fileInput?.addEventListener('change', async () => {
             const file = fileInput.files?.[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = () => {
-                const result = String(reader.result || '');
+            reader.onload = async () => {
+                const raw = String(reader.result || '');
+                const result = await resizeAvatarDataURL(raw);
                 if (!avatarPreview) return;
                 avatarPreview.dataset.avatar = result;
                 avatarPreview.textContent = '';
@@ -139,6 +365,455 @@ const App = (() => {
             avatarPreview.classList.remove('has-photo');
             if (fileInput) fileInput.value = '';
         });
+
+        const emailInput = document.getElementById('settings-email');
+        const passwordWrap = document.getElementById('settings-email-password-wrap');
+        const passwordInput = document.getElementById('settings-email-password');
+        const sendConfirmBtn = document.getElementById('settings-send-email-confirm');
+
+        function syncEmailPasswordVisibility() {
+            const nextEmail = String(emailInput?.value || '').trim().toLowerCase();
+            const changing = Boolean(nextEmail && nextEmail !== currentEmail);
+            passwordWrap?.classList.toggle('hidden', !changing);
+            if (!changing && passwordInput) passwordInput.value = '';
+        }
+
+        emailInput?.addEventListener('input', syncEmailPasswordVisibility);
+        syncEmailPasswordVisibility();
+
+        sendConfirmBtn?.addEventListener('click', async () => {
+            const newEmail = String(emailInput?.value || '').trim().toLowerCase();
+            const password = String(passwordInput?.value || '');
+            if (!newEmail || !newEmail.includes('@')) {
+                Components.toast('Enter a valid email address', 'error');
+                return;
+            }
+            if (newEmail === currentEmail) {
+                Components.toast('Enter a different email address', 'error');
+                return;
+            }
+            if (!password) {
+                Components.toast('Current password is required to change email', 'error');
+                return;
+            }
+
+            sendConfirmBtn.disabled = true;
+            const prevLabel = sendConfirmBtn.textContent;
+            sendConfirmBtn.textContent = 'Sending...';
+            try {
+                const result = await API.requestEmailChange(newEmail, password);
+                Components.toast(`Confirmation link sent to ${result.new_email_masked || newEmail}`, 'success', { duration: 7000 });
+                if (passwordInput) passwordInput.value = '';
+                Components.hideModal();
+                openDriveSettings();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to request email change', 'error');
+            } finally {
+                sendConfirmBtn.disabled = false;
+                sendConfirmBtn.textContent = prevLabel;
+            }
+        });
+
+        document.getElementById('settings-keyboard-shortcuts-btn')?.addEventListener('click', () => {
+            Components.hideModal();
+            FileManager.showShortcuts?.();
+        });
+    }
+
+    async function openSecurityCenter() {
+        const esc = Components.escapeHtml;
+        let profile = API.getUser() || {};
+        try {
+            profile = await API.me();
+            API.setUser(profile);
+        } catch { /* use cached */ }
+
+        const required = Boolean(profile.two_factor_required);
+        const emailEnabled = Boolean(profile.email_2fa_enabled);
+        const totpEnabled = Boolean(profile.totp_enabled);
+        const phoneEnabled = Boolean(profile.login_approval_enabled);
+        let phoneStatus = { enabled: phoneEnabled, has_trusted_mobile: false };
+        try {
+            phoneStatus = await API.loginApprovalStatus();
+        } catch { /* ignore */ }
+
+        const requiredNote = required
+            ? '<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Your administrator requires two-factor authentication (authenticator app or email).</p>'
+            : '';
+
+        let needsRecovery = false;
+        if (window.CryptoSync?.detectNeedsRecovery) {
+            try {
+                needsRecovery = await CryptoSync.detectNeedsRecovery();
+            } catch { /* ignore */ }
+        }
+        const recoveryBanner = needsRecovery
+            ? `<div id="security-crypto-recovery-banner" style="margin-bottom:12px;padding:12px 14px;border-radius:8px;background:#fce8e6;color:#c5221f;font-size:13px;line-height:1.45;">
+                Server lost encryption account data, but encrypted file keys are still on the server. Enter your recovery code below to restore access.
+            </div>`
+            : '';
+        const recoverySection = needsRecovery
+            ? `<div id="security-crypto-recovery-section" style="margin-bottom:12px;">
+                <input id="security-crypto-recovery-input" type="text" placeholder="xxxx-xxxx-..."
+                    style="width:100%;height:40px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
+                <button type="button" class="btn btn-secondary" id="security-crypto-recovery-restore-btn" style="margin-top:8px;">
+                    Restore encryption
+                </button>
+            </div>`
+            : '';
+
+        const totpBody = totpEnabled
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Authenticator app is enabled${profile.totp_enrolled_at ? ` (since ${esc(new Date(profile.totp_enrolled_at).toLocaleDateString())})` : ''}.</p>
+               <button type="button" class="btn btn-secondary" id="security-totp-disable-btn" style="margin-top:12px;">Disable authenticator</button>`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">Use Google Authenticator, Authy, or 1Password for sign-in codes. Preferred when both methods are enabled.</p>
+               <button type="button" class="btn btn-primary" id="security-totp-setup-btn">Set up authenticator</button>
+               <div id="security-totp-setup-panel" class="hidden" style="margin-top:14px;"></div>`;
+
+        const emailCanDisable = !(required && !totpEnabled);
+        const emailBody = emailEnabled
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Email verification codes are enabled for ${esc(profile.email || 'your email')}.</p>
+               <button type="button" class="btn btn-secondary" id="security-email-2fa-disable-btn" style="margin-top:12px;" ${emailCanDisable ? '' : 'disabled'}>Disable email codes</button>
+               ${emailCanDisable ? '' : '<p style="margin:8px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Required by your administrator until an authenticator app is set up.</p>'}`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">Protect your account with a 6-digit code sent to ${esc(profile.email || 'your email')} each time you sign in.</p>
+               <button type="button" class="btn btn-primary" id="security-email-2fa-enable-btn">Enable email codes</button>
+               ${requiredNote}`;
+
+        const phoneTrustedNote = phoneStatus.has_trusted_mobile
+            ? '<p style="margin:8px 0 0;font-size:12px;color:#137333;line-height:1.45;">Trusted FreeDrive mobile app detected.</p>'
+            : '<p style="margin:8px 0 0;font-size:12px;color:#b06000;line-height:1.45;">No trusted mobile app signed in yet. Install FreeDrive on your phone and stay signed in.</p>';
+        const phoneBody = phoneEnabled
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Phone sign-in prompts are enabled.</p>
+               ${phoneTrustedNote}
+               <button type="button" class="btn btn-secondary" id="security-phone-approval-disable-btn" style="margin-top:12px;">Disable phone prompts</button>`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">When you sign in on a new computer or browser, FreeDrive can ask your phone to approve instead of an authenticator code. Requires the FreeDrive mobile app signed in.</p>
+               <button type="button" class="btn btn-primary" id="security-phone-approval-enable-btn">Enable phone prompts</button>
+               ${phoneTrustedNote}`;
+
+        Components.showModal('Security', `
+            <div class="drive-settings-modal" style="padding:8px 0;display:flex;flex-direction:column;gap:16px;">
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Authenticator app</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Protect your account with a time-based code from an authenticator app.</div>
+                    ${totpBody}
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Email two-factor authentication</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Protect your account with a verification code sent by email.</div>
+                    ${emailBody}
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Phone sign-in prompts</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Approve sign-ins from your phone, like Google Prompt.</div>
+                    ${phoneBody}
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
+                        <div style="font-size:15px;font-weight:600;color:#202124;">Devices</div>
+                        <button type="button" class="btn btn-secondary" id="security-revoke-others-btn" style="font-size:12px;height:32px;">
+                            Sign out other devices
+                        </button>
+                    </div>
+                    <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
+                        Devices currently signed in to your account. Signing out a device forces it to log in again.
+                    </p>
+                    <div id="security-sessions-list" style="display:flex;flex-direction:column;gap:8px;">
+                        <div style="font-size:13px;color:#5f6368;">Loading devices…</div>
+                    </div>
+                </div>
+                <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:8px;">Encryption</div>
+                    ${recoveryBanner}
+                    <p style="margin:0 0 8px;font-size:12px;color:#5f6368;line-height:1.45;">
+                        Status: <strong id="security-crypto-status">${window.CryptoSync?.isUnlocked?.() ? 'Active' : 'Inactive'}</strong>
+                        — encryption unlocks automatically when you sign in. Keys sync across your devices.
+                    </p>
+                    ${recoverySection}
+                    <details style="font-size:13px;color:#5f6368;margin-bottom:12px;">
+                        <summary style="cursor:pointer;">Advanced: rotate encryption key</summary>
+                        <button type="button" class="btn btn-secondary" id="security-crypto-rotate-btn" style="margin-top:8px;">
+                            Rotate encryption key
+                        </button>
+                    </details>
+                    <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:6px;">Manual backup (optional)</div>
+                    <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
+                        Export/import below only if you need to move keys manually between browsers.
+                    </p>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <button type="button" class="btn btn-secondary" id="security-export-keys-btn">Export encryption keys</button>
+                        <button type="button" class="btn btn-secondary" id="security-import-keys-btn">Import encryption keys</button>
+                    </div>
+                    <input type="file" id="security-import-keys-input" accept="application/json,.json" hidden>
+                </div>
+            </div>
+        `, [{ text: 'Close' }]);
+
+        const setEmail2FA = async (next) => {
+            if (required && !totpEnabled && !next) {
+                Components.toast('Two-factor authentication is required by your administrator', 'info');
+                return;
+            }
+            try {
+                const updated = await API.updateMe({ email_2fa_enabled: next });
+                API.setUser(updated);
+                Components.toast(next ? 'Email verification codes enabled' : 'Email verification codes disabled', 'success');
+                openSecurityCenter();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to update email two-factor setting', 'error');
+            }
+        };
+        document.getElementById('security-email-2fa-enable-btn')?.addEventListener('click', () => setEmail2FA(true));
+        document.getElementById('security-email-2fa-disable-btn')?.addEventListener('click', () => setEmail2FA(false));
+
+        const setPhoneApproval = async (next) => {
+            try {
+                const updated = await API.updateMe({ login_approval_enabled: next });
+                API.setUser(updated);
+                Components.toast(next ? 'Phone sign-in prompts enabled' : 'Phone sign-in prompts disabled', 'success');
+                openSecurityCenter();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to update phone prompt setting', 'error');
+            }
+        };
+        document.getElementById('security-phone-approval-enable-btn')?.addEventListener('click', () => setPhoneApproval(true));
+        document.getElementById('security-phone-approval-disable-btn')?.addEventListener('click', () => setPhoneApproval(false));
+
+        const showBackupCodes = (codes) => {
+            const list = (codes || []).map((c) => `<code style="display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;background:#f1f3f4;border-radius:6px;">${esc(c)}</code>`).join('');
+            Components.showModal('Backup codes', `
+                <p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">
+                    Save these one-time backup codes somewhere safe. Each code can be used once if you lose access to your authenticator.
+                </p>
+                <div style="line-height:1.8;">${list || 'No codes returned.'}</div>
+            `, [{ text: 'Done', class: 'btn-primary', action: () => openSecurityCenter() }]);
+        };
+
+        document.getElementById('security-totp-setup-btn')?.addEventListener('click', async () => {
+            const panel = document.getElementById('security-totp-setup-panel');
+            const btn = document.getElementById('security-totp-setup-btn');
+            if (!panel) return;
+            try {
+                if (btn) btn.disabled = true;
+                const setup = await API.totpSetup();
+                panel.classList.remove('hidden');
+                panel.innerHTML = `
+                    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+                        <img src="${esc(setup.qr)}" alt="Authenticator QR code" width="160" height="160" style="border:1px solid #e8eaed;border-radius:8px;">
+                        <div style="flex:1;min-width:180px;">
+                            <p style="margin:0 0 8px;font-size:13px;color:#5f6368;line-height:1.45;">Scan this QR code, or enter the secret manually:</p>
+                            <code style="display:block;word-break:break-all;padding:8px 10px;background:#f1f3f4;border-radius:8px;font-size:12px;">${esc(setup.secret)}</code>
+                            <input id="security-totp-confirm-code" type="text" inputmode="numeric" maxlength="8" placeholder="6-digit code"
+                                style="width:100%;height:40px;margin-top:12px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
+                            <button type="button" class="btn btn-primary" id="security-totp-confirm-btn" style="margin-top:8px;">Confirm</button>
+                        </div>
+                    </div>`;
+                document.getElementById('security-totp-confirm-btn')?.addEventListener('click', async () => {
+                    const code = String(document.getElementById('security-totp-confirm-code')?.value || '').trim();
+                    if (code.length < 6) {
+                        Components.toast('Enter the 6-digit code from your authenticator', 'error');
+                        return;
+                    }
+                    try {
+                        const result = await API.totpConfirm(code);
+                        const updated = await API.me();
+                        API.setUser(updated);
+                        Components.toast('Authenticator app enabled', 'success');
+                        showBackupCodes(result?.backup_codes || []);
+                    } catch (err) {
+                        Components.toast(err?.message || 'Failed to confirm authenticator', 'error');
+                    }
+                });
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to start authenticator setup', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
+
+        document.getElementById('security-totp-disable-btn')?.addEventListener('click', async () => {
+            const code = window.prompt('Enter a current authenticator code (or leave blank and enter password next):') || '';
+            let password = '';
+            if (!String(code).trim()) {
+                password = window.prompt('Enter your account password to disable authenticator:') || '';
+            }
+            if (!String(code).trim() && !String(password).trim()) return;
+            try {
+                const updated = await API.totpDisable({ code: String(code).trim(), password: String(password) });
+                if (updated?.id) API.setUser(updated);
+                else {
+                    const me = await API.me();
+                    API.setUser(me);
+                }
+                Components.toast('Authenticator app disabled', 'success');
+                openSecurityCenter();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to disable authenticator', 'error');
+            }
+        });
+
+        const sessionsListEl = document.getElementById('security-sessions-list');
+        const formatSessionTime = (iso) => {
+            if (!iso) return 'Unknown';
+            const ts = new Date(iso).getTime();
+            if (Number.isNaN(ts)) return 'Unknown';
+            const mins = Math.floor((Date.now() - ts) / 60000);
+            if (mins < 1) return 'Just now';
+            if (mins < 60) return `${mins} min ago`;
+            const hours = Math.floor(mins / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            if (days < 14) return `${days}d ago`;
+            return new Date(iso).toLocaleDateString();
+        };
+
+        const renderSessions = async () => {
+            if (!sessionsListEl) return;
+            sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">Loading devices…</div>';
+            try {
+                const data = await API.auth.getSessions();
+                const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
+                if (!sessions.length) {
+                    sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">No active devices.</div>';
+                    return;
+                }
+                sessionsListEl.innerHTML = sessions.map((s) => {
+                    const icon = s.device_type === 'desktop'
+                        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10H3V6a1 1 0 0 1 1-1zm-1 13h18v2H3v-2z"/></svg>'
+                        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5v2h2v2H7v-2h2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v7h16V6H4z"/></svg>';
+                    const badge = s.current
+                        ? '<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#e6f4ea;color:#137333;font-size:11px;font-weight:600;">This device</span>'
+                        : '';
+                    const revokeBtn = s.current
+                        ? ''
+                        : `<button type="button" class="btn btn-secondary security-revoke-session-btn" data-session-id="${esc(s.id)}" style="font-size:12px;height:30px;">Sign out</button>`;
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #e8eaed;border-radius:10px;background:#fff;">
+                        <div style="display:flex;align-items:flex-start;gap:12px;min-width:0;">
+                            <div style="color:#5f6368;margin-top:2px;">${icon}</div>
+                            <div style="min-width:0;">
+                                <div style="font-size:14px;font-weight:500;color:#202124;">${esc(s.device_name || 'Unknown device')}${badge}</div>
+                                <div style="font-size:12px;color:#5f6368;margin-top:2px;">${esc(s.ip_address || '—')} · Last active ${esc(formatSessionTime(s.last_seen_at))}</div>
+                            </div>
+                        </div>
+                        ${revokeBtn}
+                    </div>`;
+                }).join('');
+
+                sessionsListEl.querySelectorAll('.security-revoke-session-btn').forEach((btn) => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-session-id');
+                        if (!id) return;
+                        if (!window.confirm('Sign out this device? It will need to log in again.')) return;
+                        btn.disabled = true;
+                        try {
+                            await API.auth.revokeSession(id);
+                            Components.toast('Device signed out', 'success');
+                            await renderSessions();
+                        } catch (err) {
+                            btn.disabled = false;
+                            Components.toast(err?.message || 'Failed to sign out device', 'error');
+                        }
+                    });
+                });
+            } catch (err) {
+                sessionsListEl.innerHTML = `<div style="font-size:13px;color:#c5221f;">${esc(err?.message || 'Failed to load devices')}</div>`;
+            }
+        };
+
+        document.getElementById('security-revoke-others-btn')?.addEventListener('click', async () => {
+            if (!window.confirm('Sign out all other devices? They will need to log in again.')) return;
+            const btn = document.getElementById('security-revoke-others-btn');
+            if (btn) btn.disabled = true;
+            try {
+                await API.auth.revokeOtherSessions();
+                Components.toast('Other devices signed out', 'success');
+                await renderSessions();
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to sign out other devices', 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        });
+
+        renderSessions();
+
+        document.getElementById('security-export-keys-btn')?.addEventListener('click', async () => {
+            try {
+                if (!CryptoModule.canEncrypt()) {
+                    Components.toast('Encryption is not available in this browser session', 'error');
+                    return;
+                }
+                const exportData = await CryptoModule.exportAllKeys();
+                const count = Object.keys(exportData.keys || {}).length;
+                if (count === 0) {
+                    Components.toast('No encryption keys found in this browser', 'info');
+                    return;
+                }
+                CryptoModule.downloadKeyExport(exportData);
+                Components.toast(`Exported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to export encryption keys', 'error');
+            }
+        });
+
+        const importKeysInput = document.getElementById('security-import-keys-input');
+        document.getElementById('security-import-keys-btn')?.addEventListener('click', () => {
+            importKeysInput?.click();
+        });
+        importKeysInput?.addEventListener('change', async () => {
+            const file = importKeysInput.files?.[0];
+            importKeysInput.value = '';
+            if (!file) return;
+            try {
+                if (!CryptoModule.canEncrypt()) {
+                    Components.toast('Encryption is not available in this browser session', 'error');
+                    return;
+                }
+                const text = await file.text();
+                const exportData = CryptoModule.parseKeyExportFile(text);
+                const count = await CryptoModule.importAllKeys(exportData);
+                if (count === 0) {
+                    Components.toast('No valid keys found in import file', 'info');
+                    return;
+                }
+                Components.toast(`Imported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to import encryption keys', 'error');
+            }
+        });
+
+        document.getElementById('security-crypto-recovery-restore-btn')?.addEventListener('click', async () => {
+            const recovery = String(document.getElementById('security-crypto-recovery-input')?.value || '').trim();
+            if (!recovery) {
+                Components.toast('Enter your recovery code', 'error');
+                return;
+            }
+            try {
+                await CryptoSync.restoreWithRecoveryCode(recovery);
+                const statusEl = document.getElementById('security-crypto-status');
+                if (statusEl) statusEl.textContent = 'Active';
+                document.getElementById('security-crypto-recovery-banner')?.remove();
+                document.getElementById('security-crypto-recovery-section')?.remove();
+                Components.toast('Encryption restored', 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Recovery failed', 'error');
+            }
+        });
+
+        document.getElementById('security-crypto-rotate-btn')?.addEventListener('click', async () => {
+            if (!window.CryptoSync?.rotateAccountKey) return;
+            const password = window.prompt('Enter your password to rotate your encryption key:');
+            if (!password) return;
+            try {
+                const result = await CryptoSync.rotateAccountKey(password);
+                if (result?.recoveryCode && CryptoSync.showRecoverySetupModal) {
+                    await CryptoSync.showRecoverySetupModal(result.recoveryCode);
+                }
+                const statusEl = document.getElementById('security-crypto-status');
+                if (statusEl) statusEl.textContent = 'Active';
+                Components.toast('Encryption key rotated', 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Key rotation failed', 'error');
+            }
+        });
     }
 
     function init() {
@@ -151,6 +826,7 @@ const App = (() => {
         Auth.init();
         Upload.init();
         FileManager.init();
+        if (API.isLoggedIn()) SidebarTree.init();
 
         if (API.isLoggedIn()) {
             showApp();
@@ -243,7 +919,7 @@ const App = (() => {
             };
 
             sidebarResizer.addEventListener('pointerdown', (e) => {
-                if (e.button !== 0 || window.matchMedia('(max-width: 1050px)').matches) return;
+                if (e.button !== 0 || window.matchMedia('(max-width: 1100px)').matches) return;
                 e.preventDefault();
                 isResizing = true;
                 pointerId = e.pointerId;
@@ -256,7 +932,7 @@ const App = (() => {
             });
 
             window.addEventListener('resize', () => {
-                if (window.matchMedia('(max-width: 1050px)').matches) return;
+                if (window.matchMedia('(max-width: 1100px)').matches) return;
                 const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fd-sidebar-w'), 10);
                 if (Number.isFinite(current)) {
                     applySidebarWidth(current);
@@ -266,24 +942,32 @@ const App = (() => {
 
         bindSidebarResizer();
 
+        const closeMobileSidebar = () => {
+            sidebar?.classList.remove('open');
+        };
+
         document.getElementById('sidebar-toggle')?.addEventListener('click', (e) => {
             e.stopPropagation();
             sidebar?.classList.toggle('open');
         });
 
+        document.getElementById('sidebar-scrim')?.addEventListener('click', () => {
+            closeMobileSidebar();
+        });
+
         sidebar?.addEventListener('click', (e) => {
-            if (!window.matchMedia('(max-width: 1050px)').matches) return;
+            if (!window.matchMedia('(max-width: 1100px)').matches) return;
             const target = e.target;
             if (!target) return;
             if (!target.closest('.nav-item, .context-item')) return;
-            sidebar.classList.remove('open');
+            closeMobileSidebar();
         });
 
         document.getElementById('topbar-settings')?.addEventListener('click', () => {
             openDriveSettings();
         });
         document.getElementById('topbar-security')?.addEventListener('click', () => {
-            Components.toast('Security center will be available soon', 'info');
+            openSecurityCenter();
         });
 
         const shouldIgnorePanelDismiss = (target) => {
@@ -291,16 +975,15 @@ const App = (() => {
             if (target.closest('#details-panel, #notifications-panel, #notifications-btn, #info-btn')) return true;
             if (target.closest('.file-row, .file-card')) return true;
             if (target.closest('.modal-overlay:not(.hidden), #editor-overlay:not(.hidden), #context-menu')) return true;
-            if (target.closest('#new-dropdown, #help-dropdown, .sidebar, #profile-dropdown, #topbar-profile-wrap')) return true;
+            if (target.closest('#new-dropdown, #help-dropdown, .sidebar, #profile-dropdown, #topbar-profile-wrap, .search-wrap')) return true;
             return false;
         };
 
         document.addEventListener('click', (e) => {
-            const rightPanelOpen = (detailsPanel && !detailsPanel.classList.contains('hidden'))
-                || (notificationsPanel && !notificationsPanel.classList.contains('hidden'));
-            if (!rightPanelOpen) return;
+            const notifOpen = notificationsPanel && !notificationsPanel.classList.contains('hidden');
+            if (!notifOpen) return;
             if (shouldIgnorePanelDismiss(e.target)) return;
-            closeRightPanels();
+            notificationsPanel.classList.add('hidden');
         });
 
         newBtn?.addEventListener('click', (e) => {
@@ -323,10 +1006,10 @@ const App = (() => {
         });
 
         document.addEventListener('click', (e) => {
-            if (!window.matchMedia('(max-width: 1050px)').matches) return;
+            if (!window.matchMedia('(max-width: 1100px)').matches) return;
             const target = e.target;
-            if (target && (target.closest('#sidebar') || target.closest('#sidebar-toggle'))) return;
-            sidebar?.classList.remove('open');
+            if (target && (target.closest('#sidebar') || target.closest('#sidebar-toggle') || target.closest('#sidebar-scrim'))) return;
+            closeMobileSidebar();
         });
 
         document.getElementById('new-folder-action')?.addEventListener('click', () => FileManager.createFolder());
@@ -354,6 +1037,7 @@ const App = (() => {
             let dragCounter = 0;
             main.addEventListener('dragenter', (e) => {
                 e.preventDefault();
+                if (!FileManager.canAcceptUploads()) return;
                 dragCounter += 1;
                 document.getElementById('drop-overlay')?.classList.remove('hidden');
             });
@@ -366,46 +1050,65 @@ const App = (() => {
                 }
             });
             main.addEventListener('dragover', (e) => e.preventDefault());
-            main.addEventListener('drop', (e) => {
+            main.addEventListener('drop', async (e) => {
                 e.preventDefault();
                 dragCounter = 0;
                 document.getElementById('drop-overlay')?.classList.add('hidden');
-                // Capture FileSystemEntry objects synchronously — DataTransfer items
-                // become inaccessible once the event handler returns.
-                if (e.dataTransfer?.items?.length) {
-                    const entries = Array.from(e.dataTransfer.items)
-                        .map((item) => item.webkitGetAsEntry?.())
-                        .filter(Boolean);
-                    if (entries.length) {
-                        Upload.handleDropEntries(entries);
-                        return;
-                    }
+                if (!FileManager.canAcceptUploads()) {
+                    Components.toast('Connect a computer to upload files here', 'info');
+                    return;
                 }
-                if (e.dataTransfer?.files?.length) {
-                    Upload.handleFiles(e.dataTransfer.files);
+                try {
+                    const files = await Upload.collectFromDataTransfer(e.dataTransfer);
+                    if (files.length) Upload.uploadFileTree(files);
+                } catch {
+                    Components.toast('Could not read dropped files', 'error');
                 }
             });
         }
 
-        document.getElementById('content-area')?.addEventListener('contextmenu', (e) => {
-            if (e.target.closest('.file-row') || e.target.closest('.file-card')) return;
-            e.preventDefault();
-            closeTransientPanels();
-            newDropdown?.style.setProperty('position', 'fixed');
-            newDropdown?.style.setProperty('left', `${Math.min(e.clientX, window.innerWidth - 260)}px`);
-            newDropdown?.style.setProperty('top', `${Math.min(e.clientY, window.innerHeight - 260)}px`);
-            newDropdown?.classList.remove('hidden');
+        document.querySelector('.search-wrap')?.addEventListener('click', (e) => {
+            e.stopPropagation();
         });
 
         document.getElementById('search-options')?.addEventListener('click', (e) => {
             e.stopPropagation();
             newDropdown?.classList.add('hidden');
             helpDropdown?.classList.add('hidden');
+            FileManager.hideSearchDropdown();
             searchFilterPanel?.classList.toggle('hidden');
+            if (!searchFilterPanel?.classList.contains('hidden')) {
+                FileManager.syncAdvancedSearchDependentFields();
+            }
         });
 
         searchFilterPanel?.addEventListener('click', (e) => {
             e.stopPropagation();
+        });
+
+        document.getElementById('adv-search-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            searchFilterPanel?.classList.add('hidden');
+        });
+
+        document.getElementById('adv-search-reset')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            FileManager.resetAdvancedSearchForm();
+        });
+
+        document.getElementById('adv-search-learn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            FileManager.showAdvancedSearchHelp();
+        });
+
+        document.getElementById('filter-owner')?.addEventListener('change', () => {
+            FileManager.syncAdvancedSearchDependentFields();
+        });
+
+        document.getElementById('filter-modified')?.addEventListener('change', () => {
+            FileManager.syncAdvancedSearchDependentFields();
         });
 
         document.getElementById('search-filter-apply')?.addEventListener('click', () => {
@@ -425,8 +1128,12 @@ const App = (() => {
         });
 
         document.getElementById('help-shortcuts')?.addEventListener('click', () => FileManager.showShortcuts());
-        document.getElementById('help-feedback')?.addEventListener('click', () => Components.toast('Feedback form opened', 'info'));
-        document.getElementById('help-center')?.addEventListener('click', () => Components.toast('Help center is available in-app', 'info'));
+        document.getElementById('help-feedback')?.addEventListener('click', () => {
+            Components.showModal('Send feedback', '<p style="margin:0;color:#5f6368;font-size:14px;line-height:1.45;">Email your administrator or open an issue in the FreeDrive repository with steps to reproduce and screenshots.</p>', [{ text: 'OK', class: 'btn-primary' }]);
+        });
+        document.getElementById('help-center')?.addEventListener('click', () => {
+            window.open('https://github.com/abdullaabdullazade/freedrive', '_blank', 'noopener');
+        });
 
         document.getElementById('shortcuts-close')?.addEventListener('click', () => {
             document.getElementById('shortcuts-modal-overlay')?.classList.add('hidden');
@@ -446,34 +1153,20 @@ const App = (() => {
         profileBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
             closeTransientPanels();
+            const opening = profileDropdown?.classList.contains('hidden');
             profileDropdown?.classList.toggle('hidden');
-            // Populate user info
-            const user = API.getUser?.() || JSON.parse(localStorage.getItem('fd_user') || '{}');
-            const displayName = String(
-                user.username
-                || user.name
-                || (user.email ? String(user.email).split('@')[0] : '')
-                || 'User'
-            ).trim();
-            document.getElementById('profile-name').textContent = displayName;
-            if (user.email) document.getElementById('profile-email').textContent = user.email;
-            
-            const initial = Components.initials(displayName || user.email || 'U');
-            const lgAvatar = document.getElementById('profile-avatar-lg');
-            const prefs = getUserPrefs();
-            const savedPhoto = prefs.profileAvatar || localStorage.getItem('fd_profile_photo');
-            
-            if (lgAvatar) {
-                if (savedPhoto) {
-                    lgAvatar.innerHTML = '';
-                    lgAvatar.style.backgroundImage = `url(${savedPhoto})`;
-                    lgAvatar.style.backgroundSize = 'cover';
-                    lgAvatar.style.backgroundPosition = 'center';
-                } else {
-                    lgAvatar.style.backgroundImage = '';
-                    lgAvatar.textContent = initial;
-                }
-            }
+            if (opening) populateProfileDropdown();
+        });
+
+        document.getElementById('profile-dropdown-close')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdown?.classList.add('hidden');
+        });
+
+        document.getElementById('profile-manage-storage')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdown?.classList.add('hidden');
+            window.location.hash = '#/storage';
         });
 
         document.addEventListener('click', (e) => {
@@ -482,62 +1175,15 @@ const App = (() => {
             }
         });
 
-        // ── Change profile photo ──
-        document.getElementById('profile-change-photo')?.addEventListener('click', () => {
-            document.getElementById('profile-photo-input')?.click();
-        });
-
-        document.getElementById('profile-photo-input')?.addEventListener('change', (e) => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const dataUrl = ev.target.result;
-                localStorage.setItem('fd_profile_photo', dataUrl);
-                // Update all avatars
-                document.getElementById('profile-avatar-lg').innerHTML = `<img src="${dataUrl}" alt="Profile">`;
-                const topAvatar = document.getElementById('topbar-avatar');
-                if (topAvatar) {
-                    topAvatar.innerHTML = `<img src="${dataUrl}" alt="Profile" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-                }
-                Components.toast('Profile photo updated', 'success');
-            };
-            reader.readAsDataURL(file);
-            profileDropdown?.classList.add('hidden');
-        });
-
-        // ── Keyboard shortcuts ──
-        document.getElementById('profile-keyboard-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            FileManager.showShortcuts?.();
-        });
-
-        document.getElementById('profile-settings-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            openDriveSettings();
-        });
-
-        document.getElementById('profile-security-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            Components.toast('Security center will be available soon', 'info');
-        });
-
-        document.getElementById('profile-toggle-view-btn')?.addEventListener('click', () => {
-            profileDropdown?.classList.add('hidden');
-            const gridBtn = document.getElementById('topbar-view-grid');
-            const listBtn = document.getElementById('topbar-view-list');
-            if (gridBtn?.classList.contains('active')) {
-                listBtn?.click();
-            } else {
-                gridBtn?.click();
-            }
-        });
-
         // ── Sign out ──
         document.getElementById('logout-btn')?.addEventListener('click', async () => {
             profileDropdown?.classList.add('hidden');
             try { await API.auth.logout(); } catch {}
+            if (window.CryptoSync?.lockAndClearDevice) {
+                await CryptoSync.lockAndClearDevice();
+            }
             API.clearAuth();
+            SidebarTree.invalidateAll();
             showAuth();
         });
 
@@ -558,6 +1204,7 @@ const App = (() => {
         document.getElementById('bulk-share')?.addEventListener('click', () => FileManager.bulkShare());
         document.getElementById('bulk-download')?.addEventListener('click', () => FileManager.bulkDownload());
         document.getElementById('bulk-move')?.addEventListener('click', () => FileManager.bulkMove());
+        document.getElementById('bulk-restore')?.addEventListener('click', () => FileManager.bulkRestore());
         document.getElementById('bulk-delete')?.addEventListener('click', () => FileManager.bulkDelete());
 
         document.getElementById('free-space-btn')?.addEventListener('click', () => FileManager.showLargestFiles());
@@ -601,22 +1248,25 @@ const App = (() => {
     }
 
     function showAuth() {
-        document.getElementById('app')?.classList.remove('admin-mode');
+        const app = document.getElementById('app');
+        app?.classList.remove('admin-mode', 'admin-drive-access');
+        document.getElementById('admin-btn')?.classList.add('hidden');
         document.getElementById('auth-screen').classList.remove('hidden');
-        document.getElementById('app').classList.add('hidden');
+        app?.classList.add('hidden');
     }
 
-    function showApp() {
+    async function showApp() {
         document.getElementById('auth-screen').classList.add('hidden');
         document.getElementById('app').classList.remove('hidden');
 
         const user = API.getUser();
         if (user) {
+            // Prefer server profile over stale localStorage avatar/name cache.
+            if (user.avatar_url) syncAvatarCache(user.avatar_url);
             refreshUserUI();
-            if (user.role === 'admin') {
-                const ab = document.getElementById('admin-btn');
-                if (ab) ab.style.display = '';
-            }
+            await refreshProfileFromServer();
+        } else {
+            syncAdminBtnVisibility();
         }
 
         const prefs = getUserPrefs();
@@ -625,6 +1275,10 @@ const App = (() => {
             window.location.hash = prefs.startPage;
         }
 
+        SidebarTree.init();
+        if (window.CryptoSync?.ensureUnlockedOnAppLoad) {
+            await CryptoSync.ensureUnlockedOnAppLoad();
+        }
         handleRoute();
     }
 
@@ -634,7 +1288,9 @@ const App = (() => {
         if (isAdminMode) {
             document.getElementById('details-panel')?.classList.add('hidden');
             document.getElementById('notifications-panel')?.classList.add('hidden');
+            app?.classList.remove('details-open');
         }
+        syncAdminBtnVisibility();
     }
 
     function setActiveNav(page) {
@@ -644,7 +1300,8 @@ const App = (() => {
 
     async function handleRoute() {
         if (!API.isLoggedIn()) return;
-        
+
+        try {
         let pathRoute = window.location.pathname;
         let hash = window.location.hash;
 
@@ -698,9 +1355,10 @@ const App = (() => {
             FileManager.loadRecent();
             return;
         }
-        if (hash === '#/computers') {
+        if (hash === '#/computers' || hash.startsWith('#/computers/')) {
             setActiveNav('computers');
-            FileManager.loadFolder(null);
+            const folderId = hash.startsWith('#/computers/') ? hash.split('/')[2] : null;
+            FileManager.loadComputerFolder(folderId);
             return;
         }
         if (hash === '#/starred') {
@@ -714,8 +1372,7 @@ const App = (() => {
             return;
         }
         if (hash === '#/shared-by') {
-            setActiveNav('shared-by');
-            FileManager.loadSharedByMe();
+            window.location.replace('#/files');
             return;
         }
         if (hash === '#/offline') {
@@ -745,6 +1402,7 @@ const App = (() => {
             const sharedKey = query.get('k') || '';
             setActiveNav('files');
             FileManager.loadFolder(null);
+            SidebarTree.syncWithRoute();
             if (fileId) {
                 setTimeout(async () => {
                     try {
@@ -770,10 +1428,14 @@ const App = (() => {
             setActiveNav('files');
             const folderId = hash.split('/')[2] || null;
             FileManager.loadFolder(folderId);
+            SidebarTree.syncWithRoute();
             return;
         }
 
         window.location.hash = '#/files';
+        } finally {
+            syncAdminBtnVisibility();
+        }
     }
 
     function initRipple() {

@@ -16,8 +16,9 @@ const (
 	ActionUnshare  ActivityAction = "unshare"
 	ActionRestore  ActivityAction = "restore"
 	ActionComment  ActivityAction = "comment"
-	ActionLogin    ActivityAction = "login"
-	ActionCreate   ActivityAction = "create"
+	ActionLogin       ActivityAction = "login"
+	ActionFailedLogin ActivityAction = "failed_login"
+	ActionCreate      ActivityAction = "create"
 )
 
 // ActivityLog represents a recorded user action.

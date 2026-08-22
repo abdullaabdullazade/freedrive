@@ -1,0 +1,76 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (example: desktop-v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve release tag
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build desktop installer
+        working-directory: desktop
+        run: npm run build:exe
+
+      - name: Collect release artifacts
+        shell: bash
+        run: |
+          mkdir -p dist-desktop
+          cp desktop/src-tauri/target/release/freedrive-desktop.exe dist-desktop/
+          shopt -s nullglob
+          for f in desktop/src-tauri/target/release/bundle/nsis/*-setup.exe; do
+            cp "$f" dist-desktop/
+          done
+          cd dist-desktop
+          sha256sum * > checksums.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: FreeDrive Desktop ${{ steps.vars.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            dist-desktop/*

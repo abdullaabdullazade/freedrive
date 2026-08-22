@@ -15,7 +15,7 @@ type RateLimiter struct {
 }
 
 type visitor struct {
-	tokens    int
+	tokens    float64
 	lastCheck time.Time
 }
 
@@ -50,19 +50,20 @@ func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 		rl.mu.Lock()
 		v, exists := rl.visitors[ip]
 		if !exists {
-			v = &visitor{tokens: rl.burst, lastCheck: time.Now()}
+			v = &visitor{tokens: float64(rl.burst), lastCheck: time.Now()}
 			rl.visitors[ip] = v
 		}
 
-		// Refill tokens
-		elapsed := time.Since(v.lastCheck)
-		v.tokens += int(elapsed.Seconds()) * rl.rate
-		if v.tokens > rl.burst {
-			v.tokens = rl.burst
+		// Refill tokens continuously (fractional seconds), not in whole-second steps.
+		now := time.Now()
+		elapsed := now.Sub(v.lastCheck)
+		v.tokens += elapsed.Seconds() * float64(rl.rate)
+		if v.tokens > float64(rl.burst) {
+			v.tokens = float64(rl.burst)
 		}
-		v.lastCheck = time.Now()
+		v.lastCheck = now
 
-		if v.tokens <= 0 {
+		if v.tokens < 1 {
 			rl.mu.Unlock()
 			http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
 			return

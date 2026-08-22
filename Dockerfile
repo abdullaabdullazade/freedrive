@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/freedri
 
 FROM alpine:3.22
 
-RUN addgroup -S freedrive && adduser -S -G freedrive freedrive
+RUN addgroup -g 1000 -S freedrive && adduser -u 1000 -S -G freedrive freedrive
 
 WORKDIR /app
 
