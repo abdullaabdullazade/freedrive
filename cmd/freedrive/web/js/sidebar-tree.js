@@ -90,7 +90,7 @@ const SidebarTree = (() => {
         row.appendChild(createChevron(folder.id, hasKnownEmpty));
 
         const link = document.createElement('a');
-        link.href = `#/files/${folder.id}`;
+        link.href = `/files/${folder.id}`;
         link.className = 'nav-tree-folder-link';
         link.innerHTML = `${FOLDER_ICON}<span>${esc(folder.name)}</span>`;
         row.appendChild(link);
@@ -176,14 +176,14 @@ const SidebarTree = (() => {
     }
 
     function syncWithRoute() {
-        const hash = window.location.hash || '#/files';
-        if (!hash.startsWith('#/files')) {
+        const route = window.location.pathname || '/files';
+        if (route !== '/files' && !route.startsWith('/files/')) {
             currentFolderId = null;
             applyActiveState();
             return;
         }
 
-        const parts = hash.split('/');
+        const parts = route.split('/');
         currentFolderId = parts[2] || null;
 
         if (currentFolderId) {

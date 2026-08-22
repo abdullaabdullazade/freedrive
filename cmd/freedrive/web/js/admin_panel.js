@@ -701,7 +701,7 @@ const AdminPanel = (() => {
                             <div class="gd-card-title-area">
                                 <h3>Recent Activity</h3>
                             </div>
-                            <a href="#/admin/activity" class="gd-btn-outline" style="font-size:12px; padding: 4px 10px; text-decoration:none;">View all</a>
+                            <a href="/admin/activity" class="gd-btn-outline" style="font-size:12px; padding: 4px 10px; text-decoration:none;">View all</a>
                         </div>
                         <div class="gd-recent-activity">
                             ${recent.map((a) => `
@@ -1851,7 +1851,7 @@ const AdminPanel = (() => {
         const me = getCurrentUser();
         if (String(me.role || '').toLowerCase() !== 'admin') {
             Components.toast('Admin access required', 'error');
-            history.pushState(null, '', '/#/files');
+            history.pushState(null, '', '/files');
             window.dispatchEvent(new Event('popstate'));
             return;
         }
@@ -2929,7 +2929,7 @@ const AdminPanel = (() => {
                     try {
                         await API.admin.wipeAllData();
                         Components.toast('All data wiped', 'success');
-                        history.pushState(null, '', '/#/files');
+                        history.pushState(null, '', '/files');
                         window.dispatchEvent(new Event('popstate'));
                     } catch (err) {
                         Components.toast(err?.message || 'Wipe failed', 'error');

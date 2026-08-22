@@ -81,7 +81,7 @@ const FileManager = (() => {
         document.getElementById('new-folder-btn')?.addEventListener('click', createFolder);
         document.getElementById('empty-bin-btn')?.addEventListener('click', () => emptyBin());
         document.getElementById('home-warning-clean')?.addEventListener('click', () => {
-            window.location.hash = '#/storage';
+            App.navigate('/storage');
         });
         document.getElementById('home-warning-manage')?.addEventListener('click', async () => {
             try {
@@ -751,9 +751,9 @@ const FileManager = (() => {
         document.querySelector('.new-btn-wrap')?.classList.remove('hidden');
     }
 
-    function folderNavHash(folderId) {
-        if (currentPage === 'computers') return `#/computers/${folderId}`;
-        return `#/files/${folderId}`;
+    function folderNavPath(folderId) {
+        if (currentPage === 'computers') return `/computers/${folderId}`;
+        return `/files/${folderId}`;
     }
 
     function canAcceptUploads() {
@@ -797,7 +797,7 @@ const FileManager = (() => {
     }
 
     async function updateComputerBreadcrumb(folderId) {
-        let html = '<a href="#/computers" class="breadcrumb-item">Computers</a>';
+        let html = '<a href="/computers" class="breadcrumb-item">Computers</a>';
         if (!folderId) {
             setBreadcrumbHtml(html);
             return;
@@ -818,13 +818,13 @@ const FileManager = (() => {
             if (!subCrumbs.length) {
                 html += `<span class="breadcrumb-item">${esc(comp.name)}</span>`;
             } else {
-                html += `<a href="#/computers/${comp.root_folder_id}" class="breadcrumb-item">${esc(comp.name)}</a>`;
+                html += `<a href="/computers/${comp.root_folder_id}" class="breadcrumb-item">${esc(comp.name)}</a>`;
                 subCrumbs.forEach((c, idx) => {
                     html += '<span class="breadcrumb-sep">›</span>';
                     if (idx === subCrumbs.length - 1) {
                         html += `<span class="breadcrumb-item">${esc(c.name)}</span>`;
                     } else {
-                        html += `<a href="#/computers/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
+                        html += `<a href="/computers/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
                     }
                 });
             }
@@ -855,7 +855,7 @@ const FileManager = (() => {
             return;
         }
 
-        let html = '<a href="#/files" class="breadcrumb-item">My Drive</a>';
+        let html = '<a href="/files" class="breadcrumb-item">My Drive</a>';
         try {
             const data = await API.folders.breadcrumb(folderId);
             const crumbs = data.breadcrumb || [];
@@ -864,7 +864,7 @@ const FileManager = (() => {
                 if (idx === crumbs.length - 1) {
                     html += `<span class="breadcrumb-item">${esc(c.name)}</span>`;
                 } else {
-                    html += `<a href="#/files/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
+                    html += `<a href="/files/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
                 }
             });
             setBreadcrumbHtml(html);
@@ -1302,7 +1302,7 @@ const FileManager = (() => {
                         </div>
                     </div>
                 `;
-                card.addEventListener('click', () => { window.location.hash = `#/files/${f.id}`; });
+                card.addEventListener('click', () => { App.navigate(`/files/${f.id}`); });
                 grid.appendChild(card);
             });
         }
@@ -1570,7 +1570,7 @@ const FileManager = (() => {
         dropdown.querySelectorAll('.gd-sr-row').forEach((row) => {
             row.addEventListener('click', () => {
                 const id = row.dataset.id;
-                if (row.dataset.type === 'folder') { window.location.hash = `#/files/${id}`; hideSearchDropdown(); return; }
+                if (row.dataset.type === 'folder') { App.navigate(`/files/${id}`); hideSearchDropdown(); return; }
                 const f = top.find((x) => x.id === id);
                 if (f) openFile(f);
                 hideSearchDropdown();
@@ -2155,7 +2155,7 @@ const FileManager = (() => {
                 ? ownerCellHtml
                 : esc(modifiedText)}</div>
             <div class="file-cell cell-size">${isHomeSuggested
-                ? `<a class="home-location-cell" data-folder="${esc(item.folder_id || '')}" href="#/files${item.folder_id ? `/${item.folder_id}` : ''}">${folderIconSvg}<span class="home-location-text">${esc(locationText)}</span></a>`
+                ? `<a class="home-location-cell" data-folder="${esc(item.folder_id || '')}" href="/files${item.folder_id ? `/${item.folder_id}` : ''}">${folderIconSvg}<span class="home-location-text">${esc(locationText)}</span></a>`
                 : sizeText}</div>
             <div class="file-cell file-actions">
                 <button class="btn-icon action-share" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
@@ -2252,7 +2252,7 @@ const FileManager = (() => {
             // Recent page should open items with a single click.
             if (currentPage === 'recent') {
                 if (type === 'folder' || type === 'suggested-folder') {
-                    window.location.hash = folderNavHash(item.id);
+                    App.navigate(folderNavPath(item.id));
                 } else {
                     openFile(item);
                 }
@@ -2263,7 +2263,7 @@ const FileManager = (() => {
             // Open files and folders on single tap in mobile/tablet widths.
             if (window.matchMedia('(max-width: 820px)').matches) {
                 if (type === 'folder' || type === 'suggested-folder') {
-                    window.location.hash = folderNavHash(item.id);
+                    App.navigate(folderNavPath(item.id));
                 } else {
                     openFile(item);
                 }
@@ -2275,7 +2275,7 @@ const FileManager = (() => {
 
         container.addEventListener('dblclick', () => {
             if (type === 'folder') {
-                window.location.hash = folderNavHash(item.id);
+                App.navigate(folderNavPath(item.id));
                 return;
             }
             openFile(item);
@@ -2680,7 +2680,7 @@ const FileManager = (() => {
         switch (action) {
             case 'open':
                 if (type === 'folder') {
-                    window.location.hash = `#/files/${data.id}`;
+                    App.navigate(`/files/${data.id}`);
                 } else {
                     openFile(data);
                 }
@@ -2957,12 +2957,12 @@ const FileManager = (() => {
     }
 
     async function buildShareLink(itemId) {
-        let link = `${location.origin}/#/open/${itemId}`;
+        let link = `${location.origin}/open/${itemId}`;
         try {
             const key = await CryptoModule.getKey(itemId);
             if (key) {
                 const exported = await CryptoModule.exportKey(key);
-                link += `?k=${encodeURIComponent(exported)}`;
+                link += `#k=${encodeURIComponent(exported)}`;
             }
         } catch {
             // If key export fails, still return base link.
@@ -3634,7 +3634,7 @@ const FileManager = (() => {
             if (type === 'file') {
                 openFile(data);
             } else if (type === 'folder') {
-                window.location.hash = `#/files/${data.id}`;
+                App.navigate(`/files/${data.id}`);
             }
         });
 
@@ -3808,7 +3808,7 @@ const FileManager = (() => {
             <div class="details-section-title">Details</div>
             ${propRow('type',     'Type',         esc(typeValue))}
             ${propRow('size',     'Size',         esc(folderSizeValue))}
-            ${propRow('location', 'Location',     `<a href="#/files${data.folder_id ? `/${data.folder_id}` : ''}">${esc(locationLabel)}</a>`)}
+            ${propRow('location', 'Location',     `<a href="/files${data.folder_id ? `/${data.folder_id}` : ''}">${esc(locationLabel)}</a>`)}
             ${propRow('owner',    'Owner',        esc(itemOwner(data)))}
             ${sharedRows}
             ${propRow('modified', 'Modified',     `${Components.formatAbsoluteDate(data.updated_at || data.created_at)}<br><span style="color:#5f6368;font-size:12px;">by ${esc(ownerName)}</span>`)}
@@ -4748,9 +4748,9 @@ const FileManager = (() => {
             const created = await uploadEncryptedBlob(blob, name, mimeType, currentFolderId);
             Components.toast('File created', 'success');
             if (currentPage !== 'files' && currentPage !== 'home' && currentPage !== 'computers') {
-                window.location.hash = currentFolderId
-                    ? (currentPage === 'computers' ? `#/computers/${currentFolderId}` : `#/files/${currentFolderId}`)
-                    : '#/files';
+                App.navigate(currentFolderId
+                    ? (currentPage === 'computers' ? `/computers/${currentFolderId}` : `/files/${currentFolderId}`)
+                    : '/files');
                 return;
             }
             refresh();
@@ -6802,11 +6802,11 @@ const FileManager = (() => {
             clearTimeout(_gKeyTimer);
             const k = e.key.toLowerCase();
             e.preventDefault();
-            if (k === 'h') { window.location.hash = '#/home'; return; }
-            if (k === 'd') { window.location.hash = '#/files'; return; }
-            if (k === 'r') { window.location.hash = '#/recent'; return; }
-            if (k === 't') { window.location.hash = '#/trash'; return; }
-            if (k === 's') { window.location.hash = '#/storage'; return; }
+            if (k === 'h') { App.navigate('/home'); return; }
+            if (k === 'd') { App.navigate('/files'); return; }
+            if (k === 'r') { App.navigate('/recent'); return; }
+            if (k === 't') { App.navigate('/trash'); return; }
+            if (k === 's') { App.navigate('/storage'); return; }
             return;
         }
 
@@ -6869,7 +6869,7 @@ const FileManager = (() => {
             e.preventDefault();
             if (currentFolderId) {
                 // Try to go to parent — reload files root
-                window.location.hash = '#/files';
+                App.navigate('/files');
             }
         }
 
@@ -7071,27 +7071,27 @@ const FileManager = (() => {
     function refresh() {
         folderStatsCache.clear();
         folderStatsPending.clear();
-        const h = window.location.hash;
-        if (h === '#/admin' || h.startsWith('#/admin/')) {
-            const section = h.split('/')[2] || 'dashboard';
+        const route = window.location.pathname;
+        if (route === '/admin' || route.startsWith('/admin/')) {
+            const section = route.split('/')[2] || 'dashboard';
             return AdminPanel.load(section);
         }
-        if (h === '#/home') return loadHome();
-        if (h === '#/computers' || h.startsWith('#/computers/')) {
-            const folderId = h.startsWith('#/computers/') ? h.split('/')[2] : null;
+        if (route === '/home') return loadHome();
+        if (route === '/computers' || route.startsWith('/computers/')) {
+            const folderId = route.startsWith('/computers/') ? route.split('/')[2] : null;
             return loadComputerFolder(folderId);
         }
-        if (h === '#/recent') return loadRecent();
-        if (h === '#/starred') return loadStarred();
-        if (h === '#/shared-with') return loadSharedWithMe();
-        if (h === '#/shared-by') {
-            window.location.replace('#/files');
+        if (route === '/recent') return loadRecent();
+        if (route === '/starred') return loadStarred();
+        if (route === '/shared-with') return loadSharedWithMe();
+        if (route === '/shared-by') {
+            App.navigate('/files', { replace: true });
             return loadFolder(null);
         }
-        if (h === '#/offline') return loadOffline();
-        if (h === '#/trash') return loadTrash();
-        if (h === '#/activity') return loadActivity();
-        if (h === '#/storage') return loadStoragePage();
+        if (route === '/offline') return loadOffline();
+        if (route === '/trash') return loadTrash();
+        if (route === '/activity') return loadActivity();
+        if (route === '/storage') return loadStoragePage();
         return loadFolder(currentFolderId);
     }
 

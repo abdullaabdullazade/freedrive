@@ -817,18 +817,19 @@ const App = (() => {
     }
 
     function init() {
-        // Migrate the old hash login URL to the canonical history route.
-        if (window.location.hash === '#/login') {
-            history.replaceState(null, '', `/login${window.location.search}`);
-        }
-
-        if (window.location.hash.startsWith('#/public-share/')) {
+        if (window.location.hash.startsWith('#/public-share/') || window.location.pathname.startsWith('/public-share/')) {
             showPublicShareDownload();
             return;
         }
-        if (!window.location.hash && window.location.pathname.startsWith('/admin') && window.location.pathname !== '/admin') {
-            // We use history wrapper below, do not convert to hash.
-            // Allow pathname to dictate routing.
+
+        // Migrate old hash bookmarks to canonical history routes.
+        if (window.location.hash.startsWith('#/')) {
+            const legacyRoute = window.location.hash.slice(1);
+            const [legacyPath, legacyQuery = ''] = legacyRoute.split('?');
+            if (legacyPath.startsWith('/open/') && legacyQuery) {
+                sessionStorage.setItem(`fd_open_key_${legacyPath.slice('/open/'.length)}`, legacyQuery);
+            }
+            history.replaceState(null, '', legacyPath || '/files');
         }
 
         Components.init();
@@ -851,7 +852,6 @@ const App = (() => {
         }
 
         bindGlobalUI();
-        window.addEventListener('hashchange', handleRoute);
         window.addEventListener('popstate', handleRoute);
         
         // Attach ripple effect to interactive elements
@@ -864,10 +864,15 @@ const App = (() => {
         document.getElementById('auth-screen')?.classList.add('hidden');
         document.getElementById('app')?.classList.add('hidden');
 
-        const route = window.location.hash.slice('#/public-share/'.length);
-        const [rawToken, rawQuery = ''] = route.split('?');
+        const legacyRoute = window.location.hash.startsWith('#/public-share/')
+            ? window.location.hash.slice('#/public-share/'.length)
+            : '';
+        const [legacyToken, legacyQuery = ''] = legacyRoute.split('?');
+        const rawToken = legacyToken || window.location.pathname.slice('/public-share/'.length).split('/')[0];
         const token = decodeURIComponent(rawToken || '');
-        const keyText = new URLSearchParams(rawQuery).get('k') || '';
+        const fragmentQuery = window.location.hash.startsWith('#k=') ? window.location.hash.slice(1) : '';
+        const keyText = new URLSearchParams(legacyQuery || fragmentQuery).get('k') || '';
+        if (token) history.replaceState(null, '', `/public-share/${encodeURIComponent(token)}`);
 
         const page = document.createElement('main');
         page.className = 'public-share-page';
@@ -936,6 +941,19 @@ const App = (() => {
         const detailsPanel = document.getElementById('details-panel');
         const notificationsPanel = document.getElementById('notifications-panel');
         const contentArea = document.getElementById('content-area');
+
+        document.addEventListener('click', (event) => {
+            const link = event.target.closest('a[href^="/"]');
+            if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            if (link.target || link.hasAttribute('download')) return;
+            const url = new URL(link.href, window.location.origin);
+            if (url.origin !== window.location.origin) return;
+            const isAppRoute = /^\/(?:home|files|computers|recent|starred|shared-with|shared-by|offline|trash|activity|storage|open)(?:\/|$)/.test(url.pathname)
+                || /^\/admin(?:\/|$)/.test(url.pathname);
+            if (!isAppRoute) return;
+            event.preventDefault();
+            navigate(`${url.pathname}${url.search}${url.hash}`);
+        });
 
         const closeTransientPanels = () => {
             newDropdown?.classList.add('hidden');
@@ -1248,7 +1266,7 @@ const App = (() => {
         document.getElementById('profile-manage-storage')?.addEventListener('click', (e) => {
             e.stopPropagation();
             profileDropdown?.classList.add('hidden');
-            window.location.hash = '#/storage';
+            navigate('/storage');
         });
 
         document.addEventListener('click', (e) => {
@@ -1274,14 +1292,6 @@ const App = (() => {
             e.preventDefault();
             history.pushState(null, '', '/admin/dashboard');
             handleRoute();
-        });
-
-        document.querySelectorAll('.admin-nav-item[href^="/admin"]').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                history.pushState(null, '', link.getAttribute('href'));
-                handleRoute();
-            });
         });
 
         document.getElementById('bulk-share')?.addEventListener('click', () => FileManager.bulkShare());
@@ -1354,8 +1364,8 @@ const App = (() => {
 
         const prefs = getUserPrefs();
         applyTheme(prefs.theme || 'system');
-        if (!window.location.hash && prefs.startPage) {
-            window.location.hash = prefs.startPage;
+        if (window.location.pathname === '/') {
+            history.replaceState(null, '', cleanRoute(prefs.startPage || '/files'));
         }
 
         SidebarTree.init();
@@ -1381,108 +1391,111 @@ const App = (() => {
         document.getElementById(`nav-${page}`)?.classList.add('active');
     }
 
+    function cleanRoute(route) {
+        let value = String(route || '/files').trim();
+        if (value.startsWith('/#/')) value = value.slice(2);
+        if (value.startsWith('#/')) value = value.slice(1);
+        if (!value.startsWith('/')) value = `/${value}`;
+        return value;
+    }
+
+    function navigate(route, options = {}) {
+        const destination = cleanRoute(route);
+        history[options.replace ? 'replaceState' : 'pushState'](null, '', destination);
+        handleRoute();
+    }
+
     async function handleRoute() {
         if (!API.isLoggedIn()) return;
 
         try {
-        let pathRoute = window.location.pathname;
-        let hash = window.location.hash;
+        let route = window.location.pathname;
 
-        // If they navigate to /admin fallback or root
-        if (pathRoute === '/admin') {
+        if (route === '/admin') {
             history.replaceState(null, '', '/admin/dashboard');
-            pathRoute = '/admin/dashboard';
+            route = '/admin/dashboard';
         }
 
         const user = API.getUser() || {};
-        const isAdminRoute = pathRoute.startsWith('/admin') || hash === '#/admin' || hash.startsWith('#/admin/');
+        const isAdminRoute = route.startsWith('/admin');
 
         if (isAdminRoute) {
             if (String(user.role || '').toLowerCase() !== 'admin') {
                 Components.toast('Admin access required', 'error');
                 setLayoutMode(false);
-                window.location.hash = '#/files';
+                navigate('/files', { replace: true });
                 return;
             }
 
             setLayoutMode(true);
-            let section = 'dashboard';
-            
-            if (hash.startsWith('#/admin/')) {
-                section = (hash.split('/')[2] || 'dashboard').toLowerCase();
-                // Sync path with the hash navigation
-                history.replaceState(null, '', `/admin/${section}`);
-                // Clear the hash so it doesn't stay in the URL
-                if (window.location.hash) {
-                    history.replaceState(null, '', `/admin/${section}`);
-                }
-            } else if (pathRoute.startsWith('/admin/')) {
-                section = (pathRoute.split('/')[2] || 'dashboard').toLowerCase();
-            }
+            const section = (route.split('/')[2] || 'dashboard').toLowerCase();
 
             setActiveNav(`admin-${section}`);
             AdminPanel.load(section);
             return;
         }
 
-        hash = hash || '#/files';
+        route = route === '/' ? '/files' : route;
         setLayoutMode(false);
 
-        if (hash === '#/home') {
+        if (route === '/home') {
             setActiveNav('home');
             FileManager.loadHome();
             return;
         }
-        if (hash === '#/recent') {
+        if (route === '/recent') {
             setActiveNav('recent');
             FileManager.loadRecent();
             return;
         }
-        if (hash === '#/computers' || hash.startsWith('#/computers/')) {
+        if (route === '/computers' || route.startsWith('/computers/')) {
             setActiveNav('computers');
-            const folderId = hash.startsWith('#/computers/') ? hash.split('/')[2] : null;
+            const folderId = route.startsWith('/computers/') ? route.split('/')[2] : null;
             FileManager.loadComputerFolder(folderId);
             return;
         }
-        if (hash === '#/starred') {
+        if (route === '/starred') {
             setActiveNav('starred');
             FileManager.loadStarred();
             return;
         }
-        if (hash === '#/shared-with') {
+        if (route === '/shared-with') {
             setActiveNav('shared-with');
             FileManager.loadSharedWithMe();
             return;
         }
-        if (hash === '#/shared-by') {
-            window.location.replace('#/files');
+        if (route === '/shared-by') {
+            navigate('/files', { replace: true });
             return;
         }
-        if (hash === '#/offline') {
+        if (route === '/offline') {
             setActiveNav('offline');
             FileManager.loadOffline();
             return;
         }
-        if (hash === '#/trash') {
+        if (route === '/trash') {
             setActiveNav('trash');
             FileManager.loadTrash();
             return;
         }
-        if (hash === '#/activity') {
+        if (route === '/activity') {
             setActiveNav('activity');
             FileManager.loadActivity();
             return;
         }
-        if (hash === '#/storage') {
+        if (route === '/storage') {
             setActiveNav('storage');
             FileManager.loadStoragePage();
             return;
         }
-        if (hash.startsWith('#/open/')) {
-            const openPart = hash.slice('#/open/'.length);
-            const [fileId, rawQuery = ''] = openPart.split('?');
-            const query = new URLSearchParams(rawQuery);
-            const sharedKey = query.get('k') || '';
+        if (route.startsWith('/open/')) {
+            const fileId = route.slice('/open/'.length).split('/')[0];
+            const storedKey = sessionStorage.getItem(`fd_open_key_${fileId}`) || '';
+            sessionStorage.removeItem(`fd_open_key_${fileId}`);
+            const query = new URLSearchParams(window.location.search || storedKey);
+            const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+            const sharedKey = query.get('k') || fragment.get('k') || '';
+            if (window.location.hash) history.replaceState(null, '', route);
             setActiveNav('files');
             FileManager.loadFolder(null);
             SidebarTree.syncWithRoute();
@@ -1507,15 +1520,15 @@ const App = (() => {
             return;
         }
 
-        if (hash.startsWith('#/files')) {
+        if (route === '/files' || route.startsWith('/files/')) {
             setActiveNav('files');
-            const folderId = hash.split('/')[2] || null;
+            const folderId = route.split('/')[2] || null;
             FileManager.loadFolder(folderId);
             SidebarTree.syncWithRoute();
             return;
         }
 
-        window.location.hash = '#/files';
+        navigate('/files', { replace: true });
         } finally {
             syncAdminBtnVisibility();
         }
@@ -1561,6 +1574,7 @@ const App = (() => {
         showAuth,
         showApp,
         handleRoute,
+        navigate,
     };
 })();
 
