@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-hide",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
     "core:app:allow-version",
     "core:tray:default",
     "opener:default",
