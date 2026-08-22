@@ -10,9 +10,10 @@ interface Props {
   item: ManagedDriveItem;
   onClose: () => void;
   onChanged: () => Promise<void> | void;
+  onOpenFile: (id: string, name: string) => void;
 }
 
-export function DriveItemDialog({ item, onClose, onChanged }: Props) {
+export function DriveItemDialog({ item, onClose, onChanged, onOpenFile }: Props) {
   const [name, setName] = useState(item.value.name);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [destination, setDestination] = useState(
@@ -120,7 +121,7 @@ export function DriveItemDialog({ item, onClose, onChanged }: Props) {
           <div className="drive-dialog-section">
             <h3>File</h3>
             <div className="drive-dialog-actions">
-              <button type="button" className="btn-secondary" onClick={() => api.openServerUrl(`#/files/${item.value.id}`)}>Open</button>
+              <button type="button" className="btn-secondary" onClick={() => onOpenFile(item.value.id, item.value.name)}>Open</button>
               <button type="button" className="btn-secondary" disabled={busy} onClick={() => run(
                 () => api.downloadDriveFile(item.value.id, item.value.name), "Download saved.",
               )}>Download decrypted copy</button>

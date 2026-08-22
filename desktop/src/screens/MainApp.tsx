@@ -22,6 +22,8 @@ import { Home } from "./Home";
 import { DriveBrowser } from "./DriveBrowser";
 import { Notifications } from "./Notifications";
 import { SyncActivity } from "./SyncActivity";
+import { SharedWithMe } from "./SharedWithMe";
+import { Storage } from "./Storage";
 import type {
   ActivityItem,
   MainView,
@@ -281,7 +283,7 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
         setAboutOpen(true);
         break;
       case "help":
-        api.openProjectUrl().catch(console.error);
+        setAboutOpen(true);
         break;
       case "quit":
         api.quitApp().catch(console.error);
@@ -361,7 +363,7 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
             setSettingsMenuOpen((open) => !open);
             setProfileOpen(false);
           }}
-          onHelp={() => api.openProjectUrl().catch(console.error)}
+          onHelp={() => setAboutOpen(true)}
           onProfileClick={(rect) => {
             setProfileAnchor(rect);
             setProfileOpen((open) => !open);
@@ -383,9 +385,16 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
               }}
               onResumeSync={handlePauseResume}
               onFoldersChanged={refresh}
+              onOpenDrive={() => setView("drive")}
+              onViewShared={() => setView("shared")}
+              onManageStorage={() => setView("storage")}
+              onOpenPreferences={() => api.openPreferencesWindow().catch(console.error)}
+              onOpenAbout={() => setAboutOpen(true)}
             />
           )}
           {view === "drive" && <DriveBrowser search={search} />}
+          {view === "shared" && <SharedWithMe search={search} />}
+          {view === "storage" && <Storage storage={storageInfo} onOpenDrive={() => setView("drive")} />}
           {view === "sync" && (
             <SyncActivity
               syncStatus={syncStatus}
@@ -402,6 +411,7 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
               onDismiss={dismiss}
               onDontShowChange={setDontShowFor}
               onResumeSync={handlePauseResume}
+              onManageStorage={() => setView("storage")}
             />
           )}
         </div>
@@ -426,6 +436,7 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
           anchorRect={profileAnchor}
           onClose={() => setProfileOpen(false)}
           onSignOut={handleSignOut}
+          onManageStorage={() => { setProfileOpen(false); setView("storage"); }}
         />
       )}
     </div>

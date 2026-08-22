@@ -142,7 +142,7 @@ export type SyncMode = "stream" | "mirror";
 
 export type PreferencesTab = "my-computer" | "freedrive";
 
-export type MainView = "home" | "drive" | "sync" | "notifications";
+export type MainView = "home" | "drive" | "shared" | "storage" | "sync" | "notifications";
 
 export interface StorageInfo {
   used_bytes: number;
@@ -168,7 +168,7 @@ export interface AppNotification {
 }
 
 export interface SharedItem {
-  share: { id: string; created_at?: string };
+  share: { id: string; created_at?: string; permission?: string };
   item_type: string;
   item_id: string;
   item_name: string;
@@ -209,6 +209,14 @@ export interface DriveFile {
   updated_at: string;
   version?: number;
   is_starred?: boolean;
+}
+
+export interface DriveFilePreview {
+  id: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  data_base64: string;
 }
 
 export interface DriveContents {

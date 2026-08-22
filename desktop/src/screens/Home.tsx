@@ -20,6 +20,11 @@ interface HomeProps {
   onViewSyncActivity: () => void;
   onResumeSync: () => void;
   onFoldersChanged: () => void;
+  onOpenDrive: () => void;
+  onViewShared: () => void;
+  onManageStorage: () => void;
+  onOpenPreferences: () => void;
+  onOpenAbout: () => void;
 }
 
 function formatFileCount(count: number): string {
@@ -36,6 +41,11 @@ export function Home({
   onViewSyncActivity,
   onResumeSync,
   onFoldersChanged,
+  onOpenDrive,
+  onViewShared,
+  onManageStorage,
+  onOpenPreferences,
+  onOpenAbout,
 }: HomeProps) {
   const [addingFolder, setAddingFolder] = useState(false);
   const [sharedItems, setSharedItems] = useState<SharedItem[]>([]);
@@ -212,7 +222,7 @@ export function Home({
           <button
             type="button"
             className="btn-primary"
-            onClick={() => api.openServerUrl("#/shared-with").catch(console.error)}
+            onClick={onViewShared}
           >
             View all
           </button>
@@ -233,6 +243,7 @@ export function Home({
                     notification={n}
                     onDismiss={onDismiss}
                     onResumeSync={onResumeSync}
+                    onManageStorage={onManageStorage}
                   />
                 ))}
               </div>
@@ -268,14 +279,14 @@ export function Home({
             >
               + Add more folders to sync
             </button>
-            <button type="button" className="quick-link" onClick={() => api.openServerUrl().catch(console.error)}>
-              Open Drive web ↗
+            <button type="button" className="quick-link" onClick={onOpenDrive}>
+              Open My Drive
             </button>
-            <button type="button" className="quick-link" onClick={() => api.openServerUrl().catch(console.error)}>
-              Learn more about offline files ↗
+            <button type="button" className="quick-link" onClick={onOpenPreferences}>
+              Sync and offline preferences
             </button>
-            <button type="button" className="quick-link" onClick={() => api.openServerUrl().catch(console.error)}>
-              Frequently asked questions ↗
+            <button type="button" className="quick-link" onClick={onOpenAbout}>
+              About FreeDrive
             </button>
           </div>
         </div>

@@ -1,10 +1,10 @@
-import { api } from "../api/tauri";
 import type { AppNotification } from "../types";
 
 interface NotificationMiniCardProps {
   notification: AppNotification;
   onDismiss: (id: string) => void;
   onResumeSync: () => void;
+  onManageStorage: () => void;
 }
 
 function truncate(text: string, max: number): string {
@@ -16,6 +16,7 @@ export function NotificationMiniCard({
   notification,
   onDismiss,
   onResumeSync,
+  onManageStorage,
 }: NotificationMiniCardProps) {
   const handleAction = (action: string) => {
     if (action === "dismiss") {
@@ -23,7 +24,7 @@ export function NotificationMiniCard({
       return;
     }
     if (action === "manage_storage") {
-      api.openServerUrl("#/storage").catch(console.error);
+      onManageStorage();
       onDismiss(notification.id);
       return;
     }

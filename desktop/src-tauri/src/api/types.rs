@@ -18,6 +18,11 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistrationResponse {
+    pub user: User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginSuccess {
     pub tokens: Tokens,
     pub user: User,

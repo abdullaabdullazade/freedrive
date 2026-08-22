@@ -91,6 +91,7 @@ pub fn run() {
         .manage(AppState::new(db))
         .invoke_handler(tauri::generate_handler![
             commands::get_auth_state,
+            commands::register,
             commands::login,
             commands::poll_login_approval,
             commands::verify_2fa,
@@ -131,6 +132,7 @@ pub fn run() {
             commands::list_drive_folders,
             commands::update_drive_item,
             commands::download_drive_file,
+            commands::preview_drive_file,
             commands::get_drive_file_versions,
             commands::restore_drive_file_version,
             commands::share_drive_item_with_user,
@@ -141,8 +143,6 @@ pub fn run() {
             commands::revoke_drive_share_link,
             commands::get_sync_conflicts,
             commands::resolve_sync_conflict,
-            commands::open_server_url,
-            commands::open_project_url,
             commands::open_path_in_explorer,
             commands::import_encryption_keys,
             commands::export_encryption_keys,

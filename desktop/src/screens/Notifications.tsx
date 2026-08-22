@@ -1,4 +1,3 @@
-import { api } from "../api/tauri";
 import type { AppNotification } from "../types";
 
 interface NotificationsProps {
@@ -7,6 +6,7 @@ interface NotificationsProps {
   onDismiss: (id: string) => void;
   onDontShowChange: (id: string, checked: boolean) => void;
   onResumeSync: () => void;
+  onManageStorage: () => void;
 }
 
 export function Notifications({
@@ -15,6 +15,7 @@ export function Notifications({
   onDismiss,
   onDontShowChange,
   onResumeSync,
+  onManageStorage,
 }: NotificationsProps) {
   const handleAction = (notification: AppNotification, action: string) => {
     if (action === "dismiss") {
@@ -22,7 +23,7 @@ export function Notifications({
       return;
     }
     if (action === "manage_storage") {
-      api.openServerUrl("#/storage").catch(console.error);
+      onManageStorage();
       onDismiss(notification.id);
       return;
     }

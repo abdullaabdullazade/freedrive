@@ -30,6 +30,7 @@ import type {
   DriveShareResult,
   SyncConflict,
   DriveItemShares,
+  DriveFilePreview,
 } from "../types";
 
 export const api = {
@@ -38,6 +39,15 @@ export const api = {
     invoke<LoginResult>("login", {
       req: { server_url, email, password },
     }),
+  register: (
+    server_url: string,
+    email: string,
+    username: string,
+    password: string,
+    invite_code: string,
+  ) => invoke<User>("register", {
+    req: { server_url, email, username, password, invite_code },
+  }),
   pollLoginApproval: (
     server_url: string,
     challenge_id: string,
@@ -106,6 +116,8 @@ export const api = {
   }),
   downloadDriveFile: (file_id: string, file_name: string) =>
     invoke<string>("download_drive_file", { fileId: file_id, fileName: file_name }),
+  previewDriveFile: (file_id: string) =>
+    invoke<DriveFilePreview>("preview_drive_file", { fileId: file_id }),
   getDriveFileVersions: (file_id: string) =>
     invoke<DriveFileVersion[]>("get_drive_file_versions", { fileId: file_id }),
   restoreDriveFileVersion: (file_id: string, version: number) =>
@@ -144,8 +156,6 @@ export const api = {
   getProfile: () => invoke<User>("get_profile"),
   getStorageInfo: () => invoke<StorageInfo>("get_storage_info"),
   getSharedWithMe: () => invoke<SharedItem[]>("get_shared_with_me"),
-  openServerUrl: (path?: string) => invoke<void>("open_server_url", { path }),
-  openProjectUrl: () => invoke<void>("open_project_url"),
   openPathInExplorer: (path: string) =>
     invoke<void>("open_path_in_explorer", { path }),
   importEncryptionKeys: (password: string) =>

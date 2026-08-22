@@ -11,6 +11,10 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
   const [serverUrl, setServerUrl] = useState(defaultServerUrl);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [registerMode, setRegisterMode] = useState(false);
+  const [username, setUsername] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [twoFactor, setTwoFactor] = useState<{
@@ -111,6 +115,24 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
     }
   };
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    try {
+      await api.register(serverUrl, email, username, password, inviteCode);
+      setRegisterMode(false);
+      setPassword("");
+      setInviteCode("");
+      setSuccess("Account created. You can sign in now.");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!twoFactor) return;
     setError("");
@@ -131,11 +153,6 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
     } finally {
       setLoading(false);
     }
-  };
-
-  const openRegister = () => {
-    const base = serverUrl.replace(/\/$/, "");
-    window.open(`${base}/#/register`, "_blank");
   };
 
   const isTotp = twoFactor?.method === "totp";
@@ -178,12 +195,15 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
           </>
         ) : !twoFactor ? (
           <>
-            <h1 className="signin-title">Sign in to get started</h1>
+            <h1 className="signin-title">{registerMode ? "Create your account" : "Sign in to get started"}</h1>
             <p className="signin-subtitle">
-              To start using FreeDrive, sign in or create a new account on your server.
+              {registerMode
+                ? "Create an account directly on your FreeDrive server."
+                : "Connect this desktop app to your FreeDrive server."}
             </p>
             {error && <div className="error-banner">{error}</div>}
-            <form onSubmit={handleLogin}>
+            {success && <div className="success-banner">{success}</div>}
+            <form onSubmit={registerMode ? handleRegister : handleLogin}>
               <div className="form-group">
                 <label htmlFor="server">Server URL</label>
                 <input
@@ -195,6 +215,12 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
                   required
                 />
               </div>
+              {registerMode && (
+                <div className="form-group">
+                  <label htmlFor="username">Username</label>
+                  <input id="username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+                </div>
+              )}
               <div className="form-group">
                 <label htmlFor="email">Email</label>
                 <input
@@ -215,12 +241,18 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
                   required
                 />
               </div>
+              {registerMode && (
+                <div className="form-group">
+                  <label htmlFor="invite-code">Invite code <span className="settings-hint">(if required)</span></label>
+                  <input id="invite-code" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} autoComplete="off" />
+                </div>
+              )}
               <div className="form-actions">
                 <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? "Signing in…" : "Sign in"}
+                  {loading ? (registerMode ? "Creating…" : "Signing in…") : (registerMode ? "Create account" : "Sign in")}
                 </button>
-                <button type="button" className="btn-text" onClick={openRegister}>
-                  Create account
+                <button type="button" className="btn-text" onClick={() => { setError(""); setSuccess(""); setRegisterMode((value) => !value); }}>
+                  {registerMode ? "Back to sign in" : "Create account"}
                 </button>
               </div>
             </form>
@@ -273,7 +305,11 @@ export function SignIn({ defaultServerUrl = "http://localhost:8080", onSuccess }
         )}
       </div>
       <div className="signin-right">
-        <div className="signin-illustration" aria-hidden />
+        <div className="signin-illustration" aria-hidden>
+          <img src="/logo.svg" alt="" />
+          <strong>FreeDrive</strong>
+          <span>Your files, securely available on this device.</span>
+        </div>
       </div>
     </div>
   );

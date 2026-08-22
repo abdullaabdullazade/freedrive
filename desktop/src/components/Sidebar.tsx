@@ -31,6 +31,10 @@ export function Sidebar({
           <NavIcon name="folder" />
           <span className="nav-label">My Drive</span>
         </button>
+        <button type="button" className={`nav-item${view === "shared" ? " active" : ""}`} onClick={() => onNavigate("shared")}>
+          <NavIcon name="shared" />
+          <span className="nav-label">Shared with me</span>
+        </button>
         <button
           type="button"
           className={`nav-item${view === "home" ? " active" : ""}`}

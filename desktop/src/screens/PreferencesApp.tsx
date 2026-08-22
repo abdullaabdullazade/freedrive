@@ -15,6 +15,7 @@ import {
 import { PreferencesSettingsPage } from "../components/PreferencesSettingsPage";
 import { PreferencesSidebar } from "../components/PreferencesSidebar";
 import { ProfileMenu } from "../components/ProfileMenu";
+import { AboutDialog } from "../components/AboutDialog";
 import { useEncryptionSettings } from "../hooks/useEncryptionSettings";
 import type { PreferencesTab, User } from "../types";
 
@@ -29,6 +30,7 @@ export function PreferencesApp() {
   const [launchOnLogin, setLaunchOnLogin] = useState(false);
   const [startMinimized, setStartMinimized] = useState(false);
   const [bootstrapError, setBootstrapError] = useState("");
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   const avatarButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -166,11 +168,7 @@ export function PreferencesApp() {
         user={user}
         preferencesView={preferencesView}
         avatarButtonRef={avatarButtonRef}
-        onHelp={() =>
-          api.openProjectUrl().catch(() => {
-            /* optional */
-          })
-        }
+        onHelp={() => setAboutOpen(true)}
         onOpenSettings={handleOpenSettings}
         onProfileClick={(rect) => {
           setProfileAnchor(rect);
@@ -223,6 +221,7 @@ export function PreferencesApp() {
           onSignOut={handleSignOut}
         />
       )}
+      {aboutOpen && <AboutDialog serverUrl={serverUrl} onClose={() => setAboutOpen(false)} />}
     </div>
   );
 }

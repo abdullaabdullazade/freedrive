@@ -2,21 +2,34 @@ import { useCallback, useEffect, useState } from "react";
 import { api, formatBytes } from "../api/tauri";
 import type { DriveFile, DriveFolder } from "../types";
 import { DriveItemDialog, type ManagedDriveItem } from "../components/DriveItemDialog";
+import { FileViewer } from "../components/FileViewer";
 
 interface Crumb {
   id?: string;
   name: string;
 }
 
-export function DriveBrowser({ search }: { search: string }) {
+interface DriveBrowserProps {
+  search: string;
+  root?: { id: string; name: string };
+  onExitRoot?: () => void;
+  readOnly?: boolean;
+}
+
+export function DriveBrowser({ search, root, onExitRoot, readOnly = false }: DriveBrowserProps) {
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [files, setFiles] = useState<DriveFile[]>([]);
-  const [crumbs, setCrumbs] = useState<Crumb[]>([{ name: "My Drive" }]);
+  const [crumbs, setCrumbs] = useState<Crumb[]>([root || { name: "My Drive" }]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<ManagedDriveItem | null>(null);
+  const [preview, setPreview] = useState<{ id: string; name: string } | null>(null);
 
   const current = crumbs[crumbs.length - 1];
+
+  useEffect(() => {
+    setCrumbs([root || { name: "My Drive" }]);
+  }, [root?.id, root?.name]);
   const loadFolder = useCallback(async (folderId?: string) => {
     setLoading(true);
     setError("");
@@ -72,6 +85,7 @@ export function DriveBrowser({ search }: { search: string }) {
     <section className="drive-browser">
       <header className="drive-browser-header">
         <div>
+          {onExitRoot && <button type="button" className="btn-text" onClick={onExitRoot}>← Shared with me</button>}
           <h1>{search.trim() ? `Search results for “${search.trim()}”` : current.name}</h1>
           {!search.trim() && (
             <nav className="drive-breadcrumbs" aria-label="Drive folder">
@@ -87,9 +101,7 @@ export function DriveBrowser({ search }: { search: string }) {
             </nav>
           )}
         </div>
-        <button type="button" className="btn-primary" onClick={createFolder} disabled={!!search.trim()}>
-          New folder
-        </button>
+        {!readOnly && <button type="button" className="btn-primary" onClick={createFolder} disabled={!!search.trim()}>New folder</button>}
       </header>
 
       {error && <div className="error-banner">{error}</div>}
@@ -106,22 +118,23 @@ export function DriveBrowser({ search }: { search: string }) {
             <div className="drive-browser-row" role="row" key={`folder-${folder.id}`}>
               <button className="drive-item-name" type="button" onClick={() => openFolder(folder)}>📁 {folder.name}</button>
               <span>Folder</span><span>—</span>
-              <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "folder", value: folder })}>Manage</button>
+              {readOnly ? <span>—</span> : <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "folder", value: folder })}>Manage</button>}
             </div>
           ))}
           {files.map((file) => (
             <div className="drive-browser-row" role="row" key={`file-${file.id}`}>
-              <button className="drive-item-name" type="button" onClick={() => api.openServerUrl(`#/files/${file.id}`)}>📄 {file.name}</button>
+              <button className="drive-item-name" type="button" onClick={() => setPreview({ id: file.id, name: file.name })}>📄 {file.name}</button>
               <span>{file.mime_type || "File"}</span><span>{formatBytes(file.size)}</span>
               <div className="drive-item-actions">
-                <button className="drive-item-action" type="button" onClick={() => api.openServerUrl(`#/files/${file.id}`)}>Open</button>
-                <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "file", value: file })}>Manage</button>
+                <button className="drive-item-action" type="button" onClick={() => setPreview({ id: file.id, name: file.name })}>Open</button>
+                {!readOnly && <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "file", value: file })}>Manage</button>}
               </div>
             </div>
           ))}
         </div>
       )}
-      {selected && <DriveItemDialog item={selected} onClose={() => setSelected(null)} onChanged={() => loadFolder(current.id)} />}
+      {selected && <DriveItemDialog item={selected} onClose={() => setSelected(null)} onChanged={() => loadFolder(current.id)} onOpenFile={(id, name) => { setSelected(null); setPreview({ id, name }); }} />}
+      {preview && <FileViewer fileId={preview.id} fallbackName={preview.name} onClose={() => setPreview(null)} />}
     </section>
   );
 }

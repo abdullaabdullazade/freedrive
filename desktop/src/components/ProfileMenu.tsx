@@ -9,6 +9,7 @@ interface ProfileMenuProps {
   anchorRect: DOMRect | null;
   onClose: () => void;
   onSignOut: () => void;
+  onManageStorage?: () => void;
 }
 
 export function ProfileMenu({
@@ -17,6 +18,7 @@ export function ProfileMenu({
   anchorRect,
   onClose,
   onSignOut,
+  onManageStorage,
 }: ProfileMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [storage, setStorage] = useState<StorageInfo | null>(null);
@@ -52,7 +54,6 @@ export function ProfileMenu({
       ? Math.round((storage.used_bytes / storage.total_bytes) * 100)
       : null;
   const storageWarning = usedPct !== null && usedPct >= 80;
-  const baseUrl = serverUrl?.replace(/\/$/, "") || "";
 
   return (
     <div
@@ -86,13 +87,7 @@ export function ProfileMenu({
             <span>
               {formatBytes(storage.used_bytes)} of {formatBytes(storage.total_bytes)} used
             </span>
-            <button
-              type="button"
-              className="profile-storage-link"
-              onClick={() => api.openServerUrl("#/storage").catch(console.error)}
-            >
-              Manage storage
-            </button>
+            {onManageStorage && <button type="button" className="profile-storage-link" onClick={onManageStorage}>Manage storage</button>}
           </div>
           <div className="profile-storage-bar">
             <div
@@ -103,15 +98,7 @@ export function ProfileMenu({
         </div>
       )}
 
-      <div className="profile-menu-footer">
-        <a href={baseUrl ? `${baseUrl}/` : "#"} target="_blank" rel="noreferrer">
-          Privacy Policy
-        </a>
-        <span aria-hidden>·</span>
-        <a href={baseUrl ? `${baseUrl}/` : "#"} target="_blank" rel="noreferrer">
-          Terms of Service
-        </a>
-      </div>
+      <div className="profile-menu-footer"><span>Connected to {serverUrl || "FreeDrive"}</span></div>
     </div>
   );
 }

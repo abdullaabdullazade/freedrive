@@ -168,6 +168,33 @@ fn report_progress(on_progress: Option<&UploadProgressCb>, sent: u64, total: u64
 
 impl ApiClient {
 
+    pub async fn register(
+        server_url: &str,
+        email: &str,
+        username: &str,
+        password: &str,
+        invite_code: &str,
+    ) -> AppResult<User> {
+        let base = server_url.trim_end_matches('/');
+        let http = reqwest::Client::new();
+        let res = apply_device_headers(http.post(format!("{}/api/v1/auth/register", base)))
+            .json(&serde_json::json!({
+                "email": email,
+                "username": username,
+                "password": password,
+                "invite_code": invite_code,
+            }))
+            .send()
+            .await?;
+        let status = res.status();
+        let text = res.text().await?;
+        if !status.is_success() {
+            return Err(http_api_error(status, &text));
+        }
+        let response: RegistrationResponse = serde_json::from_str(&text)?;
+        Ok(response.user)
+    }
+
     pub fn from_auth(auth: &StoredAuth) -> Self {
 
         Self::from_auth_with_network(auth, "", "", "", 0, 0)
@@ -863,6 +890,17 @@ impl ApiClient {
     pub async fn get_folder_contents(&self, folder_id: &str) -> AppResult<FolderContents> {
         self.fetch_all_folder_pages(&format!("/folders/{}", folder_id))
             .await
+    }
+
+    pub async fn get_file(&self, file_id: &str) -> AppResult<FileRecord> {
+        self.request_json(
+            reqwest::Method::GET,
+            &format!("/files/{file_id}"),
+            None,
+            false,
+            2,
+        )
+        .await
     }
 
     pub async fn search_drive(&self, query: &str) -> AppResult<crate::api::types::SearchResult> {
@@ -1677,6 +1715,72 @@ impl ApiClient {
         let bytes = tokio::fs::read(&tmp).await?;
         let _ = tokio::fs::remove_file(&tmp).await;
         Ok(bytes)
+    }
+
+    /// Download and decrypt a bounded preview without writing plaintext to disk.
+    pub async fn download_file_for_preview(
+        &self,
+        file_id: &str,
+        key_b64url: &str,
+        max_plaintext_bytes: usize,
+    ) -> AppResult<Vec<u8>> {
+        use futures_util::StreamExt;
+
+        let url = self.api_url(&format!("/files/{}/download", file_id));
+        let mut auth_retried = false;
+        loop {
+            let (access_token, http) = {
+                let inner = self.inner.read();
+                (inner.access_token.clone(), inner.http.clone())
+            };
+            let res = http
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", access_token))
+                .send()
+                .await
+                .map_err(|e| AppError::msg(format!("preview download failed: {e}")))?;
+            if res.status() == reqwest::StatusCode::UNAUTHORIZED && !auth_retried {
+                auth_retried = true;
+                if self.try_refresh().await? {
+                    continue;
+                }
+            }
+            if !res.status().is_success() {
+                let status = res.status();
+                let text = res.text().await.unwrap_or_default();
+                return Err(http_api_error(status, &text));
+            }
+            let iv_header = res
+                .headers()
+                .get("x-file-iv")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("")
+                .to_owned();
+            let transfer_limit = max_plaintext_bytes.saturating_add(1024 * 1024);
+            if res.content_length().is_some_and(|length| length > transfer_limit as u64) {
+                return Err(AppError::msg("file exceeds the desktop preview limit"));
+            }
+            let mut ciphertext = Vec::new();
+            let mut stream = res.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| AppError::msg(format!("preview download interrupted: {e}")))?;
+                if ciphertext.len().saturating_add(chunk.len()) > transfer_limit {
+                    return Err(AppError::msg("file exceeds the desktop preview limit"));
+                }
+                ciphertext.extend_from_slice(&chunk);
+            }
+            let plaintext = if iv_header.is_empty() {
+                ciphertext
+            } else {
+                let key = crypto::key_from_b64url(key_b64url)?;
+                let iv = crypto::iv_from_base64(&iv_header)?;
+                crypto::decrypt_file(&ciphertext, &key, &iv)?
+            };
+            if plaintext.len() > max_plaintext_bytes {
+                return Err(AppError::msg("file exceeds the desktop preview limit"));
+            }
+            return Ok(plaintext);
+        }
     }
 
     /// Lightweight check that the encrypted blob is readable on the server.

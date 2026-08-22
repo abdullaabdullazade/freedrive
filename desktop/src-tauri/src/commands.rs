@@ -39,6 +39,16 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub server_url: String,
+    pub email: String,
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub invite_code: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LoginResult {
@@ -387,6 +397,26 @@ pub async fn get_auth_state(state: State<'_, AppState>) -> Result<AuthState, Str
         user: None,
         onboarding_complete: complete,
     })
+}
+
+#[tauri::command]
+pub async fn register(req: RegisterRequest) -> Result<User, String> {
+    if req.server_url.trim().is_empty()
+        || req.email.trim().is_empty()
+        || req.username.trim().is_empty()
+        || req.password.len() < 6
+    {
+        return Err("Server, email, username, and a password of at least 6 characters are required".into());
+    }
+    ApiClient::register(
+        req.server_url.trim(),
+        req.email.trim(),
+        req.username.trim(),
+        &req.password,
+        req.invite_code.trim(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1336,6 +1366,51 @@ pub async fn download_drive_file(
     Ok(path)
 }
 
+const MAX_PREVIEW_BYTES: usize = 100 * 1024 * 1024;
+
+#[derive(Debug, Serialize)]
+pub struct DriveFilePreview {
+    pub id: String,
+    pub name: String,
+    pub mime_type: String,
+    pub size: i64,
+    pub data_base64: String,
+}
+
+#[tauri::command]
+pub async fn preview_drive_file(
+    state: State<'_, AppState>,
+    file_id: String,
+) -> Result<DriveFilePreview, String> {
+    let client = state.api().map_err(|e| e.to_string())?;
+    let metadata = client.get_file(&file_id).await.map_err(|e| e.to_string())?;
+    if metadata.size < 0 || metadata.size as usize > MAX_PREVIEW_BYTES {
+        return Err("This file is too large to preview. Save a decrypted copy instead.".into());
+    }
+    let key = crate::account_crypto::resolve_file_key(
+        &client,
+        &state.db,
+        &current_user_id()?,
+        &file_id,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    let bytes = client
+        .download_file_for_preview(&file_id, &key, MAX_PREVIEW_BYTES)
+        .await
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_PREVIEW_BYTES {
+        return Err("This file is too large to preview. Save a decrypted copy instead.".into());
+    }
+    Ok(DriveFilePreview {
+        id: metadata.id,
+        name: metadata.name,
+        mime_type: metadata.mime_type,
+        size: bytes.len() as i64,
+        data_base64: BASE64_STANDARD.encode(bytes),
+    })
+}
+
 #[tauri::command]
 pub async fn get_drive_file_versions(
     state: State<'_, AppState>,
@@ -1651,37 +1726,6 @@ pub async fn revoke_drive_share_link(
         .map_err(|e| e.to_string())?
         .delete_share_link(&link_id)
         .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn open_server_url(
-    state: State<'_, AppState>,
-    app: AppHandle,
-    path: Option<String>,
-) -> Result<(), String> {
-    let base = state.api().map_err(|e| e.to_string())?.server_url();
-    let url = match path.filter(|p| !p.is_empty()) {
-        Some(p) if p.starts_with('#') => format!("{}{}", base, p),
-        Some(p) if p.starts_with('/') => format!("{}{}", base, p),
-        Some(p) => format!(
-            "{}/{}",
-            base.trim_end_matches('/'),
-            p.trim_start_matches('/')
-        ),
-        None => base,
-    };
-    app.opener()
-        .open_url(&url, None::<&str>)
-        .map_err(|e| e.to_string())
-}
-
-const PROJECT_GITHUB_URL: &str = "https://github.com/marcinx98x/freedrive";
-
-#[tauri::command]
-pub async fn open_project_url(app: AppHandle) -> Result<(), String> {
-    app.opener()
-        .open_url(PROJECT_GITHUB_URL, None::<&str>)
         .map_err(|e| e.to_string())
 }
 
