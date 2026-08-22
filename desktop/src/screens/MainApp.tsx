@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   api,
+  expireSession,
   onCryptoKeyQueued,
   onCryptoKeysSynced,
   onCryptoRecoverySetup,
@@ -143,6 +144,10 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
       });
     const unsubs: (() => void)[] = [];
     onSyncStatusChanged((status) => {
+      if ((status.message || "").toLowerCase().includes("session expired")) {
+        expireSession();
+        return;
+      }
       setSyncStatus(status);
       if (status.status !== "syncing") {
         setSyncProgress(null);

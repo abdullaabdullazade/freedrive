@@ -97,6 +97,7 @@ pub fn run() {
             commands::verify_2fa,
             commands::send_2fa_email,
             commands::logout,
+            commands::expire_session,
             commands::get_system_folders,
             commands::pick_folder,
             commands::save_sync_config,

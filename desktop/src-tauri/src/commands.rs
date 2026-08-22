@@ -751,6 +751,36 @@ pub async fn logout(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn expire_session(state: State<'_, AppState>) -> Result<(), String> {
+    let user_id = load_auth()
+        .ok()
+        .flatten()
+        .and_then(|a| serde_json::from_str::<serde_json::Value>(&a.user_json).ok())
+        .and_then(|v| v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string()));
+
+    // Clear credentials before resetting workers so a new login cannot be
+    // removed later by cleanup from the expired session.
+    clear_auth().map_err(|e: crate::error::AppError| e.to_string())?;
+    if let Some(uid) = user_id.as_deref() {
+        crate::account_crypto::clear_uek(uid);
+    }
+    if let Ok(engine) = state.sync_engine() {
+        engine.shutdown();
+    }
+    #[cfg(windows)]
+    crate::cfapi::stop();
+    {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        reset_session_on_logout(&conn).map_err(|e: crate::error::AppError| e.to_string())?;
+    }
+    *state.api.lock() = None;
+    *state.sync_engine.lock() = None;
+    *state.watcher.lock() = None;
+    state.sync_background.reset();
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_system_folders() -> Result<Vec<SystemFolder>, String> {
     let mut folders = Vec::new();
     if let Some(p) = dirs::desktop_dir() {
