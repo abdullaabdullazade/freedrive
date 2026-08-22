@@ -25,6 +25,14 @@ export function Sidebar({
       <nav>
         <button
           type="button"
+          className={`nav-item${view === "drive" ? " active" : ""}`}
+          onClick={() => onNavigate("drive")}
+        >
+          <NavIcon name="folder" />
+          <span className="nav-label">My Drive</span>
+        </button>
+        <button
+          type="button"
           className={`nav-item${view === "home" ? " active" : ""}`}
           onClick={() => onNavigate("home")}
         >

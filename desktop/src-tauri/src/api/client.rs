@@ -126,6 +126,10 @@ struct ClientInner {
 
     upload_http: reqwest::Client,
 
+    upload_limit_bps: u64,
+
+    download_limit_bps: u64,
+
 }
 
 
@@ -166,25 +170,61 @@ impl ApiClient {
 
     pub fn from_auth(auth: &StoredAuth) -> Self {
 
+        Self::from_auth_with_network(auth, "", 0, 0)
+
+            .unwrap_or_else(|_| Self::from_auth_unchecked(auth))
+
+    }
+
+    fn from_auth_unchecked(auth: &StoredAuth) -> Self {
+
+        Self::from_auth_with_network(auth, "", 0, 0)
+
+            .expect("default HTTP client configuration")
+
+    }
+
+    pub fn from_auth_with_network(
+
+        auth: &StoredAuth,
+
+        proxy_url: &str,
+
+        upload_limit_kbps: u64,
+
+        download_limit_kbps: u64,
+
+    ) -> AppResult<Self> {
+
         let server_url = auth.server_url.trim_end_matches('/').to_string();
 
-        let http = reqwest::Client::builder()
+        let mut http_builder = reqwest::Client::builder()
 
-            .timeout(Duration::from_secs(600))
+            .timeout(Duration::from_secs(600));
 
-            .build()
+        let mut upload_builder = reqwest::Client::builder()
 
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .timeout(Duration::from_secs(120));
 
-        let upload_http = reqwest::Client::builder()
+        let proxy_url = proxy_url.trim();
 
-            .timeout(Duration::from_secs(120))
+        if !proxy_url.is_empty() {
 
-            .build()
+            let proxy = reqwest::Proxy::all(proxy_url)
 
-            .unwrap_or_else(|_| reqwest::Client::new());
+                .map_err(|e| AppError::msg(format!("invalid proxy URL: {e}")))?;
 
-        Self {
+            http_builder = http_builder.proxy(proxy.clone());
+
+            upload_builder = upload_builder.proxy(proxy);
+
+        }
+
+        let http = http_builder.build()?;
+
+        let upload_http = upload_builder.build()?;
+
+        Ok(Self {
 
             inner: Arc::new(RwLock::new(ClientInner {
 
@@ -198,9 +238,71 @@ impl ApiClient {
 
                 upload_http,
 
+                upload_limit_bps: upload_limit_kbps.saturating_mul(1024),
+
+                download_limit_bps: download_limit_kbps.saturating_mul(1024),
+
             })),
 
-        }
+        })
+
+    }
+
+    pub fn configure_network(
+
+        &self,
+
+        proxy_url: &str,
+
+        upload_limit_kbps: u64,
+
+        download_limit_kbps: u64,
+
+    ) -> AppResult<()> {
+
+        let auth = {
+
+            let inner = self.inner.read();
+
+            StoredAuth {
+
+                server_url: inner.server_url.clone(),
+
+                access_token: inner.access_token.clone(),
+
+                refresh_token: inner.refresh_token.clone(),
+
+                user_json: String::new(),
+
+            }
+
+        };
+
+        let configured = Self::from_auth_with_network(
+
+            &auth,
+
+            proxy_url,
+
+            upload_limit_kbps,
+
+            download_limit_kbps,
+
+        )?;
+
+        let configured = configured.inner.read();
+
+        let mut inner = self.inner.write();
+
+        inner.http = configured.http.clone();
+
+        inner.upload_http = configured.upload_http.clone();
+
+        inner.upload_limit_bps = configured.upload_limit_bps;
+
+        inner.download_limit_bps = configured.download_limit_bps;
+
+        Ok(())
 
     }
 
@@ -740,6 +842,15 @@ impl ApiClient {
             .await
     }
 
+    pub async fn search_drive(&self, query: &str) -> AppResult<crate::api::types::SearchResult> {
+        let path = format!(
+            "/search?q={}&location=My%20Drive&page_size=100",
+            urlencoding::encode(query.trim())
+        );
+        self.request_json(reqwest::Method::GET, &path, None, false, 2)
+            .await
+    }
+
     /// Fetch every page of folder contents so sync/orphan walks see the full set.
     async fn fetch_all_folder_pages(&self, base_path: &str) -> AppResult<FolderContents> {
         const PAGE_SIZE: u32 = 500;
@@ -1266,7 +1377,8 @@ impl ApiClient {
                 UploadBody::TempFile(p) => std::fs::metadata(p).map(|m| m.len()).unwrap_or(0),
             };
 
-            let upload_result: AppResult<crate::api::types::FileRecord> = if cipher_len > RESUMABLE_THRESHOLD {
+            let upload_limited = self.inner.read().upload_limit_bps > 0;
+            let upload_result: AppResult<crate::api::types::FileRecord> = if cipher_len > RESUMABLE_THRESHOLD || upload_limited {
                 let replace_id = path
                     .strip_prefix("/files/")
                     .and_then(|rest| rest.strip_suffix("/content"))
@@ -1565,9 +1677,17 @@ impl ApiClient {
             let mut file = tokio::fs::File::create(&enc_path).await?;
             let mut stream = res.bytes_stream();
             while let Some(chunk) = stream.next().await {
+                let started = std::time::Instant::now();
                 let chunk = chunk
                     .map_err(|e| AppError::msg(format!("download interrupted: {e}")))?;
                 file.write_all(&chunk).await?;
+                let limit = self.inner.read().download_limit_bps;
+                if limit > 0 {
+                    let target = Duration::from_secs_f64(chunk.len() as f64 / limit as f64);
+                    if let Some(delay) = target.checked_sub(started.elapsed()) {
+                        tokio::time::sleep(delay).await;
+                    }
+                }
             }
             file.flush().await?;
         }
@@ -1641,7 +1761,13 @@ impl ApiClient {
 
         let mut offset: u64 = 0;
         while offset < cipher_len {
-            let end = std::cmp::min(offset + RESUMABLE_CHUNK as u64, cipher_len) - 1;
+            let limit = self.inner.read().upload_limit_bps;
+            let rate_chunk = if limit > 0 {
+                (limit / 4).clamp(64 * 1024, RESUMABLE_CHUNK as u64)
+            } else {
+                RESUMABLE_CHUNK as u64
+            };
+            let end = std::cmp::min(offset + rate_chunk, cipher_len) - 1;
             let chunk_len = (end - offset + 1) as usize;
             let chunk = match &prepared.body {
                 UploadBody::Memory(v) => v[offset as usize..=end as usize].to_vec(),
@@ -1657,6 +1783,7 @@ impl ApiClient {
             let url = self.api_url(&format!("/uploads/sessions/{}", session.id));
             let access_token = self.inner.read().access_token.clone();
             let http = self.inner.read().upload_http.clone();
+            let started = std::time::Instant::now();
             let res = http
                 .put(&url)
                 .header("Authorization", format!("Bearer {}", access_token))
@@ -1666,6 +1793,13 @@ impl ApiClient {
                 .body(chunk)
                 .send()
                 .await?;
+
+            if limit > 0 {
+                let target = Duration::from_secs_f64(chunk_len as f64 / limit as f64);
+                if let Some(delay) = target.checked_sub(started.elapsed()) {
+                    tokio::time::sleep(delay).await;
+                }
+            }
 
             if res.status() == reqwest::StatusCode::UNAUTHORIZED {
                 let _ = self.try_refresh().await?;

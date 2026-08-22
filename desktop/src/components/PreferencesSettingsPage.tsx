@@ -2,6 +2,7 @@ import { api } from "../api/tauri";
 import { EncryptionSettingsPanel } from "./EncryptionSettingsPanel";
 import { ExplorerIntegrationPanel } from "./ExplorerIntegrationPanel";
 import type { useEncryptionSettings } from "../hooks/useEncryptionSettings";
+import { AdvancedSyncSettings } from "./AdvancedSyncSettings";
 
 type EncryptionState = ReturnType<typeof useEncryptionSettings>;
 
@@ -48,6 +49,11 @@ export function PreferencesSettingsPage({
           />
           <span>Start minimized (hide to the system tray)</span>
         </label>
+      </section>
+
+      <section className="preferences-settings-section">
+        <h3>Sync &amp; network</h3>
+        <AdvancedSyncSettings />
       </section>
 
       <section className="preferences-settings-section">

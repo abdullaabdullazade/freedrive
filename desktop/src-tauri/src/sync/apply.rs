@@ -176,6 +176,8 @@ async fn apply_remote_file(
     };
 
     let local_path = safe_join(&local_root, &relative)?;
+    let mut download_path = local_path.clone();
+    let mut is_conflict = false;
 
     let pending_local = {
         let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
@@ -214,10 +216,11 @@ async fn apply_remote_file(
                     .map(|d| d.as_secs() as i64);
                 if stored_mtime.is_some() && current_mtime != *stored_mtime {
                     sync_log(format!(
-                        "skip remote file {} -> {} (local copy modified, upload wins)",
+                        "preserve remote file {} -> {} (local copy also modified)",
                         change.entity_id, relative
                     ));
-                    return Ok(());
+                    download_path = conflict_copy_path(&local_path);
+                    is_conflict = true;
                 }
             } else if !is_restore && Path::new(&local_root).exists() {
                 // File was synced before and is now gone locally: the user deleted
@@ -266,7 +269,7 @@ async fn apply_remote_file(
         ));
     }
 
-    if let Some(parent) = local_path.parent() {
+    if let Some(parent) = download_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
 
@@ -292,13 +295,34 @@ async fn apply_remote_file(
             }
         };
 
-    suppress.run_suppressed(&local_path, || {});
+    suppress.run_suppressed(&download_path, || {});
     let plaintext = api
         .download_file(&change.entity_id, Some(&key_b64url))
         .await?;
-    let tmp = local_path.with_extension("freedrive.tmp");
+    let tmp = download_path.with_extension("freedrive.tmp");
     std::fs::write(&tmp, &plaintext)?;
-    std::fs::rename(&tmp, &local_path)?;
+    std::fs::rename(&tmp, &download_path)?;
+
+    if is_conflict {
+        let name = download_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("conflict copy");
+        let conn = db.lock().map_err(|e| AppError::msg(e.to_string()))?;
+        crate::db::insert_activity(
+            &conn,
+            name,
+            "Both local and cloud changed; kept both copies",
+            plaintext.len() as i64,
+            "conflict",
+        )?;
+        sync_log(format!(
+            "created conflict copy {} for remote file {}",
+            download_path.display(),
+            change.entity_id
+        ));
+        return Ok(());
+    }
 
     let mtime = local_path
         .metadata()
@@ -333,6 +357,32 @@ async fn apply_remote_file(
         engine.emit_activity_append(name, "Restored from cloud", 0, "synced");
     }
     Ok(())
+}
+
+fn conflict_copy_path(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("file");
+    let extension = path.extension().and_then(|value| value.to_str());
+    let timestamp = chrono::Local::now().format("%Y-%m-%d %H%M%S");
+    for suffix in 0..1000u32 {
+        let marker = if suffix == 0 {
+            String::new()
+        } else {
+            format!(" {suffix}")
+        };
+        let name = match extension {
+            Some(ext) => format!("{stem} (FreeDrive conflict {timestamp}){marker}.{ext}"),
+            None => format!("{stem} (FreeDrive conflict {timestamp}){marker}"),
+        };
+        let candidate = parent.join(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    parent.join(format!("{stem} (FreeDrive conflict {}).copy", uuid::Uuid::new_v4()))
 }
 
 fn apply_remote_folder_create(
@@ -528,7 +578,7 @@ fn apply_remote_delete(
 
 #[cfg(test)]
 mod path_tests {
-    use super::safe_join;
+    use super::{conflict_copy_path, safe_join};
 
     #[test]
     fn safe_join_rejects_traversal_and_windows_special_names() {
@@ -541,6 +591,14 @@ mod path_tests {
     fn safe_join_accepts_normal_nested_path() {
         let path = safe_join("C:\\sync", "docs/report.txt").unwrap();
         assert!(path.ends_with(PathBuf::from("docs").join("report.txt")));
+    }
+
+    #[test]
+    fn conflict_copy_preserves_extension_and_name() {
+        let path = conflict_copy_path(std::path::Path::new("docs/report.pdf"));
+        let name = path.file_name().unwrap().to_string_lossy();
+        assert!(name.starts_with("report (FreeDrive conflict "));
+        assert!(name.ends_with(".pdf"));
     }
 
     use std::path::PathBuf;

@@ -21,6 +21,10 @@ import type {
   RotateCryptoKeyResult,
   HydrateFailedEvent,
   UploadProgressEvent,
+  DesktopSyncSettings,
+  RemoteSyncFolder,
+  DriveContents,
+  DriveSearchResult,
 } from "../types";
 
 export const api = {
@@ -68,6 +72,20 @@ export const api = {
   getStartMinimized: () => invoke<boolean>("get_start_minimized"),
   setStartMinimized: (enabled: boolean) =>
     invoke<void>("set_start_minimized", { enabled }),
+  getDesktopSyncSettings: () =>
+    invoke<DesktopSyncSettings>("get_desktop_sync_settings"),
+  setDesktopSyncSettings: (settings: DesktopSyncSettings) =>
+    invoke<DesktopSyncSettings>("set_desktop_sync_settings", { settings }),
+  getRemoteSyncFolders: () =>
+    invoke<RemoteSyncFolder[]>("get_remote_sync_folders"),
+  browseDrive: (folder_id?: string) =>
+    invoke<DriveContents>("browse_drive", { folderId: folder_id }),
+  searchDrive: (query: string) =>
+    invoke<DriveSearchResult>("search_drive", { query }),
+  createDriveFolder: (name: string, parent_id?: string) =>
+    invoke<void>("create_drive_folder", { name, parentId: parent_id }),
+  trashDriveItem: (item_type: "file" | "folder", item_id: string) =>
+    invoke<void>("trash_drive_item", { itemType: item_type, itemId: item_id }),
   openSyncLogFolder: () => invoke<void>("open_sync_log_folder"),
   pauseSync: () => invoke<void>("pause_sync"),
   resumeSync: () => invoke<void>("resume_sync"),

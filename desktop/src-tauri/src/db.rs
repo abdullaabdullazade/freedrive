@@ -958,10 +958,11 @@ pub fn list_all_sync_states(conn: &Connection) -> AppResult<Vec<(i64, String, St
 }
 
 pub fn store_file_key(conn: &Connection, remote_file_id: &str, key_b64url: &str) -> AppResult<()> {
+    let protected = crate::secret_storage::protect(key_b64url)?;
     conn.execute(
         "INSERT INTO file_keys (remote_file_id, key_b64url) VALUES (?1, ?2)
          ON CONFLICT(remote_file_id) DO UPDATE SET key_b64url = excluded.key_b64url",
-        params![remote_file_id, key_b64url],
+        params![remote_file_id, protected],
     )?;
     Ok(())
 }
@@ -985,8 +986,20 @@ pub fn list_all_file_keys(conn: &Connection) -> AppResult<HashMap<String, String
     let mut stmt = conn.prepare("SELECT remote_file_id, key_b64url FROM file_keys")?;
     let mut rows = stmt.query([])?;
     let mut keys = HashMap::new();
+    let mut legacy_keys = Vec::new();
     while let Some(row) = rows.next()? {
-        keys.insert(row.get(0)?, row.get(1)?);
+        let id: String = row.get(0)?;
+        let stored: String = row.get(1)?;
+        let (key, legacy) = crate::secret_storage::unprotect(&stored)?;
+        if legacy {
+            legacy_keys.push((id.clone(), key.clone()));
+        }
+        keys.insert(id, key);
+    }
+    drop(rows);
+    drop(stmt);
+    for (id, key) in legacy_keys {
+        store_file_key(conn, &id, &key)?;
     }
     Ok(keys)
 }
@@ -995,7 +1008,14 @@ pub fn get_file_key(conn: &Connection, remote_file_id: &str) -> AppResult<Option
     let mut stmt = conn.prepare("SELECT key_b64url FROM file_keys WHERE remote_file_id = ?1")?;
     let mut rows = stmt.query(params![remote_file_id])?;
     if let Some(row) = rows.next()? {
-        Ok(Some(row.get(0)?))
+        let stored: String = row.get(0)?;
+        let (key, legacy) = crate::secret_storage::unprotect(&stored)?;
+        drop(rows);
+        drop(stmt);
+        if legacy {
+            store_file_key(conn, remote_file_id, &key)?;
+        }
+        Ok(Some(key))
     } else {
         Ok(None)
     }
@@ -1015,10 +1035,11 @@ pub fn store_pending_file_key(
     file_name: &str,
     key_b64url: &str,
 ) -> AppResult<()> {
+    let protected = crate::secret_storage::protect(key_b64url)?;
     conn.execute(
         "INSERT INTO pending_file_keys (folder_id, file_name, key_b64url) VALUES (?1, ?2, ?3)
          ON CONFLICT(folder_id, file_name) DO UPDATE SET key_b64url = excluded.key_b64url",
-        params![folder_id, file_name, key_b64url],
+        params![folder_id, file_name, protected],
     )?;
     Ok(())
 }
@@ -1033,7 +1054,14 @@ pub fn get_pending_file_key(
     )?;
     let mut rows = stmt.query(params![folder_id, file_name])?;
     if let Some(row) = rows.next()? {
-        Ok(Some(row.get(0)?))
+        let stored: String = row.get(0)?;
+        let (key, legacy) = crate::secret_storage::unprotect(&stored)?;
+        drop(rows);
+        drop(stmt);
+        if legacy {
+            store_pending_file_key(conn, folder_id, file_name, &key)?;
+        }
+        Ok(Some(key))
     } else {
         Ok(None)
     }
@@ -1354,9 +1382,37 @@ mod tests {
         let conn = test_conn();
         store_file_key(&conn, "file-a", "key-a").unwrap();
         store_file_key(&conn, "file-b", "key-b").unwrap();
+        let stored: String = conn
+            .query_row(
+                "SELECT key_b64url FROM file_keys WHERE remote_file_id = 'file-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored.starts_with("enc:v1:"));
+        assert!(!stored.contains("key-a"));
         let keys = list_all_file_keys(&conn).unwrap();
         assert_eq!(keys.len(), 2);
         assert_eq!(keys.get("file-a").map(|s| s.as_str()), Some("key-a"));
+    }
+
+    #[test]
+    fn legacy_plaintext_file_key_is_migrated_on_read() {
+        let conn = test_conn();
+        conn.execute(
+            "INSERT INTO file_keys (remote_file_id, key_b64url) VALUES ('legacy', 'old-key')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(get_file_key(&conn, "legacy").unwrap().as_deref(), Some("old-key"));
+        let stored: String = conn
+            .query_row(
+                "SELECT key_b64url FROM file_keys WHERE remote_file_id = 'legacy'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored.starts_with("enc:v1:"));
     }
 
     #[test]

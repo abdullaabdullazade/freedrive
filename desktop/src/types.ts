@@ -34,6 +34,8 @@ export interface ExplorerIntegrationStatus {
   finalized: boolean;
   sync_root_path: string;
   my_drive_path: string;
+  platform: string;
+  native_streaming_supported: boolean;
 }
 
 export type AppScreen =
@@ -117,7 +119,7 @@ export interface SyncFolder {
   label: string;
 }
 
-export type ActivityStatus = "synced" | "uploading" | "error" | "skipped" | "deleted";
+export type ActivityStatus = "synced" | "uploading" | "error" | "skipped" | "deleted" | "conflict";
 
 export interface ActivityItem {
   id: number;
@@ -140,7 +142,7 @@ export type SyncMode = "stream" | "mirror";
 
 export type PreferencesTab = "my-computer" | "freedrive";
 
-export type MainView = "home" | "sync" | "notifications";
+export type MainView = "home" | "drive" | "sync" | "notifications";
 
 export interface StorageInfo {
   used_bytes: number;
@@ -153,7 +155,8 @@ export type NotificationKind =
   | "storage_warning"
   | "sync_error"
   | "sync_paused"
-  | "file_error";
+  | "file_error"
+  | "sync_conflict";
 
 export interface AppNotification {
   id: string;
@@ -170,4 +173,50 @@ export interface SharedItem {
   item_id: string;
   item_name: string;
   owner_name?: string;
+}
+
+export interface DesktopSyncSettings {
+  proxy_url: string;
+  upload_limit_kbps: number;
+  download_limit_kbps: number;
+  excluded_patterns: string[];
+  excluded_remote_folder_ids: string[];
+}
+
+export interface RemoteSyncFolder {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  is_trashed?: boolean;
+}
+
+export interface DriveFolder {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+  is_trashed?: boolean;
+}
+
+export interface DriveFile {
+  id: string;
+  name: string;
+  mime_type: string;
+  size: number;
+  folder_id?: string | null;
+  updated_at: string;
+  version?: number;
+}
+
+export interface DriveContents {
+  folder?: DriveFolder | null;
+  folders: DriveFolder[];
+  files: DriveFile[];
+  total_files?: number | null;
+}
+
+export interface DriveSearchResult {
+  folders: DriveFolder[];
+  files: DriveFile[];
+  total: number;
+  page: number;
 }

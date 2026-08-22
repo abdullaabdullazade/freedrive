@@ -11,6 +11,9 @@
     "opener:default",
     "dialog:default",
     "shell:default",
-    "autostart:default"
+    "autostart:default",
+    "notification:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

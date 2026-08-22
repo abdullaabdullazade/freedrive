@@ -6,7 +6,9 @@ mod cfapi;
 mod commands;
 mod crypto;
 mod db;
+mod desktop_settings;
 mod error;
+mod secret_storage;
 mod my_drive;
 mod my_drive_shell;
 mod state;
@@ -84,6 +86,8 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![] as Vec<&str>),
         ))
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_process::init())
         .manage(AppState::new(db))
         .invoke_handler(tauri::generate_handler![
             commands::get_auth_state,
@@ -109,6 +113,9 @@ pub fn run() {
             commands::set_launch_on_login,
             commands::get_start_minimized,
             commands::set_start_minimized,
+            commands::get_desktop_sync_settings,
+            commands::set_desktop_sync_settings,
+            commands::get_remote_sync_folders,
             commands::open_sync_log_folder,
             commands::pause_sync,
             commands::resume_sync,
@@ -117,6 +124,10 @@ pub fn run() {
             commands::get_profile,
             commands::get_storage_info,
             commands::get_shared_with_me,
+            commands::browse_drive,
+            commands::search_drive,
+            commands::create_drive_folder,
+            commands::trash_drive_item,
             commands::open_server_url,
             commands::open_project_url,
             commands::open_path_in_explorer,
@@ -128,6 +139,9 @@ pub fn run() {
             commands::rotate_crypto_key,
         ])
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let state = app.state::<AppState>();
             let _ = commands::init_api_from_storage(&state);
 

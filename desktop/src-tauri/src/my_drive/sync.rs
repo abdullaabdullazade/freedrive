@@ -132,6 +132,11 @@ pub async fn poll_my_drive(
     on_busy: Option<MyDriveBusyCb>,
 ) -> AppResult<MyDrivePollStats> {
     let sync_root = sync_root_dir(false)?;
+    let excluded_remote_folders: HashSet<String> = crate::desktop_settings::load(db)
+        .unwrap_or_default()
+        .excluded_remote_folder_ids
+        .into_iter()
+        .collect();
     sync_log(&format!("poll My Drive started (mirror={})", mirror));
     let mut stats = MyDrivePollStats::default();
     poll_my_drive_folder(
@@ -146,6 +151,7 @@ pub async fn poll_my_drive(
         suppress,
         &on_busy,
         &mut stats,
+        &excluded_remote_folders,
     )
     .await?;
     notify_directory_updated(&local_dir_for_relative(&sync_root, MY_DRIVE_FOLDER_NAME));
@@ -168,9 +174,16 @@ async fn poll_my_drive_folder(
     suppress: Option<&WatcherSuppress>,
     on_busy: &Option<MyDriveBusyCb>,
     stats: &mut MyDrivePollStats,
+    excluded_remote_folders: &HashSet<String>,
 ) -> AppResult<()> {
-    let contents =
+    let all_contents =
         fetch_folder_contents(api, db, sync_root, parent_relative, folder_id).await?;
+    let mut contents = all_contents.clone();
+    if folder_id.is_none() {
+        contents
+            .folders
+            .retain(|folder| !excluded_remote_folders.contains(&folder.id));
+    }
     let local_dir = local_dir_for_relative(sync_root, parent_relative);
     let mut local_only_folders = Vec::new();
     if std::fs::create_dir_all(&local_dir).is_ok() {
@@ -186,10 +199,11 @@ async fn poll_my_drive_folder(
             parent_relative,
             &parent_id,
             &local_dir,
-            &contents,
+            &all_contents,
             upload_sem.clone(),
             on_busy,
             stats,
+            excluded_remote_folders,
         )
         .await;
         notify_directory_updated(&local_dir);
@@ -204,6 +218,7 @@ async fn poll_my_drive_folder(
             download_sem.clone(),
             on_busy,
             stats,
+            excluded_remote_folders,
         )
         .await;
     }

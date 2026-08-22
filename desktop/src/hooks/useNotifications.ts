@@ -1,4 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import type {
   ActivityItem,
   AppNotification,
@@ -9,6 +14,7 @@ import type {
 const DISMISSED_KEY = "fd_dismissed_notifications";
 const DONT_SHOW_KEY = "fd_dont_show_notifications";
 const SEEN_KEY = "fd_seen_notifications";
+const SYSTEM_SENT_KEY = "fd_system_notifications_sent";
 
 function loadSet(key: string): Set<string> {
   try {
@@ -31,7 +37,7 @@ function formatGb(bytes: number): string {
   return `${gb.toFixed(1)} GB`;
 }
 
-function buildNotifications(
+export function buildNotifications(
   syncStatus: SyncStatus,
   activity: ActivityItem[],
   storage: StorageInfo | null,
@@ -108,6 +114,18 @@ function buildNotifications(
     });
   }
 
+  const conflicts = activity.filter((a) => a.status === "conflict").slice(0, 3);
+  for (const file of conflicts) {
+    items.push({
+      id: `sync_conflict_${file.id}`,
+      kind: "sync_conflict",
+      title: `Kept both versions of ${file.name}`,
+      description:
+        file.detail || "The local and cloud versions both changed, so FreeDrive created a conflict copy.",
+      actions: [{ label: "OK", action: "dismiss" }],
+    });
+  }
+
   return items;
 }
 
@@ -141,6 +159,37 @@ export function useNotifications(
   );
 
   const badgeCount = activeNotifications.length;
+
+  useEffect(() => {
+    const pending = activeNotifications.filter((notification) => notification.isNew);
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        let granted = await isPermissionGranted();
+        if (!granted) granted = (await requestPermission()) === "granted";
+        if (!granted || cancelled) return;
+
+        const sent = loadSet(SYSTEM_SENT_KEY);
+        for (const notification of pending) {
+          if (cancelled || sent.has(notification.id)) continue;
+          sendNotification({
+            title: notification.title,
+            body: notification.description,
+          });
+          sent.add(notification.id);
+        }
+        saveSet(SYSTEM_SENT_KEY, sent);
+      } catch {
+        // Web preview and unsupported notification backends keep in-app alerts working.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeNotifications]);
 
   const dismiss = useCallback((id: string) => {
     setDismissed((prev) => {

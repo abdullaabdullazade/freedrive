@@ -1144,6 +1144,83 @@ input {
   color: #f28b82;
 }
 
+.status-badge.conflict {
+  color: #f9ab00;
+}
+
+.about-dialog-update {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.about-dialog-update p {
+  margin: 0;
+  color: var(--fd-text-secondary);
+  font-size: 12px;
+}
+
+.drive-browser {
+  padding: 24px 28px;
+}
+
+.drive-browser-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.drive-browser-header h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+}
+
+.drive-breadcrumbs {
+  display: flex;
+  gap: 4px;
+}
+
+.drive-breadcrumbs button,
+.drive-item-name,
+.drive-item-action {
+  border: 0;
+  background: transparent;
+  color: var(--fd-accent);
+  cursor: pointer;
+}
+
+.drive-breadcrumbs button + button::before {
+  content: "›";
+  color: var(--fd-text-secondary);
+  margin-right: 4px;
+}
+
+.drive-browser-table {
+  overflow: hidden;
+  border: 1px solid var(--fd-border);
+  border-radius: 14px;
+  background: var(--fd-bg-card);
+}
+
+.drive-browser-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(140px, 1fr) 100px 130px;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--fd-border);
+  gap: 12px;
+}
+
+.drive-browser-row:last-child { border-bottom: 0; }
+.drive-browser-columns { color: var(--fd-text-secondary); font-size: 12px; font-weight: 600; }
+.drive-item-name { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; color: var(--fd-text); }
+.drive-item-actions { display: flex; gap: 8px; }
+.drive-browser-empty { padding: 64px; text-align: center; color: var(--fd-text-secondary); }
+
 .status-deleted {
   display: inline-flex;
   align-items: center;
@@ -1726,6 +1803,66 @@ input {
 .preferences-settings-server-url {
   font-size: 14px;
   word-break: break-all;
+}
+
+.advanced-sync-settings {
+  display: grid;
+  gap: 12px;
+}
+
+.advanced-setting-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.advanced-setting-field {
+  display: grid;
+  gap: 6px;
+  color: #3c4043;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.advanced-setting-field input,
+.advanced-setting-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  background: #fff;
+  color: #202124;
+  padding: 9px 11px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.advanced-setting-field textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.selective-sync-folders {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+}
+
+.selective-sync-folders legend {
+  padding: 0 6px;
+  color: #3c4043;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.selective-sync-folders label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
 }
 
 .preferences-footer {

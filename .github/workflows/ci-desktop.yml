@@ -48,6 +48,9 @@ jobs:
       - name: Typecheck and build frontend
         run: npm run build
 
+      - name: Run frontend tests
+        run: npm test
+
       - name: Run Rust tests
         run: cargo test
         working-directory: desktop/src-tauri

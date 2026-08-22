@@ -22,6 +22,8 @@ function statusLabel(status: string) {
       return { text: "Skipped", className: "skipped" };
     case "deleted":
       return { text: "Removed", className: "deleted" };
+    case "conflict":
+      return { text: "Conflict copy", className: "conflict" };
     default:
       return { text: status, className: "" };
   }

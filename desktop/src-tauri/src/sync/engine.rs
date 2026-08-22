@@ -1711,10 +1711,12 @@ impl SyncEngine {
         let show_activity = mode == ScanMode::Interactive;
         sync_log(format!("scan start {} ({:?})", local_root, mode));
 
+        let desktop_settings = crate::desktop_settings::load(&self.db).unwrap_or_default();
         let walk_root = root.clone();
+        let walk_settings = desktop_settings.clone();
         let files = blocking::run_blocking_with_timeout_async(
             Duration::from_secs(120),
-            move || Ok(collect_files(&walk_root)),
+            move || Ok(collect_files(&walk_root, &walk_settings)),
         )
         .await
         .unwrap_or_default();
@@ -1725,9 +1727,10 @@ impl SyncEngine {
         // Ensure remote folder tree for every local subdirectory first so nested
         // uploads (and empty dirs) do not depend on a prior successful file sync.
         let dir_walk_root = root.clone();
+        let dir_settings = desktop_settings.clone();
         let local_dirs = blocking::run_blocking_with_timeout_async(
             Duration::from_secs(60),
-            move || Ok(collect_dirs(&dir_walk_root)),
+            move || Ok(collect_dirs(&dir_walk_root, &dir_settings)),
         )
         .await
         .unwrap_or_default();
@@ -1961,6 +1964,11 @@ impl SyncEngine {
         for sf in sync_folders {
             let root = PathBuf::from(&sf.local_path);
             if path.starts_with(&root) {
+                let settings = crate::desktop_settings::load(&self.db).unwrap_or_default();
+                if settings.excludes_path(&root, path) {
+                    sync_log(format!("excluded by desktop settings — {}", path.display()));
+                    return Ok(());
+                }
                 let remote_root_id = self.ensure_sync_folder_remote(&sf).await?;
                 let _ = self
                     .sync_one_file(
@@ -2965,16 +2973,22 @@ fn should_skip_dir(name: &str) -> bool {
     matches!(name, ".git" | ".svn" | "node_modules")
 }
 
-fn collect_files(root: &Path) -> Vec<PathBuf> {
+fn collect_files(
+    root: &Path,
+    settings: &crate::desktop_settings::DesktopSyncSettings,
+) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    walk_files_incremental(root, |path| files.push(path));
+    walk_files_incremental(root, settings, |path| files.push(path));
     files.sort_by_key(|p| file_size(p));
     files
 }
 
 /// Relative subdirectory paths under `root` (root itself excluded), depth-first
 /// so parents are ensured before children when iterated in sorted order.
-fn collect_dirs(root: &Path) -> Vec<PathBuf> {
+fn collect_dirs(
+    root: &Path,
+    settings: &crate::desktop_settings::DesktopSyncSettings,
+) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -2985,6 +2999,9 @@ fn collect_dirs(root: &Path) -> Vec<PathBuf> {
         for entry in entries.flatten() {
             let path = entry.path();
             if !path.is_dir() {
+                continue;
+            }
+            if settings.excludes_path(root, &path) {
                 continue;
             }
             let dir_name = path
@@ -3006,7 +3023,11 @@ fn collect_dirs(root: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-fn walk_files_incremental(root: &Path, mut on_file: impl FnMut(PathBuf)) {
+fn walk_files_incremental(
+    root: &Path,
+    settings: &crate::desktop_settings::DesktopSyncSettings,
+    mut on_file: impl FnMut(PathBuf),
+) {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let entries = match std::fs::read_dir(&dir) {
@@ -3015,6 +3036,9 @@ fn walk_files_incremental(root: &Path, mut on_file: impl FnMut(PathBuf)) {
         };
         for entry in entries.flatten() {
             let path = entry.path();
+            if settings.excludes_path(root, &path) {
+                continue;
+            }
             if path.is_dir() {
                 let dir_name = path
                     .file_name()

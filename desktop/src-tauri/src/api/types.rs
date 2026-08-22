@@ -98,6 +98,18 @@ pub struct FilesResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    #[serde(default)]
+    pub files: Vec<FileRecord>,
+    #[serde(default)]
+    pub folders: Vec<Folder>,
+    #[serde(default)]
+    pub total: i64,
+    #[serde(default)]
+    pub page: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageInfo {
     pub used_bytes: i64,
     pub total_bytes: i64,

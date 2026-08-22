@@ -34,12 +34,18 @@ export function ExplorerIntegrationPanel({
         <>
           <ul className="explorer-status-list">
             <li>
-              <span>Connected</span>
+              <span>{status.native_streaming_supported ? "Connected" : "Local mirror ready"}</span>
               <span>{status.connected ? "Yes" : "No"}</span>
             </li>
             <li>
-              <span>Registered</span>
-              <span>{status.registered ? "Yes" : "No"}</span>
+              <span>Integration</span>
+              <span>
+                {status.native_streaming_supported
+                  ? status.registered
+                    ? "Windows Cloud Files"
+                    : "Not registered"
+                  : `${status.platform} folder mirror`}
+              </span>
             </li>
             <li>
               <span>Sync root</span>

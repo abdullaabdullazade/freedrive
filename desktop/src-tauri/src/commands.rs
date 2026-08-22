@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(windows)]
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -86,6 +87,8 @@ pub struct ExplorerIntegrationStatus {
     pub finalized: bool,
     pub sync_root_path: String,
     pub my_drive_path: String,
+    pub platform: String,
+    pub native_streaming_supported: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -352,6 +355,12 @@ pub async fn restore_sync_on_startup(state: &AppState, app: &AppHandle) -> AppRe
 pub fn init_api_from_storage(state: &AppState) -> AppResult<()> {
     if let Some(auth) = load_auth()? {
         let client = ApiClient::from_auth(&auth);
+        let settings = crate::desktop_settings::load(&state.db)?;
+        client.configure_network(
+            &settings.proxy_url,
+            settings.upload_limit_kbps,
+            settings.download_limit_kbps,
+        )?;
         state.set_api(client);
     }
     Ok(())
@@ -575,6 +584,15 @@ async fn finish_login(
     save_auth(&auth).map_err(|e: crate::error::AppError| e.to_string())?;
 
     let client = ApiClient::from_auth(&auth);
+    if let Ok(settings) = crate::desktop_settings::load(&state.db) {
+        client
+            .configure_network(
+                &settings.proxy_url,
+                settings.upload_limit_kbps,
+                settings.download_limit_kbps,
+            )
+            .map_err(|e| e.to_string())?;
+    }
     state.set_api(client.clone());
 
     let engine = Arc::new(SyncEngine::new(client, state.db.clone(), app.clone()));
@@ -908,11 +926,23 @@ pub async fn remove_sync_folder(state: State<'_, AppState>, folder_id: i64) -> R
 
 #[tauri::command]
 pub fn get_sync_mode(state: State<'_, AppState>) -> Result<String, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = &state;
+        return Ok("mirror".into());
+    }
+    #[cfg(windows)]
     Ok(crate::sync::engine::get_sync_mode(&state.db))
 }
 
 #[tauri::command]
 pub fn set_sync_mode(state: State<'_, AppState>, mode: String) -> Result<(), String> {
+    #[cfg(not(windows))]
+    let normalized = {
+        let _ = &mode;
+        "mirror"
+    };
+    #[cfg(windows)]
     let normalized = if mode == "stream" { "stream" } else { "mirror" };
     crate::sync::engine::set_sync_mode(&state.db, normalized)
         .map_err(|e: AppError| e.to_string())?;
@@ -993,6 +1023,44 @@ pub fn set_start_minimized(state: State<'_, AppState>, enabled: bool) -> Result<
 }
 
 #[tauri::command]
+pub fn get_desktop_sync_settings(
+    state: State<'_, AppState>,
+) -> Result<crate::desktop_settings::DesktopSyncSettings, String> {
+    crate::desktop_settings::load(&state.db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_desktop_sync_settings(
+    state: State<'_, AppState>,
+    settings: crate::desktop_settings::DesktopSyncSettings,
+) -> Result<crate::desktop_settings::DesktopSyncSettings, String> {
+    let saved = crate::desktop_settings::save(&state.db, settings).map_err(|e| e.to_string())?;
+    if let Ok(client) = state.api() {
+        client
+            .configure_network(
+                &saved.proxy_url,
+                saved.upload_limit_kbps,
+                saved.download_limit_kbps,
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn get_remote_sync_folders(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::api::types::Folder>, String> {
+    let contents = state
+        .api()
+        .map_err(|e| e.to_string())?
+        .get_my_drive_root()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(contents.folders)
+}
+
+#[tauri::command]
 pub async fn open_sync_log_folder(app: AppHandle) -> Result<(), String> {
     let dir = crate::auth_store::data_dir().map_err(|e: AppError| e.to_string())?;
     app.opener()
@@ -1024,24 +1092,36 @@ pub async fn get_explorer_integration_status(
 ) -> Result<ExplorerIntegrationStatus, String> {
     let sync_root = sync_root_dir(false).map_err(|e: crate::error::AppError| e.to_string())?;
     let my_drive = my_drive_path(false).map_err(|e: crate::error::AppError| e.to_string())?;
+    #[cfg(windows)]
     let (connected, registered, finalized) =
         crate::cfapi::integration_status(&state.db).map_err(|e| e.to_string())?;
+    #[cfg(not(windows))]
+    let (connected, registered, finalized) = {
+        let _ = &state;
+        (my_drive.exists(), false, true)
+    };
     Ok(ExplorerIntegrationStatus {
         connected,
         registered,
         finalized,
         sync_root_path: sync_root.to_string_lossy().into_owned(),
         my_drive_path: my_drive.to_string_lossy().into_owned(),
+        platform: std::env::consts::OS.into(),
+        native_streaming_supported: cfg!(windows),
     })
 }
 
 #[tauri::command]
 pub async fn open_drive_folder(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    #[cfg(windows)]
     crate::cfapi::ensure_connected(&state).map_err(|e| e.to_string())?;
     #[cfg(windows)]
     let dir = my_drive_path(false).map_err(|e: crate::error::AppError| e.to_string())?;
     #[cfg(not(windows))]
-    let dir = sync_root_dir(false).map_err(|e: crate::error::AppError| e.to_string())?;
+    let dir = {
+        let _ = &state;
+        my_drive_path(true).map_err(|e: crate::error::AppError| e.to_string())?
+    };
     app.opener()
         .open_path(dir.to_string_lossy().into_owned(), None::<&str>)
         .map_err(|e| e.to_string())
@@ -1075,6 +1155,75 @@ pub async fn get_shared_with_me(state: State<'_, AppState>) -> Result<Vec<Shared
         .get_shared_with_me()
         .await
         .map_err(|e: crate::error::AppError| e.to_string())
+}
+
+#[tauri::command]
+pub async fn browse_drive(
+    state: State<'_, AppState>,
+    folder_id: Option<String>,
+) -> Result<crate::api::types::FolderContents, String> {
+    let client = state.api().map_err(|e| e.to_string())?;
+    match folder_id.filter(|id| !id.is_empty()) {
+        Some(id) => client.get_folder_contents(&id).await,
+        None => client.get_my_drive_root().await,
+    }
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn search_drive(
+    state: State<'_, AppState>,
+    query: String,
+) -> Result<crate::api::types::SearchResult, String> {
+    if query.trim().is_empty() {
+        return Ok(crate::api::types::SearchResult {
+            files: Vec::new(),
+            folders: Vec::new(),
+            total: 0,
+            page: 1,
+        });
+    }
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .search_drive(&query)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn create_drive_folder(
+    state: State<'_, AppState>,
+    name: String,
+    parent_id: Option<String>,
+) -> Result<crate::api::types::Folder, String> {
+    let name = name.trim();
+    if name.is_empty() || name.contains('/') || name.contains('\\') {
+        return Err("Enter a valid folder name".into());
+    }
+    state
+        .api()
+        .map_err(|e| e.to_string())?
+        .create_folder(name, parent_id.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn trash_drive_item(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+) -> Result<(), String> {
+    let client = state.api().map_err(|e| e.to_string())?;
+    if item_type == "folder" {
+        client.delete_folder_with_mutation(&item_id, None).await
+    } else if item_type == "file" {
+        client.delete_file(&item_id).await
+    } else {
+        return Err("Unknown Drive item type".into());
+    }
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1275,7 +1424,10 @@ pub async fn unregister_explorer_integration(state: State<'_, AppState>) -> Resu
     #[cfg(windows)]
     return crate::cfapi::unregister(&state);
     #[cfg(not(windows))]
-    Ok(())
+    {
+        let _ = &state;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize)]

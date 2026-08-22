@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/tauri";
-import type { SyncMode } from "../types";
+import type { ExplorerIntegrationStatus, SyncMode } from "../types";
 
 export function FreeDriveTab() {
   const [mode, setMode] = useState<SyncMode>("stream");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [integration, setIntegration] = useState<ExplorerIntegrationStatus | null>(null);
 
   useEffect(() => {
     api
@@ -14,6 +15,10 @@ export function FreeDriveTab() {
       .then((value) => setMode(value === "mirror" ? "mirror" : "stream"))
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    api.getExplorerIntegrationStatus().then(setIntegration).catch(() => {});
   }, []);
 
   const handleChange = async (next: SyncMode) => {
@@ -39,7 +44,7 @@ export function FreeDriveTab() {
       <div className="preferences-section-header">
         <h2>FreeDrive</h2>
         <p>
-          Browse My Drive from File Explorer. Stream and mirror settings below apply only to{" "}
+          Browse My Drive from your system file manager. Stream and mirror settings below apply only to{" "}
           <strong>My Drive</strong> in your FreeDrive folder.
         </p>
         <p className="preferences-section-note">
@@ -51,24 +56,24 @@ export function FreeDriveTab() {
           className="btn-secondary preferences-open-explorer"
           onClick={() => api.openDriveFolder().catch((err) => setError(String(err)))}
         >
-          Open in File Explorer
+          Open My Drive folder
         </button>
       </div>
 
       {error && <div className="error-banner">{error}</div>}
 
       <div className="sync-mode-options">
-        <label className={`sync-mode-card${mode === "stream" ? " selected" : ""}`}>
+        <label className={`sync-mode-card${mode === "stream" ? " selected" : ""}${integration && !integration.native_streaming_supported ? " disabled" : ""}`}>
           <input
             type="radio"
             name="sync-mode"
             value="stream"
             checked={mode === "stream"}
-            disabled={saving}
+            disabled={saving || integration?.native_streaming_supported === false}
             onChange={() => handleChange("stream")}
           />
           <div className="sync-mode-card-body">
-            <span className="sync-mode-title">Stream files (default)</span>
+            <span className="sync-mode-title">Stream files (Windows)</span>
             <ul className="sync-mode-features">
               <li>Keep My Drive in the cloud only — no full folder download.</li>
               <li>Files appear as cloud placeholders in File Explorer.</li>
@@ -105,6 +110,16 @@ export function FreeDriveTab() {
           </div>
         </label>
       </div>
+
+      {integration && !integration.native_streaming_supported && (
+        <div className="preferences-info-box">
+          <span className="preferences-info-icon" aria-hidden>i</span>
+          <p>
+            {integration.platform} uses a two-way local mirror because Cloud Files placeholders are
+            a Windows-only API. Files remain available offline in {integration.my_drive_path}.
+          </p>
+        </div>
+      )}
 
       <div className="preferences-info-box">
         <span className="preferences-info-icon" aria-hidden>

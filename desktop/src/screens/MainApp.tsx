@@ -19,6 +19,7 @@ import { Sidebar } from "../components/Sidebar";
 import { TopBar } from "../components/TopBar";
 import { useNotifications } from "../hooks/useNotifications";
 import { Home } from "./Home";
+import { DriveBrowser } from "./DriveBrowser";
 import { Notifications } from "./Notifications";
 import { SyncActivity } from "./SyncActivity";
 import type {
@@ -384,6 +385,7 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
               onFoldersChanged={refresh}
             />
           )}
+          {view === "drive" && <DriveBrowser search={search} />}
           {view === "sync" && (
             <SyncActivity
               syncStatus={syncStatus}
