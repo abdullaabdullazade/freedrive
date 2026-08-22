@@ -6042,33 +6042,62 @@ const FileManager = (() => {
 
     async function openAudioPlayer(file) {
         const blob = await decryptFileBlob(file);
-        const url = URL.createObjectURL(blob);
 
         const player = document.getElementById('audio-mini-player');
         const audio = document.getElementById('background-audio');
         const title = document.getElementById('audio-title');
+        const toggle = document.getElementById('audio-toggle');
+        const playIcon = toggle.querySelector('.audio-play-icon');
+        const pauseIcon = toggle.querySelector('.audio-pause-icon');
+        const seek = document.getElementById('audio-seek');
+        const currentTime = document.getElementById('audio-current-time');
+        const duration = document.getElementById('audio-duration');
+        const shuffleButton = document.getElementById('audio-shuffle');
+        const repeatButton = document.getElementById('audio-repeat');
         player.classList.remove('hidden');
         title.textContent = file.name;
+        title.title = file.name;
 
         const playlist = filteredFiles.filter((f) => getMimeGroup(f.mime_type, 'file', f.name) === 'audio');
         let idx = Math.max(0, playlist.findIndex((f) => f.id === file.id));
         let repeat = false;
         let shuffle = false;
 
+        const formatAudioTime = (seconds) => {
+            if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+            const minutes = Math.floor(seconds / 60);
+            return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+        };
+
+        const setAudioSource = (sourceBlob) => {
+            if (player.dataset.objectUrl) URL.revokeObjectURL(player.dataset.objectUrl);
+            const localURL = URL.createObjectURL(sourceBlob);
+            player.dataset.objectUrl = localURL;
+            audio.src = localURL;
+        };
+
+        const syncPlayButton = () => {
+            const paused = audio.paused;
+            playIcon.classList.toggle('hidden', !paused);
+            pauseIcon.classList.toggle('hidden', paused);
+            toggle.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+            toggle.title = paused ? 'Play' : 'Pause';
+        };
+
         const playIndex = async (nextIdx) => {
             idx = nextIdx;
             const current = playlist[idx];
             const dec = await decryptFileBlob(current);
-            const localURL = URL.createObjectURL(dec);
-            audio.src = localURL;
+            setAudioSource(dec);
             title.textContent = current.name;
-            audio.play();
+            title.title = current.name;
+            audio.play().catch(() => Components.toast('Could not start audio playback', 'error'));
         };
 
-        audio.src = url;
-        audio.play();
+        setAudioSource(blob);
+        audio.play().catch(() => Components.toast('Could not start audio playback', 'error'));
 
-        document.getElementById('audio-toggle').onclick = () => {
+        toggle.onclick = () => {
             if (audio.paused) audio.play(); else audio.pause();
         };
         document.getElementById('audio-prev').onclick = () => {
@@ -6079,8 +6108,28 @@ const FileManager = (() => {
             const next = shuffle ? Math.floor(Math.random() * playlist.length) : (idx + 1) % playlist.length;
             playIndex(next);
         };
-        document.getElementById('audio-shuffle').onclick = () => { shuffle = !shuffle; };
-        document.getElementById('audio-repeat').onclick = () => { repeat = !repeat; };
+        shuffleButton.onclick = () => {
+            shuffle = !shuffle;
+            shuffleButton.setAttribute('aria-pressed', String(shuffle));
+        };
+        repeatButton.onclick = () => {
+            repeat = !repeat;
+            repeatButton.setAttribute('aria-pressed', String(repeat));
+        };
+
+        audio.onplay = syncPlayButton;
+        audio.onpause = syncPlayButton;
+        audio.onloadedmetadata = () => {
+            duration.textContent = formatAudioTime(audio.duration);
+            seek.value = '0';
+        };
+        audio.ontimeupdate = () => {
+            currentTime.textContent = formatAudioTime(audio.currentTime);
+            seek.value = audio.duration ? String((audio.currentTime / audio.duration) * 100) : '0';
+        };
+        seek.oninput = () => {
+            if (audio.duration) audio.currentTime = (Number(seek.value) / 100) * audio.duration;
+        };
 
         audio.onended = () => {
             if (repeat) {
@@ -6092,6 +6141,7 @@ const FileManager = (() => {
             }
         };
 
+        syncPlayButton();
         startWaveform(audio);
         Components.toast('Audio playback started', 'success');
     }
@@ -6099,6 +6149,9 @@ const FileManager = (() => {
     function startWaveform(audio) {
         const canvas = document.getElementById('audio-wave');
         const ctx = canvas.getContext('2d');
+
+        if (audio.dataset.visualizerStarted === 'true') return;
+        audio.dataset.visualizerStarted = 'true';
 
         const actx = new (window.AudioContext || window.webkitAudioContext)();
         const src = actx.createMediaElementSource(audio);
