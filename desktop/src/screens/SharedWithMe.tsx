@@ -3,6 +3,7 @@ import { api } from "../api/tauri";
 import { FileViewer } from "../components/FileViewer";
 import type { SharedItem } from "../types";
 import { DriveBrowser } from "./DriveBrowser";
+import { NavIcon } from "../components/NavIcons";
 
 export function SharedWithMe({ search }: { search: string }) {
   const [items, setItems] = useState<SharedItem[]>([]);
@@ -30,7 +31,7 @@ export function SharedWithMe({ search }: { search: string }) {
             const isFolder = item.item_type === "folder";
             const open = () => isFolder ? setFolder({ id: item.item_id, name: item.item_name, readOnly: item.share.permission !== "write" }) : setPreview({ id: item.item_id, name: item.item_name });
             return <div className="drive-browser-row" role="row" key={item.share.id}>
-              <button className="drive-item-name" type="button" onClick={open}>{isFolder ? "📁" : "📄"} {item.item_name}</button>
+              <button className="drive-item-name" type="button" onClick={open}><NavIcon name={isFolder ? "folder" : "file"} /> {item.item_name}</button>
               <span>{isFolder ? "Folder" : "File"}</span><span>{item.owner_name || "—"}</span>
               <button className="drive-item-action" type="button" onClick={open}>Open</button>
             </div>;

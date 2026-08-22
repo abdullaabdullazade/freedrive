@@ -3,6 +3,7 @@ import { api, onSyncActivity, onSyncStatusChanged } from "../api/tauri";
 import { Logo } from "../components/Logo";
 import { Stepper } from "../components/Stepper";
 import type { SelectedFolder, SystemFolder, SyncStatus } from "../types";
+import { NavIcon } from "../components/NavIcons";
 
 interface OnboardingWizardProps {
   onComplete: () => void;
@@ -149,7 +150,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     />
                     <div className="folder-info">
                       <div className="folder-name-row">
-                        <span className="folder-name">📁 {folder.label}</span>
+                        <span className="folder-name"><NavIcon name="folder" /> {folder.label}</span>
                         {folder.suggested && (
                           <span className="badge-suggested">Suggested folder</span>
                         )}
@@ -180,7 +181,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                 {selected.map((folder) => (
                   <div key={folder.path} className="folder-item">
                     <div className="folder-info">
-                      <div className="folder-name">📁 {folder.label}</div>
+                      <div className="folder-name"><NavIcon name="folder" /> {folder.label}</div>
                       <div className="folder-path">{folder.path}</div>
                     </div>
                   </div>

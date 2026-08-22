@@ -919,6 +919,64 @@ impl ApiClient {
         Ok(response.folders)
     }
 
+    pub async fn list_drive_files(&self, query: &str) -> AppResult<Vec<FileRecord>> {
+        let response: FilesResponse = self
+            .request_json(reqwest::Method::GET, &format!("/files?{query}"), None, false, 2)
+            .await?;
+        Ok(response.files)
+    }
+
+    pub async fn list_drive_trash(&self) -> AppResult<FolderContents> {
+        let files: FilesResponse = self
+            .request_json(reqwest::Method::GET, "/files/trash", None, false, 2)
+            .await?;
+        let folders: FoldersResponse = self
+            .request_json(reqwest::Method::GET, "/folders/trash", None, false, 2)
+            .await?;
+        Ok(FolderContents {
+            folder: None,
+            folders: folders.folders,
+            files: files.files,
+            next_page_token: None,
+            total_files: None,
+        })
+    }
+
+    pub async fn restore_drive_item(&self, item_type: &str, item_id: &str) -> AppResult<()> {
+        let collection = if item_type == "folder" { "folders" } else { "files" };
+        let _: serde_json::Value = self
+            .request_json(
+                reqwest::Method::POST,
+                &format!("/{collection}/{item_id}/restore"),
+                Some(serde_json::json!({})),
+                false,
+                2,
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn permanently_delete_drive_item(&self, item_type: &str, item_id: &str) -> AppResult<()> {
+        let collection = if item_type == "folder" { "folders" } else { "files" };
+        let _: serde_json::Value = self
+            .request_json(
+                reqwest::Method::DELETE,
+                &format!("/{collection}/{item_id}/permanent"),
+                None,
+                false,
+                2,
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn empty_drive_trash(&self) -> AppResult<()> {
+        let _: serde_json::Value = self
+            .request_json(reqwest::Method::POST, "/trash/empty", Some(serde_json::json!({})), false, 2)
+            .await?;
+        Ok(())
+    }
+
     pub async fn update_drive_item(
         &self,
         item_type: &str,

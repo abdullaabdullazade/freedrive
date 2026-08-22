@@ -4,7 +4,8 @@ import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, formatBytes } from "../api/tauri";
 import type { DriveFilePreview } from "../types";
-import { decodeBase64, previewKindFor } from "../utils/filePreview";
+import { decodeBase64, effectiveMimeType, previewKindFor } from "../utils/filePreview";
+import { NavIcon } from "./NavIcons";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -128,7 +129,7 @@ export function FileViewer({ fileId, fallbackName, onClose }: FileViewerProps) {
   const kind = preview ? previewKindFor(preview.mime_type, preview.name) : "unsupported";
   const objectUrl = useMemo(() => {
     if (!preview || !bytes || !["image", "video", "audio"].includes(kind)) return "";
-    return URL.createObjectURL(new Blob([bytes], { type: preview.mime_type }));
+    return URL.createObjectURL(new Blob([bytes], { type: effectiveMimeType(preview.mime_type, preview.name) }));
   }, [bytes, kind, preview]);
   useEffect(() => () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }, [objectUrl]);
 
@@ -148,11 +149,11 @@ export function FileViewer({ fileId, fallbackName, onClose }: FileViewerProps) {
           <div className="file-viewer-actions">
             <button type="button" className="btn-secondary" onClick={saveCopy} disabled={saving}>{saving ? "Saving…" : "Save copy"}</button>
             <button type="button" className="btn-secondary file-viewer-fullscreen" onClick={() => void toggleFullscreen()} aria-pressed={fullscreen}>{fullscreen ? "Exit full screen" : "Full screen"}</button>
-            <button type="button" className="drive-dialog-close" onClick={() => void closeViewer()} aria-label="Close">×</button>
+            <button type="button" className="drive-dialog-close" onClick={() => void closeViewer()} aria-label="Close"><NavIcon name="close" /></button>
           </div>
         </header>
         <div className="file-viewer-body">
-          {error ? <div className="error-banner">{error}</div> : !preview || !bytes ? <div className="file-viewer-message">Decrypting and loading preview…</div> : kind === "pdf" ? <PdfCanvas bytes={bytes} /> : kind === "image" ? <img className="file-viewer-image" src={objectUrl} alt={preview.name} /> : kind === "video" ? <video className="file-viewer-media" src={objectUrl} controls /> : kind === "audio" ? <audio className="file-viewer-audio" src={objectUrl} controls /> : kind === "text" ? <pre className="file-viewer-text">{new TextDecoder().decode(bytes)}</pre> : <div className="file-viewer-message">A built-in preview is not available for this file type. You can save a decrypted copy and open it with an installed app.</div>}
+          {error ? <div className="error-banner">{error}</div> : !preview || !bytes ? <div className="file-viewer-message">Decrypting and loading preview…</div> : kind === "pdf" ? <PdfCanvas bytes={bytes} /> : kind === "image" ? <img className="file-viewer-image" src={objectUrl} alt={preview.name} /> : kind === "video" ? <video className="file-viewer-media" src={objectUrl} controls preload="metadata" onDoubleClick={() => void toggleFullscreen()} /> : kind === "audio" ? <div className="file-viewer-audio-wrap"><NavIcon name="audio" className="file-viewer-audio-art" /><strong>{preview.name}</strong><audio className="file-viewer-audio" src={objectUrl} controls preload="metadata" /></div> : kind === "text" ? <pre className="file-viewer-text">{new TextDecoder().decode(bytes)}</pre> : <div className="file-viewer-message">A built-in preview is not available for this file type. You can save a decrypted copy and open it with an installed app.</div>}
         </div>
       </section>
     </div>

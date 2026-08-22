@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, formatBytes } from "../api/tauri";
-import type { DriveFile, DriveFolder } from "../types";
+import { api, formatBytes, onDriveUploadProgress } from "../api/tauri";
+import type { DriveFile, DriveFolder, DriveUploadProgressEvent } from "../types";
 import { DriveItemDialog, type ManagedDriveItem } from "../components/DriveItemDialog";
 import { FileViewer } from "../components/FileViewer";
+import { NavIcon, type NavIconName } from "../components/NavIcons";
+import { previewKindFor } from "../utils/filePreview";
 
 interface Crumb {
   id?: string;
@@ -16,6 +18,14 @@ interface DriveBrowserProps {
   readOnly?: boolean;
 }
 
+function fileIcon(file: DriveFile): NavIconName {
+  const kind = previewKindFor(file.mime_type, file.name);
+  if (kind === "audio") return "audio";
+  if (kind === "video") return "video";
+  if (kind === "image") return "image";
+  return "file";
+}
+
 export function DriveBrowser({ search, root, onExitRoot, readOnly = false }: DriveBrowserProps) {
   const [folders, setFolders] = useState<DriveFolder[]>([]);
   const [files, setFiles] = useState<DriveFile[]>([]);
@@ -24,12 +34,21 @@ export function DriveBrowser({ search, root, onExitRoot, readOnly = false }: Dri
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<ManagedDriveItem | null>(null);
   const [preview, setPreview] = useState<{ id: string; name: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<DriveUploadProgressEvent | null>(null);
+  const [uploadMessage, setUploadMessage] = useState("");
 
   const current = crumbs[crumbs.length - 1];
 
   useEffect(() => {
     setCrumbs([root || { name: "My Drive" }]);
   }, [root?.id, root?.name]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void onDriveUploadProgress(setUploadProgress).then((dispose) => { unlisten = dispose; });
+    return () => unlisten?.();
+  }, []);
   const loadFolder = useCallback(async (folderId?: string) => {
     setLoading(true);
     setError("");
@@ -81,6 +100,29 @@ export function DriveBrowser({ search, root, onExitRoot, readOnly = false }: Dri
     }
   };
 
+  const uploadFiles = async () => {
+    setUploading(true);
+    setUploadProgress(null);
+    setUploadMessage("");
+    setError("");
+    try {
+      const uploaded = await api.uploadDriveFiles(current.id);
+      if (uploaded.length > 0) {
+        setUploadMessage(`${uploaded.length} file${uploaded.length === 1 ? "" : "s"} uploaded securely.`);
+        await loadFolder(current.id);
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const uploadPercent = uploadProgress?.bytes_total
+    ? Math.min(100, Math.round((uploadProgress.bytes_sent / uploadProgress.bytes_total) * 100))
+    : 0;
+
   return (
     <section className="drive-browser">
       <header className="drive-browser-header">
@@ -101,10 +143,19 @@ export function DriveBrowser({ search, root, onExitRoot, readOnly = false }: Dri
             </nav>
           )}
         </div>
-        {!readOnly && <button type="button" className="btn-primary" onClick={createFolder} disabled={!!search.trim()}>New folder</button>}
+        {!readOnly && <div className="drive-browser-header-actions">
+          <button type="button" className="btn-secondary drive-upload-button" onClick={() => void uploadFiles()} disabled={!!search.trim() || uploading}><NavIcon name="upload" />{uploading ? "Uploading…" : "Upload files"}</button>
+          <button type="button" className="btn-primary" onClick={createFolder} disabled={!!search.trim() || uploading}>New folder</button>
+        </div>}
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+      {uploadMessage && <div className="success-banner" role="status">{uploadMessage}</div>}
+      {uploading && <div className="drive-upload-progress" role="status" aria-live="polite">
+        <NavIcon name="upload" />
+        <div><strong>{uploadProgress?.name || "Preparing encrypted upload…"}</strong><span>{uploadProgress ? `File ${uploadProgress.file_index} of ${uploadProgress.file_count} · ${formatBytes(uploadProgress.bytes_sent)} of ${formatBytes(uploadProgress.bytes_total)}` : "Choose one or more files"}</span></div>
+        <div className="drive-upload-track" aria-label={`${uploadPercent}% uploaded`}><span style={{ width: `${uploadPercent}%` }} /></div>
+      </div>}
       {loading ? (
         <div className="preferences-loading">Loading Drive…</div>
       ) : folders.length === 0 && files.length === 0 ? (
@@ -116,14 +167,14 @@ export function DriveBrowser({ search, root, onExitRoot, readOnly = false }: Dri
           </div>
           {folders.map((folder) => (
             <div className="drive-browser-row" role="row" key={`folder-${folder.id}`}>
-              <button className="drive-item-name" type="button" onClick={() => openFolder(folder)}>📁 {folder.name}</button>
+              <button className="drive-item-name" type="button" onClick={() => openFolder(folder)}><NavIcon name="folder" /> {folder.name}</button>
               <span>Folder</span><span>—</span>
               {readOnly ? <span>—</span> : <button className="drive-item-action" type="button" onClick={() => setSelected({ type: "folder", value: folder })}>Manage</button>}
             </div>
           ))}
           {files.map((file) => (
             <div className="drive-browser-row" role="row" key={`file-${file.id}`}>
-              <button className="drive-item-name" type="button" onClick={() => setPreview({ id: file.id, name: file.name })}>📄 {file.name}</button>
+              <button className="drive-item-name" type="button" onClick={() => setPreview({ id: file.id, name: file.name })}><NavIcon name={fileIcon(file)} /> {file.name}</button>
               <span>{file.mime_type || "File"}</span><span>{formatBytes(file.size)}</span>
               <div className="drive-item-actions">
                 <button className="drive-item-action" type="button" onClick={() => setPreview({ id: file.id, name: file.name })}>Open</button>

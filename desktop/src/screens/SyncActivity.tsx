@@ -2,6 +2,7 @@ import { formatBytes, formatRelativeTime } from "../api/tauri";
 import { UploadProgressRing } from "../components/UploadProgressRing";
 import { ConflictResolver } from "../components/ConflictResolver";
 import type { ActivityItem, SyncStatus } from "../types";
+import { NavIcon } from "../components/NavIcons";
 
 interface SyncActivityProps {
   syncStatus: SyncStatus;
@@ -62,7 +63,7 @@ export function SyncActivity({
     <div className="sync-panel">
       <div className="sync-panel-header">
         <div className="status-icon">
-          {isError ? "!" : isSyncing ? "↻" : isOffline ? "×" : isUpToDate ? "☁" : "↻"}
+          <NavIcon name={isError || isOffline ? "error" : isSyncing ? "sync" : isUpToDate ? "cloud" : "sync"} />
         </div>
         <div style={{ flex: 1 }}>
           <div className={`status-title${isError ? " status-error" : ""}`}>
@@ -122,7 +123,7 @@ export function SyncActivity({
                 <tr key={item.id} className={item.status === "error" ? "row-error" : ""}>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span>📄</span>
+                      <span><NavIcon name="file" /></span>
                       <div>
                         <div>{item.name}</div>
                         <div
@@ -144,7 +145,7 @@ export function SyncActivity({
                           className="status-upload-ring-inline"
                         />
                       )}
-                      {st.text === "Synced" && "✓ "}
+                      {st.text === "Synced" && <NavIcon name="check" />}
                       {st.text}
                     </span>
                   </td>

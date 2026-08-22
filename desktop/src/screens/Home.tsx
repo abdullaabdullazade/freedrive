@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, formatRelativeTime } from "../api/tauri";
 import { NotificationMiniCard } from "../components/NotificationMiniCard";
 import { UploadProgressRing } from "../components/UploadProgressRing";
+import { NavIcon } from "../components/NavIcons";
 import type {
   ActivityItem,
   AppNotification,
@@ -130,7 +131,7 @@ export function Home({
             <div
               className={`status-icon${isSyncing ? " status-icon-syncing" : ""}${isError ? " status-icon-error" : ""}`}
             >
-              {isError ? "!" : isSyncing ? "↻" : isUpToDate || isPaused ? "☁" : "↻"}
+              <NavIcon name={isError ? "error" : isSyncing ? "sync" : isUpToDate || isPaused ? "cloud" : "sync"} />
             </div>
             <div className="status-card-heading">
               <div className={`status-title${isError ? " status-error" : ""}`}>
@@ -157,7 +158,7 @@ export function Home({
               recent.map((item) => (
                 <div key={item.id} className="activity-mini-item">
                   <span className="activity-mini-file-icon" aria-hidden>
-                    📄
+                    <NavIcon name="file" />
                   </span>
                   <div className="activity-mini-body">
                     <div className="name">{item.name}</div>
@@ -167,7 +168,7 @@ export function Home({
                       {item.detail}
                     </div>
                   </div>
-                  {item.status === "synced" && <span className="status-check">✓</span>}
+                  {item.status === "synced" && <span className="status-check"><NavIcon name="check" /></span>}
                   {item.status === "deleted" && (
                     <span className="status-deleted" aria-label="Removed" title="Removed">
                       <svg
@@ -187,7 +188,7 @@ export function Home({
                   {item.status === "uploading" && (
                     <UploadProgressRing progress={item.progress} />
                   )}
-                  {item.status === "error" && <span className="status-error-mark">✕</span>}
+                  {item.status === "error" && <span className="status-error-mark"><NavIcon name="close" /></span>}
                 </div>
               ))
             )}
@@ -208,7 +209,7 @@ export function Home({
             ) : (
               sharedItems.map((item) => (
                 <div key={item.share.id} className="activity-mini-item">
-                  <span>{item.item_type === "folder" ? "📁" : "📄"}</span>
+                  <span><NavIcon name={item.item_type === "folder" ? "folder" : "file"} /></span>
                   <div style={{ flex: 1 }}>
                     <div className="name">{item.item_name}</div>
                     <div className="detail">

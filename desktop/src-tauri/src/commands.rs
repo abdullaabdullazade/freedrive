@@ -1228,6 +1228,55 @@ pub async fn search_drive(
 }
 
 #[tauri::command]
+pub async fn get_drive_collection(
+    state: State<'_, AppState>,
+    kind: String,
+) -> Result<crate::api::types::FolderContents, String> {
+    let client = state.api().map_err(|e| e.to_string())?;
+    if kind == "trash" {
+        return client.list_drive_trash().await.map_err(|e| e.to_string());
+    }
+    let query = match kind.as_str() {
+        "recent" => "sort=accessed_at&dir=desc&page_size=80",
+        "starred" => "starred=true&page_size=150",
+        _ => return Err("Unknown Drive collection".into()),
+    };
+    let files = client.list_drive_files(query).await.map_err(|e| e.to_string())?;
+    Ok(crate::api::types::FolderContents {
+        folder: None,
+        folders: Vec::new(),
+        files,
+        next_page_token: None,
+        total_files: None,
+    })
+}
+
+#[tauri::command]
+pub async fn restore_drive_item(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+) -> Result<(), String> {
+    if item_type != "file" && item_type != "folder" { return Err("Unknown Drive item type".into()); }
+    state.api().map_err(|e| e.to_string())?.restore_drive_item(&item_type, &item_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn permanently_delete_drive_item(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: String,
+) -> Result<(), String> {
+    if item_type != "file" && item_type != "folder" { return Err("Unknown Drive item type".into()); }
+    state.api().map_err(|e| e.to_string())?.permanently_delete_drive_item(&item_type, &item_id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn empty_drive_trash(state: State<'_, AppState>) -> Result<(), String> {
+    state.api().map_err(|e| e.to_string())?.empty_drive_trash().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn create_drive_folder(
     state: State<'_, AppState>,
     name: String,
@@ -1243,6 +1292,84 @@ pub async fn create_drive_folder(
         .create_folder(name, parent_id.as_deref())
         .await
         .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DriveUploadProgress {
+    pub name: String,
+    pub file_index: usize,
+    pub file_count: usize,
+    pub bytes_sent: u64,
+    pub bytes_total: u64,
+}
+
+/// Pick files and upload them through the same encrypted pipeline used by sync.
+/// Keeping the picker and upload in one command prevents the webview from asking
+/// the backend to read an arbitrary filesystem path.
+#[tauri::command]
+pub async fn upload_drive_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder_id: Option<String>,
+) -> Result<Vec<crate::api::types::FileRecord>, String> {
+    let picker_app = app.clone();
+    let picked = tokio::task::spawn_blocking(move || {
+        picker_app
+            .dialog()
+            .file()
+            .blocking_pick_files()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|path| PathBuf::from(path.to_string()))
+            .collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if picked.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = state.api().map_err(|e| e.to_string())?;
+    let file_count = picked.len();
+    let mut uploaded = Vec::with_capacity(file_count);
+    for (index, path) in picked.into_iter().enumerate() {
+        if !path.is_file() {
+            return Err(format!("The selected path is not a regular file: {}", path.display()));
+        }
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "A selected file has an invalid name".to_string())?
+            .to_owned();
+        let event_app = app.clone();
+        let event_name = name.clone();
+        let progress: crate::api::UploadProgressCb = Arc::new(move |bytes_sent, bytes_total| {
+            let _ = event_app.emit(
+                "drive-upload-progress",
+                DriveUploadProgress {
+                    name: event_name.clone(),
+                    file_index: index + 1,
+                    file_count,
+                    bytes_sent,
+                    bytes_total,
+                },
+            );
+        });
+        let (record, _) = client
+            .upload_file(
+                &state.db,
+                &path,
+                &name,
+                folder_id.as_deref(),
+                Some(progress),
+            )
+            .await
+            .map_err(|e| format!("Could not upload {name}: {e}"))?;
+        uploaded.push(record);
+    }
+    Ok(uploaded)
 }
 
 #[tauri::command]

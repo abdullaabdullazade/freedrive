@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/tauri";
 import type { SyncFolder } from "../types";
+import { NavIcon } from "./NavIcons";
 
 interface MyComputerTabProps {
   onFoldersChanged?: () => void;
@@ -75,8 +76,8 @@ export function MyComputerTab({ onFoldersChanged }: MyComputerTabProps) {
     return (
       <div className="preferences-empty-state">
         <div className="preferences-empty-illustration" aria-hidden>
-          <span className="preferences-empty-cloud">☁</span>
-          <span className="preferences-empty-folders">📁</span>
+          <span className="preferences-empty-cloud"><NavIcon name="cloud" /></span>
+          <span className="preferences-empty-folders"><NavIcon name="folder" /></span>
         </div>
         <h2>Safely back up your files</h2>
         <p>
@@ -107,7 +108,7 @@ export function MyComputerTab({ onFoldersChanged }: MyComputerTabProps) {
         {folders.map((folder) => (
           <li key={folder.id} className="sync-folder-row">
             <div className="sync-folder-icon" aria-hidden>
-              📁
+              <NavIcon name="folder" />
             </div>
             <div className="sync-folder-info">
               <span className="sync-folder-label">{folder.label}</span>

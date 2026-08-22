@@ -35,6 +35,18 @@ export function Sidebar({
           <NavIcon name="shared" />
           <span className="nav-label">Shared with me</span>
         </button>
+        <button type="button" className={`nav-item${view === "recent" ? " active" : ""}`} onClick={() => onNavigate("recent")}>
+          <NavIcon name="recent" />
+          <span className="nav-label">Recent</span>
+        </button>
+        <button type="button" className={`nav-item${view === "starred" ? " active" : ""}`} onClick={() => onNavigate("starred")}>
+          <NavIcon name="starred" />
+          <span className="nav-label">Starred</span>
+        </button>
+        <button type="button" className={`nav-item${view === "trash" ? " active" : ""}`} onClick={() => onNavigate("trash")}>
+          <NavIcon name="trash" />
+          <span className="nav-label">Trash</span>
+        </button>
         <button
           type="button"
           className={`nav-item${view === "home" ? " active" : ""}`}

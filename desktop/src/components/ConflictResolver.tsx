@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/tauri";
 import type { SyncConflict } from "../types";
+import { NavIcon } from "./NavIcons";
 
 export function ConflictResolver() {
   const [conflicts, setConflicts] = useState<SyncConflict[]>([]);
@@ -39,7 +40,7 @@ export function ConflictResolver() {
   return (
     <section className="conflict-resolver">
       <button type="button" className="conflict-resolver-toggle" onClick={() => setExpanded((value) => !value)}>
-        <span>⚠ {conflicts.length} unresolved sync conflict{conflicts.length === 1 ? "" : "s"}</span>
+        <span><NavIcon name="error" /> {conflicts.length} unresolved sync conflict{conflicts.length === 1 ? "" : "s"}</span>
         <span>{expanded ? "Hide" : "Review"}</span>
       </button>
       {error && <div className="error-banner">{error}</div>}

@@ -1,4 +1,5 @@
 import { Logo } from "../components/Logo";
+import { NavIcon } from "../components/NavIcons";
 
 interface WelcomeProps {
   onGetStarted: () => void;
@@ -9,7 +10,7 @@ export function Welcome({ onGetStarted }: WelcomeProps) {
     <div className="welcome-screen">
       <div className="signin-header">
         <Logo />
-        <button type="button" className="icon-btn">⋮</button>
+        <button type="button" className="icon-btn" aria-label="More options"><NavIcon name="more" /></button>
       </div>
       <div className="welcome-content">
         <h1 className="welcome-title">Welcome to FreeDrive!</h1>
@@ -18,19 +19,19 @@ export function Welcome({ onGetStarted }: WelcomeProps) {
         </p>
         <div className="feature-grid">
           <div className="feature-item">
-            <div className="feature-icon">🛡️</div>
+            <div className="feature-icon"><NavIcon name="shield" /></div>
             <p className="feature-text">
               Safely store your files and folders in FreeDrive
             </p>
           </div>
           <div className="feature-item">
-            <div className="feature-icon">🖥️</div>
+            <div className="feature-icon"><NavIcon name="computer" /></div>
             <p className="feature-text">
               Open Drive files with applications on your computer
             </p>
           </div>
           <div className="feature-item">
-            <div className="feature-icon">🔄</div>
+            <div className="feature-icon"><NavIcon name="sync" /></div>
             <p className="feature-text">
               Automatically keep all your Drive files up to date
             </p>

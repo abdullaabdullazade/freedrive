@@ -31,6 +31,8 @@ import type {
   SyncConflict,
   DriveItemShares,
   DriveFilePreview,
+  DriveFile,
+  DriveUploadProgressEvent,
 } from "../types";
 
 export const api = {
@@ -97,8 +99,17 @@ export const api = {
     invoke<DriveContents>("browse_drive", { folderId: folder_id }),
   searchDrive: (query: string) =>
     invoke<DriveSearchResult>("search_drive", { query }),
+  getDriveCollection: (kind: "recent" | "starred" | "trash") =>
+    invoke<DriveContents>("get_drive_collection", { kind }),
+  restoreDriveItem: (item_type: "file" | "folder", item_id: string) =>
+    invoke<void>("restore_drive_item", { itemType: item_type, itemId: item_id }),
+  permanentlyDeleteDriveItem: (item_type: "file" | "folder", item_id: string) =>
+    invoke<void>("permanently_delete_drive_item", { itemType: item_type, itemId: item_id }),
+  emptyDriveTrash: () => invoke<void>("empty_drive_trash"),
   createDriveFolder: (name: string, parent_id?: string) =>
     invoke<void>("create_drive_folder", { name, parentId: parent_id }),
+  uploadDriveFiles: (folder_id?: string) =>
+    invoke<DriveFile[]>("upload_drive_files", { folderId: folder_id }),
   trashDriveItem: (item_type: "file" | "folder", item_id: string) =>
     invoke<void>("trash_drive_item", { itemType: item_type, itemId: item_id }),
   listDriveFolders: () => invoke<DriveFolder[]>("list_drive_folders"),
@@ -187,6 +198,10 @@ export function onSyncProgress(cb: (progress: SyncProgress) => void) {
 
 export function onUploadProgress(cb: (progress: UploadProgressEvent) => void) {
   return listen<UploadProgressEvent>("upload-progress", (e) => cb(e.payload));
+}
+
+export function onDriveUploadProgress(cb: (progress: DriveUploadProgressEvent) => void) {
+  return listen<DriveUploadProgressEvent>("drive-upload-progress", (e) => cb(e.payload));
 }
 
 export function onMyDriveHydrateFailed(cb: (event: HydrateFailedEvent) => void) {

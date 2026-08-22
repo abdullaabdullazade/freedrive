@@ -1,3 +1,5 @@
+import { NavIcon } from "./NavIcons";
+
 interface Step {
   number: number;
   label: string;
@@ -21,7 +23,7 @@ export function Stepper({ steps, current }: StepperProps) {
             className={`stepper-item${active ? " active" : ""}${done ? " done" : ""}`}
           >
             <div className="stepper-circle">
-              {done ? "✓" : step.number}
+              {done ? <NavIcon name="check" /> : step.number}
             </div>
             <div>
               <div className="stepper-label">{step.label}</div>

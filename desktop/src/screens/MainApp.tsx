@@ -24,6 +24,7 @@ import { Notifications } from "./Notifications";
 import { SyncActivity } from "./SyncActivity";
 import { SharedWithMe } from "./SharedWithMe";
 import { Storage } from "./Storage";
+import { DriveCollection } from "./DriveCollection";
 import type {
   ActivityItem,
   MainView,
@@ -393,7 +394,10 @@ export function MainApp({ user, serverUrl, onLogout, onUserUpdate }: MainAppProp
             />
           )}
           {view === "drive" && <DriveBrowser search={search} />}
+          {view === "recent" && <DriveCollection kind="recent" search={search} />}
+          {view === "starred" && <DriveCollection kind="starred" search={search} />}
           {view === "shared" && <SharedWithMe search={search} />}
+          {view === "trash" && <DriveCollection kind="trash" search={search} />}
           {view === "storage" && <Storage storage={storageInfo} onOpenDrive={() => setView("drive")} />}
           {view === "sync" && (
             <SyncActivity

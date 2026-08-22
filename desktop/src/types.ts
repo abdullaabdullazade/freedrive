@@ -138,11 +138,19 @@ export interface UploadProgressEvent {
   bytes_total: number;
 }
 
+export interface DriveUploadProgressEvent {
+  name: string;
+  file_index: number;
+  file_count: number;
+  bytes_sent: number;
+  bytes_total: number;
+}
+
 export type SyncMode = "stream" | "mirror";
 
 export type PreferencesTab = "my-computer" | "freedrive";
 
-export type MainView = "home" | "drive" | "shared" | "storage" | "sync" | "notifications";
+export type MainView = "home" | "drive" | "recent" | "starred" | "shared" | "trash" | "storage" | "sync" | "notifications";
 
 export interface StorageInfo {
   used_bytes: number;
