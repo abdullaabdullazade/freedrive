@@ -1,4 +1,12 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tokens {
@@ -58,6 +66,7 @@ pub struct Computer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputersResponse {
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub computers: Vec<Computer>,
 }
 
@@ -91,9 +100,9 @@ pub struct FileRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FolderContents {
     pub folder: Option<Folder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub folders: Vec<Folder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub files: Vec<FileRecord>,
     #[serde(default)]
     pub next_page_token: Option<String>,
@@ -103,14 +112,15 @@ pub struct FolderContents {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub files: Vec<FileRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub files: Vec<FileRecord>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub folders: Vec<Folder>,
     #[serde(default)]
     pub total: i64,
@@ -120,7 +130,7 @@ pub struct SearchResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FoldersResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub folders: Vec<Folder>,
 }
 
@@ -136,7 +146,7 @@ pub struct FileVersion {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileVersionsResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub versions: Vec<FileVersion>,
 }
 
@@ -173,7 +183,7 @@ pub struct ShareLink {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShareLinksResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub links: Vec<ShareLink>,
 }
 
@@ -212,7 +222,7 @@ pub struct SharedItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SharedWithMeResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub items: Vec<SharedItem>,
 }
 
@@ -252,6 +262,7 @@ pub struct SyncChange {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncChangesResponse {
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub changes: Vec<SyncChange>,
     pub next_cursor: i64,
 }
@@ -259,8 +270,31 @@ pub struct SyncChangesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComputerSnapshot {
     pub cursor: i64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub folders: Vec<Folder>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub files: Vec<FileRecord>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FilesResponse, FolderContents, SearchResult};
+
+    #[test]
+    fn nullable_api_collections_decode_as_empty_lists() {
+        let files: FilesResponse = serde_json::from_str(r#"{"files":null}"#).unwrap();
+        assert!(files.files.is_empty());
+
+        let search: SearchResult =
+            serde_json::from_str(r#"{"files":null,"folders":null,"page":0,"total":0}"#).unwrap();
+        assert!(search.files.is_empty());
+        assert!(search.folders.is_empty());
+
+        let folder: FolderContents = serde_json::from_str(
+            r#"{"folder":null,"folders":null,"files":null,"next_page_token":null}"#,
+        )
+        .unwrap();
+        assert!(folder.files.is_empty());
+        assert!(folder.folders.is_empty());
+    }
 }
