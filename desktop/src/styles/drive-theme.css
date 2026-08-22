@@ -2337,6 +2337,8 @@ input {
 .file-viewer-header strong { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-viewer-header span { color: var(--fd-text-secondary); font-size: 12px; }
 .file-viewer-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.file-viewer-shortcut { display: inline-flex; align-items: center; gap: 6px; margin-right: 4px; color: var(--fd-text-secondary); font-size: 12px; }
+.file-viewer-shortcut kbd { min-width: 44px; padding: 4px 7px; border: 1px solid var(--fd-border); border-bottom-width: 2px; border-radius: 6px; color: var(--fd-text); background: var(--fd-bg); text-align: center; font: inherit; }
 .file-viewer-actions .btn-secondary { padding: 8px 14px; white-space: nowrap; }
 .file-viewer-fullscreen { min-width: 92px; }
 .file-viewer-body { width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
@@ -2349,6 +2351,7 @@ input {
 .file-viewer-audio-wrap .file-viewer-audio { width: 100%; }
 .drive-dialog-close .nav-icon { width: 18px; height: 18px; }
 .file-viewer-text { align-self: stretch; width: 100%; margin: 0; padding: 24px; overflow: auto; color: var(--fd-text); background: var(--fd-bg); white-space: pre-wrap; word-break: break-word; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.file-viewer-binary { white-space: pre; word-break: normal; color: var(--fd-text-secondary); }
 .pdf-viewer { align-self: stretch; width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .pdf-toolbar { min-height: 48px; padding: 8px 12px; border-bottom: 1px solid var(--fd-border); background: var(--fd-bg-elevated); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 18px; flex-shrink: 0; }
 .pdf-toolbar-group { display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -2383,6 +2386,7 @@ input {
   .file-viewer { border-radius: 0; border: 0; }
   .file-viewer-header { min-height: 0; padding: 10px 12px; gap: 10px; }
   .file-viewer-actions { gap: 5px; }
+  .file-viewer-shortcut { display: none; }
   .file-viewer-actions .btn-secondary { padding: 7px 10px; font-size: 12px; }
   .file-viewer-fullscreen { min-width: 0; }
   .pdf-toolbar { justify-content: space-between; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectiveMimeType, previewKindFor } from "./filePreview";
+import { binaryPreview, effectiveMimeType, previewKindFor, textPreview } from "./filePreview";
 
 describe("previewKindFor", () => {
   it("recognizes desktop-safe preview formats", () => {
@@ -19,7 +19,13 @@ describe("previewKindFor", () => {
     expect(effectiveMimeType("audio/flac", "song.bin")).toBe("audio/flac");
   });
 
-  it("does not render active SVG content", () => {
-    expect(previewKindFor("image/svg+xml", "logo.svg")).toBe("unsupported");
+  it("opens code safely and falls back to a binary inspector", () => {
+    expect(previewKindFor("image/svg+xml", "logo.svg")).toBe("text");
+    expect(previewKindFor("application/octet-stream", "main.cpp")).toBe("text");
+    expect(previewKindFor("application/octet-stream", "config.yml")).toBe("text");
+    expect(previewKindFor("application/x-python-code", "worker.py")).toBe("text");
+    expect(previewKindFor("application/octet-stream", "archive.unknown")).toBe("binary");
+    expect(binaryPreview(new Uint8Array([0x41, 0, 0xff]))).toContain("41 00 ff");
+    expect(textPreview(new TextEncoder().encode("hello"))).toBe("hello");
   });
 });
