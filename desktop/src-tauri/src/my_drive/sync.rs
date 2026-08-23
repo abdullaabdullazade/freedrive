@@ -203,7 +203,6 @@ async fn poll_my_drive_folder(
             upload_sem.clone(),
             on_busy,
             stats,
-            excluded_remote_folders,
         )
         .await;
         notify_directory_updated(&local_dir);
@@ -218,7 +217,6 @@ async fn poll_my_drive_folder(
             download_sem.clone(),
             on_busy,
             stats,
-            excluded_remote_folders,
         )
         .await;
     }
@@ -237,6 +235,7 @@ async fn poll_my_drive_folder(
             suppress,
             on_busy,
             stats,
+            excluded_remote_folders,
         ))
         .await?;
     }
@@ -254,6 +253,7 @@ async fn poll_my_drive_folder(
             suppress,
             on_busy,
             stats,
+            excluded_remote_folders,
         ))
         .await?;
     }
