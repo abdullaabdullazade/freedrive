@@ -1,6 +1,6 @@
 # FreeDrive Mobile
 
-React Native + Expo client for [FreeDrive](https://github.com/marcinx98x/freedrive). Android-first. Sign in to your self-hosted server and browse My Drive, Computers, Starred, Shared, Recent, and Bin.
+React Native + Expo client for [FreeDrive](https://github.com/abdullaabdullazade/freedrive). Android-first. Sign in to your self-hosted server and browse My Drive, Computers, Starred, Shared, Recent, and Bin.
 
 Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo root (`cmd/freedrive`, `internal/`).
 
@@ -89,13 +89,13 @@ powershell -File mobile\scripts\build-apk.ps1
 Manual steps (same as the script):
 
 ```powershell
-robocopy "C:\Users\marci\Desktop\Projekty\freedrive-master\mobile" "C:\fdm" /E /XD node_modules android .expo dist
+robocopy "C:\path\to\freedrive\mobile" "C:\fdm" /E /XD node_modules android .expo dist
 $env:CI = "1"
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
 $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot"
 cd C:\fdm\android
 .\gradlew.bat assembleRelease
-Copy-Item "C:\fdm\android\app\build\outputs\apk\release\app-release.apk" "C:\Users\marci\Desktop\Projekty\freedrive-master\mobile\dist\FreeDrive-1.0.0.apk" -Force
+Copy-Item "C:\fdm\android\app\build\outputs\apk\release\app-release.apk" "C:\path\to\freedrive\mobile\dist\FreeDrive-1.0.0.apk" -Force
 ```
 
 Do **not** run `expo prebuild` on every rebuild — only when `C:\fdm\android` is missing or **native** config changed (`app.json` plugins, new Expo native module such as `expo-image-manipulator`, or `plugins/with-freedrive-downloads/`).

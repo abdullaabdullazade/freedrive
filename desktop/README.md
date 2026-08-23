@@ -1,6 +1,6 @@
 # FreeDrive Desktop
 
-Desktop sync client for [FreeDrive](https://github.com/marcinx98x/freedrive) — self-hosted cloud storage with a Drive-like web UI.
+Desktop sync client for [FreeDrive](https://github.com/abdullaabdullazade/freedrive) — self-hosted cloud storage with a Drive-like web UI.
 
 Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo root (`cmd/freedrive`, `internal/`).
 
@@ -21,8 +21,8 @@ Part of the **FreeDrive monorepo** (`desktop/`). The server lives in the repo ro
 - **Home & Sync activity** — status dashboard inspired by Google Drive for desktop
 - **Google Drive-style sidebar** — SVG icons for Home, Sync activity, and Notifications with alert badge; top bar uses matching SVG icons (pause/play, settings, help, lock)
 - **Drive-like scrollbar** — transparent track, thin thumb only
-- **Fixed window size** — main 1100×720 and Preferences 960×640 are not resizable
-- **Help** — top bar, Settings menu, and Preferences header open [github.com/marcinx98x/freedrive](https://github.com/marcinx98x/freedrive)
+- **Resizable and fullscreen windows** — main and Preferences windows can be resized, maximized, or used fullscreen
+- **Help** — top bar, Settings menu, and Preferences header open [github.com/abdullaabdullazade/freedrive](https://github.com/abdullaabdullazade/freedrive)
 - **Preferences window** — dedicated window opened from the gear icon: **My computer** (manage sync folders), **FreeDrive** (Windows Explorer / CfAPI status), **Settings** (encryption, launch on login, start minimized to tray, open sync log)
 - **Notifications** — alerts for sync errors, paused sync, and storage warnings
 - **Profile menu** — server avatar, storage bar from `GET /api/v1/me/storage` (`{used} of {total} used`, same as web), Manage storage, Sign out

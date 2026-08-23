@@ -11,12 +11,16 @@
 <p align="center"><strong>Licensed under MIT</strong></p>
 
 <p align="center">
-  <a href="https://github.com/marcinx98x/freedrive"><img src="https://img.shields.io/badge/Website-freedrive-blue?style=flat-square" alt="Website"/></a>
-  <a href="https://github.com/marcinx98x/freedrive/releases"><img src="https://img.shields.io/github/v/release/marcinx98x/freedrive?style=flat-square" alt="Release"/></a>
-  <a href="https://github.com/marcinx98x/freedrive/stargazers"><img src="https://img.shields.io/github/stars/marcinx98x/freedrive?style=flat-square" alt="Stars"/></a>
-  <a href="https://github.com/marcinx98x/freedrive/blob/master/LICENSE"><img src="https://img.shields.io/github/license/marcinx98x/freedrive?style=flat-square" alt="License"/></a>
-  <a href="https://github.com/marcinx98x/freedrive"><img src="https://img.shields.io/github/go-mod/go-version/marcinx98x/freedrive?style=flat-square" alt="Go version"/></a>
-  <a href="https://hub.docker.com/r/marcinx98x/freedrive"><img src="https://img.shields.io/docker/pulls/marcinx98x/freedrive?style=flat-square" alt="Docker pulls"/></a>
+  <a href="https://abdullaabdullazade.github.io/freedrive/"><img src="https://img.shields.io/badge/Website-freedrive-blue?style=flat-square" alt="Website"/></a>
+  <a href="https://github.com/abdullaabdullazade/freedrive/releases"><img src="https://img.shields.io/github/v/release/abdullaabdullazade/freedrive?style=flat-square" alt="Release"/></a>
+  <a href="https://github.com/abdullaabdullazade/freedrive/stargazers"><img src="https://img.shields.io/github/stars/abdullaabdullazade/freedrive?style=flat-square" alt="Stars"/></a>
+  <a href="https://github.com/abdullaabdullazade/freedrive/blob/master/LICENSE"><img src="https://img.shields.io/github/license/abdullaabdullazade/freedrive?style=flat-square" alt="License"/></a>
+  <a href="https://github.com/abdullaabdullazade/freedrive"><img src="https://img.shields.io/github/go-mod/go-version/abdullaabdullazade/freedrive?style=flat-square" alt="Go version"/></a>
+  <a href="https://github.com/users/abdullaabdullazade/packages/container/freedrive"><img src="https://img.shields.io/badge/GHCR-ghcr.io%2Fabdullaabdullazade%2Ffreedrive-2496ED?style=flat-square&logo=docker&logoColor=white" alt="GHCR image"/></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/abdullaabdullazade/freedrive/releases/latest"><strong>Download FreeDrive for Windows, macOS, Linux, and Android</strong></a>
 </p>
 
 ---
@@ -33,14 +37,15 @@
 - [Production Install (systemd)](#production-install-systemd)
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
-- [Desktop Client (beta)](#desktop-client-beta)
-- [Mobile Client (MVP)](#mobile-client-mvp)
+- [Desktop Client](#desktop-client)
+- [Mobile Client](#mobile-client)
 - [Project Structure](#project-structure)
 - [Deployment Options](#deployment-options)
 - [Operations](#operations)
 - [Star History](#star-history)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
+- [Maintainer](#maintainer)
 - [License](#license)
 
 ---
@@ -332,63 +337,46 @@ If your threat model requires strict end-to-end guarantees, review key handling 
 
 ```bash
 go mod download
-go run ./cmd/freedrive
+FREEDRIVE_ADMIN_PASSWORD='replace-with-a-strong-password' go run ./cmd/freedrive
 ```
 
 Open:
 
 - `http://localhost:8080`
 
-Default bootstrap admin (if first user is auto-created):
+Bootstrap admin email (when the database has no users):
 
 - Email: `admin@freedrive.local`
-- Password: `admin123`
+- Password: no default; set `FREEDRIVE_ADMIN_PASSWORD` to at least 12 characters
 
-Important: change defaults immediately in non-dev environments.
+FreeDrive refuses the first startup when the bootstrap password is missing or shorter than 12 characters.
 
 ### Run Published Docker Image
 
-Images are built by [GitHub Actions](.github/workflows/docker-publish.yml) on push to `master` and published to:
+Multi-architecture images are built by [GitHub Actions](.github/workflows/docker-publish.yml) on push to `master` and published to:
 
-- **Docker Hub:** [`marcinx98x/freedrive`](https://hub.docker.com/r/marcinx98x/freedrive) — public, no login required
-- **GHCR:** `ghcr.io/marcinx98x/freedrive` — may require GitHub login if the package is private
+- **GHCR:** [`ghcr.io/abdullaabdullazade/freedrive`](https://github.com/users/abdullaabdullazade/packages/container/freedrive) — public, no login required
 
 Tags: `latest`, `master`, `sha-<commit>`. Multi-arch: `linux/amd64`, `linux/arm64`.
 
-**Docker Hub (recommended):**
-
 ```bash
-docker pull marcinx98x/freedrive:latest
+docker pull ghcr.io/abdullaabdullazade/freedrive:latest
 docker run -d \
   --name freedrive \
   -p 8080:8080 \
   -e FREEDRIVE_ADMIN_EMAIL=admin@freedrive.local \
-  -e FREEDRIVE_ADMIN_PASSWORD=change-me-now \
+  -e FREEDRIVE_ADMIN_PASSWORD=replace-with-a-strong-password \
   -v freedrive-data:/app/data \
-  marcinx98x/freedrive:latest
+  ghcr.io/abdullaabdullazade/freedrive:latest
 ```
 
-**GHCR** (log in first if the package is private; GitHub PAT with `read:packages` scope):
-
-```bash
-echo $GITHUB_TOKEN | docker login ghcr.io -u marcinx98x --password-stdin
-docker pull ghcr.io/marcinx98x/freedrive:latest
-docker run -d \
-  --name freedrive \
-  -p 8080:8080 \
-  -e FREEDRIVE_ADMIN_EMAIL=admin@freedrive.local \
-  -e FREEDRIVE_ADMIN_PASSWORD=change-me-now \
-  -v freedrive-data:/app/data \
-  ghcr.io/marcinx98x/freedrive:latest
-```
-
-To make the GHCR package publicly pullable without login: GitHub → **Packages** → **freedrive** → **Package settings** → **Change visibility** → **Public**.
+The workflow can additionally publish to Docker Hub when repository secrets provide Docker Hub credentials, but GHCR is the canonical public image for this repository.
 
 ### Run With Docker Compose
 
-`docker-compose.yml` pulls `marcinx98x/freedrive:latest` from Docker Hub, runs a single `freedrive` service, and maps a host folder to `/app/data` through a bind mount. To use GHCR instead, set `image: ghcr.io/marcinx98x/freedrive:latest` in the compose file.
+`docker-compose.yml` pulls `ghcr.io/abdullaabdullazade/freedrive:latest`, runs a single `freedrive` service, and maps a host folder to `/app/data` through a bind mount.
 
-Before the first start, edit `docker-compose.yml`: set a strong `FREEDRIVE_ADMIN_PASSWORD` (and `FREEDRIVE_ADMIN_EMAIL`), adjust the published port if needed, and change the bind-mount path (`/volume2/docker/freedrive/data`) to a folder that exists on your host.
+Before the first start, copy `.env.example` to `.env`, set a strong `FREEDRIVE_ADMIN_PASSWORD` (and optionally `FREEDRIVE_ADMIN_EMAIL`), adjust the published port if needed, and set `FREEDRIVE_DATA_PATH` when data should live outside the default `./data` directory.
 
 ```bash
 docker compose pull
@@ -403,7 +391,7 @@ Runtime data (the `freedrive.db` database, encrypted `blobs/`, and `jwt_secret.k
 
 ### Automatic Updates (Watchtower, optional)
 
-The default `docker-compose.yml` does not include Watchtower. If you want automatic updates, add a [Watchtower](https://containrrr.dev/watchtower/) container that periodically checks Docker Hub for a newer `latest` image and recreates the FreeDrive container:
+The default `docker-compose.yml` does not include Watchtower. If you want automatic updates, add a [Watchtower](https://containrrr.dev/watchtower/) container that periodically checks GHCR for a newer `latest` image and recreates the FreeDrive container:
 
 - Run Watchtower with `--cleanup --label-enable --interval 3600` (hourly; `--cleanup` removes the old image after each update).
 - Add the label `com.centurylinklabs.watchtower.enable=true` to the `freedrive` service so Watchtower only updates FreeDrive and leaves your other containers untouched.
@@ -453,7 +441,7 @@ docker inspect --format '{{json .Mounts}}' freedrive
 # digest the container is currently running
 docker inspect --format '{{.Image}}' freedrive
 # digest of the local latest image
-docker inspect --format '{{index .RepoDigests 0}}' marcinx98x/freedrive:latest
+docker inspect --format '{{index .RepoDigests 0}}' ghcr.io/abdullaabdullazade/freedrive:latest
 ```
 
 After the app is updated, the browser fetches fresh frontend assets automatically (the server sends `ETag` + `Cache-Control: no-cache`); a hard refresh (Ctrl+F5) is only needed if you loaded a version built before this behavior existed.
@@ -512,7 +500,7 @@ Environment variables loaded by `internal/config/config.go`:
 | `FREEDRIVE_JWT_SECRET` | JWT signing secret | auto-generated if empty |
 | `FREEDRIVE_MAX_UPLOAD_MB` | Max upload size (MB) | `5120` |
 | `FREEDRIVE_ADMIN_EMAIL` | Initial admin email | `admin@freedrive.local` |
-| `FREEDRIVE_ADMIN_PASSWORD` | Initial admin password | `admin123` |
+| `FREEDRIVE_ADMIN_PASSWORD` | Initial admin password; required on an empty database and must be at least 12 characters | none |
 
 ---
 
@@ -666,7 +654,7 @@ For encrypted payloads **> 32 MiB**, clients open a session and send **8 MiB
 
 ---
 
-## Desktop Client (beta)
+## Desktop Client
 
 The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app (Tauri 2 + React + Rust). It talks to the server over the same REST API as the web UI.
 
@@ -683,7 +671,7 @@ The [`desktop/`](desktop/) directory contains the **FreeDrive Desktop** sync app
 - **Google Drive-style UI** — sidebar with SVG icons (Home, Sync activity, Notifications) and alert badge
 - **Drive-like scrollbar** — transparent track, thin thumb only
 - **Settings menu** — the main-window gear opens **Preferences**, **Error list**, **About**, **Help** (opens the GitHub repo), and **Quit**
-- **Fixed window size** — main (1100×720) and Preferences (960×640) windows are not resizable
+- **Resizable and fullscreen windows** — main and Preferences windows can be resized, maximized, or used fullscreen
 - **Preferences window** — separate window with **My computer** (sync folders, add/remove), **FreeDrive** (My Drive stream/mirror mode), and a single scrollable Settings page
 - **Unified Settings page** — launch on login, start minimized (tray), diagnostics, encryption and keys, File Explorer integration, and server information are expanded in one view
 - **Error list** — opens Sync activity filtered to failed items, with an All / Errors toggle
@@ -741,7 +729,7 @@ To update an existing install, run the new `FreeDrive_*_x64-setup.exe` (in-place
 
 ---
 
-## Mobile Client (MVP)
+## Mobile Client
 
 The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app (Expo / React Native). It connects to the same REST API as the web UI and desktop client.
 
@@ -757,11 +745,11 @@ The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app
 - **New Document / Spreadsheet** — creates encrypted `Document.txt` / `Spreadsheet.xlsx`; Document opens in the text editor; Spreadsheet opens the in-app sheet grid
 - **Branding** — app icon, splash, and SVG icons match the desktop FreeDrive logo and Material-style glyphs
 - **User avatar** — circular profile photo from `GET /api/v1/me` (`avatar_url` data-URL), with initials fallback
-- **Profile menu** — storage bar (`{used} of {total} used`) from `/me/storage`, Manage storage (web), Sign out
+- **Profile menu** — storage bar (`{used} of {total} used`) from `/me/storage`, native Manage storage, admin-panel access for administrators, and Sign out
 - **Device identification** — sessions appear as `Mobile (…)` on the account Devices list
 - **File actions** — open, share a decrypted copy, download, star/unstar, and **Move to bin** (soft-delete on the server; item appears in Bin / Trash; permanent delete from Bin). Desktop My Drive poll drops matching Explorer placeholders within ~20s; creating the same name again does not revive the trashed folder into My Drive
 - **Cross-device decryption** — syncs password-wrapped account and file keys so encrypted files can be opened on Android
-- **In-app preview** — images, video (native-controls player via `expo-video`), plain text (Markdown/JSON), spreadsheets (`.xlsx` / `.xls` / `.csv`), PDF (open with another app)
+- **File preview** — images, video (`expo-video`), audio (`expo-audio`), plain text and source files, Markdown/JSON/YAML, spreadsheets (`.xlsx` / `.xls` / `.csv`), and PDFs through installed device viewers
 - **Large media** — images/videos over **100 MiB** are not opened in-app (Save / Share / Cancel instead) to avoid OOM crashes; smaller files may decrypt via native AES-GCM on disk
 - **Spreadsheet editor** — SheetJS grid with formula bar and sheet tabs; Edit / Save uploads via `POST /api/v1/files/{id}/content`
 - **Image gallery** — swipe between photos in the same loaded list; background decrypt for neighbors; counter and image content pad above the Android system nav bar (same pattern as video)
@@ -770,7 +758,7 @@ The [`mobile/`](mobile/) directory contains the **FreeDrive Mobile** Android app
 - **Edit & save** — text Edit/Save, sheet Edit/Save, and image Rotate/Save re-encrypt and upload via the same native multipart path to `POST /api/v1/files/{id}/content`
 - **Android downloads** — native `FreeDriveDownloads` module (Expo config plugin under `mobile/plugins/with-freedrive-downloads/`) writes into the shared Downloads collection via MediaStore; shows an ongoing “Downloading…” status notification, then a tappable “Download complete” notification that opens the file (Android 13+ may ask for notification permission)
 - **Status notifications** — no persistent “app running” foreground notification; status-bar icons only for downloads and while video is playing
-- Offline files are planned for later releases
+- **Offline files** — save encrypted files for offline access, browse them from the Offline screen, and remove local copies independently of cloud files
 - See [`mobile/README.md`](mobile/README.md) for Expo Go setup and local APK build notes
 
 Quick start:
@@ -824,7 +812,7 @@ desktop/                  # Tauri desktop sync client (React + Rust)
   package.json
   README.md               # build & dev instructions
 
-mobile/                   # Expo React Native Android client (MVP)
+mobile/                   # Expo React Native Android client
   src/                    # screens, navigation, API client, auth, crypto
   plugins/                # Expo config plugins (e.g. FreeDriveDownloads / MediaStore)
   assets/                 # app icon / splash (from FreeDrive logo)
@@ -881,7 +869,7 @@ curl -s http://localhost:8080/api/v1/health
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=marcinx98x/freedrive&type=Date&legend=top-left)](https://www.star-history.com/?repos=marcinx98x%2Ffreedrive&type=date&legend=top-left)
+[![Star History Chart](docs/star-history.svg)](https://www.star-history.com/?repos=abdullaabdullazade%2Ffreedrive&type=date&legend=top-left)
 
 ---
 
@@ -934,6 +922,12 @@ Suggested workflow:
 4. Submit focused PR with clear change summary
 
 If you are proposing architecture-level changes, open an issue first for design alignment.
+
+---
+
+## Maintainer
+
+FreeDrive is maintained by [Abdulla Abdullazade](https://github.com/abdullaabdullazade). Issues, releases, packages, and project documentation are managed through [`abdullaabdullazade/freedrive`](https://github.com/abdullaabdullazade/freedrive). Individual contributions remain attributed to their authors in the Git history.
 
 ---
 
