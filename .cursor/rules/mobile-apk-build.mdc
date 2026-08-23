@@ -1,0 +1,49 @@
+---
+description: Canonical Windows APK build for mobile — never change this procedure
+alwaysApply: true
+---
+
+# Mobile APK build (Windows) — DO NOT CHANGE
+
+When the user asks to build an APK, rebuild mobile, or update `mobile/dist`, follow **exactly** this procedure. Do not improvise (no `subst`, no build from `Desktop\Projekty\...`, no full clean unless explicitly requested).
+
+## Default: incremental build (~1–5 min)
+
+1. **Sync sources** to `C:\fdm` (keep existing `C:\fdm\android` and Gradle cache):
+   - `robocopy` from `mobile/` → `C:\fdm`
+   - Exclude: `node_modules`, `android`, `.expo`, `dist`
+   - **Never** `Remove-Item C:\fdm` for routine rebuilds
+
+2. **Build** from short path only:
+   - `cd C:\fdm\android`
+   - `.\gradlew.bat assembleRelease`
+   - **No** `expo prebuild` unless `C:\fdm\android` is missing or native deps changed (`app.json`, new Expo plugin, new native package)
+
+3. **Copy output** (user expects APK here):
+   - From: `C:\fdm\android\app\build\outputs\apk\release\app-release.apk`
+   - To: `mobile\dist\FreeDrive-1.0.0.apk`
+
+Or run: `powershell -File mobile\scripts\build-apk.ps1`
+
+## Environment (set before Gradle)
+
+```
+$env:CI = "1"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot"
+```
+
+## Forbidden (causes failures)
+
+- Building from `mobile\android` under `Desktop\Projekty\...` → Windows MAX_PATH / CMake ninja errors
+- `subst` on repo root → mixed `C:\` and drive-letter paths break Gradle
+- Wiping `C:\fdm` + full `npm ci` + `prebuild` for every TS-only change → unnecessary 5–15 min builds
+- Skipping copy to `mobile\dist` → user won't see the APK
+
+## Full clean (first build or native changes only)
+
+Only when `C:\fdm\android` does not exist or native config changed:
+
+1. Fresh `C:\fdm` + `npm ci`
+2. `npx expo prebuild --platform android` in `C:\fdm`
+3. Then `gradlew assembleRelease` + copy to `mobile\dist`

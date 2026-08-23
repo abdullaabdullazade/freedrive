@@ -22,6 +22,11 @@ build/
 *.out
 *.test
 
+# Desktop client (Tauri)
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+
 # Logs and temp
 *.log
 tmp/

@@ -22,6 +22,21 @@ type File struct {
 	AccessedAt    time.Time  `json:"accessed_at"`
 }
 
+// FileMeta is a lightweight projection of a file used for storage breakdown.
+type FileMeta struct {
+	MimeType      string
+	Name          string
+	EncryptedSize int64
+}
+
+// DuplicateGroup describes files sharing owner, name, and encrypted size.
+type DuplicateGroup struct {
+	OwnerID       string `json:"owner_id"`
+	Name          string `json:"name"`
+	EncryptedSize int64  `json:"encrypted_size"`
+	Count         int    `json:"count"`
+}
+
 // FileVersion represents a historical version of a file.
 type FileVersion struct {
 	ID        string    `json:"id"`

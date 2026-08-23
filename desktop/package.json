@@ -1,0 +1,40 @@
+{
+  "name": "freedrive-desktop",
+  "private": true,
+  "version": "0.1.26",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:tauri": "node scripts/install-linux-dev-icon.mjs && vite",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "build:exe": "npm run icons && npm run tauri build",
+    "build:exe:clean": "npm run icons && cargo clean --manifest-path src-tauri/Cargo.toml && npm run tauri build",
+    "install:update": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-update.ps1",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "icons:source": "node scripts/generate-app-icon.mjs",
+    "icons": "npm run icons:source && tauri icon app-icon.png"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-notification": "^2.3.3",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
+    "pdfjs-dist": "^5.4.149",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4",
+    "vitest": "^3.2.7"
+  }
+}

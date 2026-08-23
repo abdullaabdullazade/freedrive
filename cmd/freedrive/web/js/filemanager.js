@@ -7,15 +7,22 @@ const FileManager = (() => {
     let currentView = localStorage.getItem('fd_view') || 'grid';
     let selectedItems = new Set();
     let selectedPrimary = null;
+    let selectionAnchor = null;
     let contextTarget = null;
     let allFiles = [];
     let allFolders = [];
+    let registeredComputers = [];
+    let currentComputerContext = null;
     let filteredFiles = [];
     let filteredFolders = [];
+    let folderFilesPageToken = '';
+    let folderFilesLoadingMore = false;
+    let folderFilesHasMore = false;
     let sortBy = 'modified';
     let sortDir = 'desc';
     let searchDebounce = null;
     let usersCache = [];
+    let sharedItemIds = new Set();
     let shareDraft = [];
     let shareTarget = null;
     let editorState = null;
@@ -23,6 +30,13 @@ const FileManager = (() => {
     let insecureUploadNoticeShown = false;
     const folderStatsCache = new Map();
     const folderStatsPending = new Map();
+    const folderNameCache = new Map();
+    let homeSuggestedFolders = [];
+    let homeSuggestedFiles = [];
+    let homeSuggestedVisible = 0;
+    const HOME_SUGGESTED_INITIAL = 6;
+    const HOME_SUGGESTED_STEP = 6;
+    let searchGlobalCloseBound = false;
     const zipCrcTable = (() => {
         const table = new Uint32Array(256);
         for (let n = 0; n < 256; n += 1) {
@@ -65,8 +79,9 @@ const FileManager = (() => {
         document.getElementById('topbar-view-grid')?.addEventListener('click', () => setView('grid'));
         document.getElementById('topbar-view-list')?.addEventListener('click', () => setView('list'));
         document.getElementById('new-folder-btn')?.addEventListener('click', createFolder);
+        document.getElementById('empty-bin-btn')?.addEventListener('click', () => emptyBin());
         document.getElementById('home-warning-clean')?.addEventListener('click', () => {
-            window.location.hash = '#/storage';
+            App.navigate('/storage');
         });
         document.getElementById('home-warning-manage')?.addEventListener('click', async () => {
             try {
@@ -141,12 +156,28 @@ const FileManager = (() => {
             searchDebounce = setTimeout(() => {
                 const q = e.target.value.trim();
                 if (!q) {
+                    hideSearchDropdown();
                     refresh();
                     return;
                 }
-                quickSearch(q);
-            }, 260);
+                renderSearchDropdown(q);
+            }, 220);
         });
+
+        const searchInput = document.getElementById('search-input');
+        searchInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const q = searchInput.value.trim();
+                if (q) searchAllResults(q);
+            } else if (e.key === 'Escape') {
+                hideSearchDropdown();
+            }
+        });
+        searchInput?.addEventListener('focus', () => {
+            const q = searchInput.value.trim();
+            if (q) renderSearchDropdown(q);
+        });
+        bindSearchGlobalClose();
 
         document.querySelectorAll('.sort-col').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -163,11 +194,10 @@ const FileManager = (() => {
             });
         });
 
-        // Click on empty grid area → deselect + close panel
+        // Click on empty grid area → deselect (panel stays open until X/Escape)
         document.getElementById('file-grid')?.addEventListener('click', (e) => {
             if (e.target.closest('.file-row, .file-card')) return;
             clearSelection();
-            hideDetailsPanel();
         });
     }
 
@@ -178,8 +208,16 @@ const FileManager = (() => {
             }
         });
 
-        document.getElementById('content-area')?.addEventListener('scroll', () => {
+        document.getElementById('content-area')?.addEventListener('scroll', (e) => {
             document.getElementById('context-menu')?.classList.add('hidden');
+            const el = e.target;
+            if (!el || folderFilesLoadingMore || !folderFilesHasMore) return;
+            if (currentPage !== 'files' && currentPage !== 'computers') return;
+            if (currentPage === 'computers' && !currentFolderId) return;
+            const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+            if (remaining < 240) {
+                loadMoreFolderFiles();
+            }
         });
     }
 
@@ -276,6 +314,36 @@ const FileManager = (() => {
         return API.getUser() || { id: '', username: 'User', email: '' };
     }
 
+    function canWriteFileItem(item) {
+        const me = getCurrentUser();
+        if (!me?.id || !item) return false;
+        if (item.owner_id === me.id) return true;
+        const role = item.share_role || permissionToRole(item.share?.permission);
+        return role === 'editor';
+    }
+
+    function lookupUserLabel(userId) {
+        if (!userId) return 'Unknown';
+        const me = getCurrentUser();
+        if (me?.id && userId === me.id) return me.username || me.email || 'You';
+        const hit = usersCache.find((u) => u.id === userId);
+        return hit?.label || hit?.email || hit?.username || userId.slice(0, 8);
+    }
+
+    async function requestApprovalForFile(file) {
+        const email = await Components.prompt('Request approval', '', 'Approver email');
+        if (!email || !String(email).trim()) return;
+        try {
+            await API.approvals.create(file.id, { approver_email: String(email).trim() });
+            Components.toast('Approval requested', 'success');
+            if (selectedPrimary?.type === 'file' && selectedPrimary.data?.id === file.id) {
+                await renderDetailsActivity(selectedPrimary);
+            }
+        } catch (err) {
+            Components.toast(err?.message || 'Failed to request approval', 'error');
+        }
+    }
+
     function currentUserLabel() {
         const u = getCurrentUser();
         return u.username || u.email || 'Me';
@@ -285,7 +353,82 @@ const FileManager = (() => {
         if (item.owner_name) return item.owner_name;
         const me = getCurrentUser();
         if (item.owner_id && me.id && item.owner_id === me.id) return currentUserLabel();
-        return item.shared_by_name || 'Admin';
+        return item.shared_by_name || 'Unknown';
+    }
+
+    function isComputerListEntry(item) {
+        return currentPage === 'computers'
+            && !currentFolderId
+            && item
+            && item.computer_id;
+    }
+
+    async function refreshSharedByMeCache() {
+        sharedItemIds = new Set();
+        try {
+            const data = await API.shares.sharedByMe();
+            (data.items || []).forEach((item) => {
+                if (item.item_id) sharedItemIds.add(item.item_id);
+            });
+        } catch {
+            sharedItemIds = new Set();
+        }
+    }
+
+    function isMyDrivePage() {
+        return currentPage === 'files' && !currentComputerContext;
+    }
+
+    function showSharedBadgeForItem(item) {
+        const me = getCurrentUser();
+        return isMyDrivePage()
+            && !!(me?.id && item.owner_id === me.id)
+            && sharedItemIds.has(item.id);
+    }
+
+    const SHARED_BADGE_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg>';
+
+    function renderSharedBadge() {
+        return `<span class="file-shared-badge" title="Shared" style="display:inline-flex;align-items:center;margin-left:4px;color:#5f6368;vertical-align:middle;">${SHARED_BADGE_SVG}</span>`;
+    }
+
+    function renderOwnerCell(item, options = {}) {
+        const me = getCurrentUser();
+        const isSharedWith = currentPage === 'shared-with';
+
+        let displayName;
+        let isMe = false;
+
+        if (options.labelOverride !== undefined) {
+            displayName = options.labelOverride;
+            isMe = String(displayName).toLowerCase() === 'me'
+                || !!(item.owner_id && me.id && item.owner_id === me.id);
+        } else if (isSharedWith) {
+            displayName = item.shared_by_name || item.shared_by_email || itemOwner(item);
+            isMe = !!(item.shared_by_id && me.id && item.shared_by_id === me.id);
+        } else {
+            isMe = !!(item.owner_id && me.id && item.owner_id === me.id);
+            displayName = isMe ? 'me' : itemOwner(item);
+        }
+
+        if (isMe) displayName = 'me';
+
+        const showPhoto = isMe && !!getMyProfileAvatar();
+        const seed = isMe
+            ? (me.username || me.email || 'me')
+            : String(displayName || 'U');
+        const hue = (seed.length * 137) % 360;
+        const initials = esc(Components.initials(isMe ? (me.username || me.email || 'me') : displayName));
+
+        return `<span class="owner-avatar${showPhoto ? ' has-avatar' : ''}"${showPhoto ? '' : ` style="background-color:hsl(${hue},60%,50%)"`}>${showPhoto ? '' : initials}</span><span class="owner-name">${esc(displayName)}</span>`;
+    }
+
+    function getMyProfileAvatar() {
+        try {
+            return JSON.parse(localStorage.getItem('fd_user_prefs') || '{}').profileAvatar || '';
+        } catch {
+            return '';
+        }
     }
 
     function formatSizeStrict(bytes) {
@@ -311,7 +454,7 @@ const FileManager = (() => {
         visited.add(folderID);
 
         const pending = (async () => {
-            const contents = await API.folders.get(folderID);
+            const contents = await API.folders.getAll(folderID);
             const files = Array.isArray(contents.files) ? contents.files : [];
             const folders = Array.isArray(contents.folders) ? contents.folders : [];
 
@@ -377,7 +520,10 @@ const FileManager = (() => {
         if (mt.startsWith('image/')) return 'image';
         if (mt.startsWith('video/')) return 'video';
         if (mt.startsWith('audio/')) return 'audio';
+        if (['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg', 'oga', 'opus'].includes(ext)) return 'audio';
         if (mt === 'application/pdf' || ext === 'pdf') return 'pdf';
+        if (mt.includes('presentation') || mt.includes('powerpoint') || ['ppt', 'pptx', 'odp', 'key'].includes(ext)) return 'presentation';
+        if (mt.includes('zip') || mt.includes('rar') || mt.includes('gzip') || ['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'archive';
         if (isSpreadsheetMimeOrName(mt, name)) return 'sheet';
         if (isJsonMimeOrName(mt, name)) return 'text';
         if (mt.startsWith('text/')) return 'text';
@@ -387,6 +533,34 @@ const FileManager = (() => {
             'py', 'c', 'cpp', 'h', 'hpp', 'sh', 'bash', 'go', 'java', 'php', 'rb', 'swift'
         ].includes(ext)) return 'text';
         return 'document';
+    }
+
+    // Classifier for the Storage breakdown: maps a file to one of the four
+    // fixed buckets using both mime type and extension. Unknown types (audio,
+    // archives, binaries, fonts, ...) fall into 'Other' rather than Documents.
+    function getStorageCategory(mime, name) {
+        const mt = String(mime || '').toLowerCase();
+        const ext = getFileExtension(name);
+        const IMAGE = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'ico', 'tif', 'tiff', 'heic', 'heif', 'avif', 'raw', 'cr2', 'nef', 'arw', 'dng', 'psd']);
+        const VIDEO = new Set(['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v', 'mpg', 'mpeg', '3gp', 'ts', 'm2ts', 'ogv', 'mts']);
+        const DOC = new Set([
+            'pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'markdown', 'pages',
+            'ppt', 'pptx', 'odp', 'key',
+            'xls', 'xlsx', 'ods', 'csv', 'tsv', 'numbers',
+            'json', 'jsonc', 'xml', 'html', 'htm', 'css', 'js', 'ts', 'jsx', 'tsx',
+            'py', 'c', 'cpp', 'h', 'hpp', 'sh', 'bash', 'go', 'java', 'php', 'rb', 'swift',
+            'ini', 'cfg', 'conf', 'yml', 'yaml', 'toml', 'log',
+        ]);
+        if (mt.startsWith('image/') || IMAGE.has(ext)) return 'Images';
+        if (mt.startsWith('video/') || VIDEO.has(ext)) return 'Videos';
+        if (mt === 'application/pdf'
+            || mt.startsWith('text/')
+            || mt.includes('word') || mt.includes('opendocument')
+            || mt.includes('spreadsheet') || mt.includes('ms-excel') || mt.includes('spreadsheetml')
+            || mt.includes('presentation') || mt.includes('powerpoint')
+            || mt === 'application/json'
+            || DOC.has(ext)) return 'Documents';
+        return 'Other';
     }
 
     function getIcon(type, mime, name = '') {
@@ -412,7 +586,7 @@ const FileManager = (() => {
             return '<svg viewBox="0 0 24 24" width="20" height="20" fill="#5f6368"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-2 6h-2v2h2v2h-2v2h-2v-2h2v-2h-2v-2h2v-2h-2V8h2v2h2v2z"/></svg>';
         }
         const icons = {
-            folder: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#fbbc04"><path d="M10 4H4c-1.1 0-2 .9-2 2v2h20V8c0-1.1-.9-2-2-2h-8l-2-2z"/><path d="M22 10H2v8c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-8z" fill="#f4b400"/></svg>',
+            folder: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#5f6368"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>',
             image: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#34a853"><path d="M21 19V5c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2zM8.5 11.5A1.5 1.5 0 1 1 8.5 8a1.5 1.5 0 0 1 0 3.5zM5 18l3.5-4.5 2.5 3 3.5-4.5 4.5 6H5z"/></svg>',
             video: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#ea4335"><path d="M17 10.5V7c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10c1.1 0 2-.9 2-2v-3.5l4 4v-11l-4 4z"/></svg>',
             audio: '<svg viewBox="0 0 24 24" width="20" height="20" fill="#a142f4"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55a4 4 0 1 0 4 4V7h4V3h-6z"/></svg>',
@@ -454,18 +628,21 @@ const FileManager = (() => {
     }
 
     function showFilesView() {
+        document.getElementById('app')?.classList.remove('home-active');
         document.getElementById('home-page')?.classList.add('hidden');
         document.getElementById('activity-page')?.classList.add('hidden');
         document.getElementById('storage-page')?.classList.add('hidden');
-        document.getElementById('md3-chip-bar')?.classList.remove('hidden');
+        document.getElementById('md3-chip-bar')?.classList.add('hidden');
         document.getElementById('file-grid')?.classList.remove('hidden');
         if (currentView === 'list') {
             document.getElementById('file-list-header')?.classList.remove('hidden');
         }
         if (currentPage !== 'home') hideHomeWarning();
+        updateTrashBinBanner();
     }
 
     function showActivityView() {
+        document.getElementById('app')?.classList.remove('home-active');
         document.getElementById('home-page')?.classList.add('hidden');
         document.getElementById('activity-page')?.classList.remove('hidden');
         document.getElementById('storage-page')?.classList.add('hidden');
@@ -476,9 +653,11 @@ const FileManager = (() => {
         document.getElementById('empty-state')?.classList.add('hidden');
         document.getElementById('loading-state')?.classList.add('hidden');
         hideHomeWarning();
+        document.getElementById('trash-bin-banner')?.classList.add('hidden');
     }
 
     function showStorageView() {
+        document.getElementById('app')?.classList.remove('home-active');
         document.getElementById('home-page')?.classList.add('hidden');
         document.getElementById('storage-page')?.classList.remove('hidden');
         document.getElementById('activity-page')?.classList.add('hidden');
@@ -489,18 +668,21 @@ const FileManager = (() => {
         document.getElementById('empty-state')?.classList.add('hidden');
         document.getElementById('loading-state')?.classList.add('hidden');
         hideHomeWarning();
+        document.getElementById('trash-bin-banner')?.classList.add('hidden');
     }
 
     function showHomeView() {
+        document.getElementById('app')?.classList.add('home-active');
         document.getElementById('home-page')?.classList.remove('hidden');
         document.getElementById('activity-page')?.classList.add('hidden');
         document.getElementById('storage-page')?.classList.add('hidden');
-        document.getElementById('md3-chip-bar')?.classList.remove('hidden');
+        document.getElementById('md3-chip-bar')?.classList.add('hidden');
         document.getElementById('file-list-header')?.classList.add('hidden');
         document.getElementById('file-grid')?.classList.add('hidden');
         document.getElementById('shared-filter-bar')?.classList.add('hidden');
         document.getElementById('empty-state')?.classList.add('hidden');
         document.getElementById('loading-state')?.classList.add('hidden');
+        document.getElementById('trash-bin-banner')?.classList.add('hidden');
     }
 
     function hideHomeWarning() {
@@ -549,22 +731,131 @@ const FileManager = (() => {
         }
     }
 
-    function setBreadcrumbText(text) {
-        const el = document.getElementById('breadcrumb');
-        if (!el) return;
-        el.innerHTML = `<span class="breadcrumb-item">${esc(text)}</span>`;
+    function getPageHeaderEl() {
+        return document.getElementById('page-header-content');
     }
 
-    async function updateBreadcrumb(folderId) {
-        const el = document.getElementById('breadcrumb');
+    function setBreadcrumbText(text) {
+        const el = getPageHeaderEl();
         if (!el) return;
-        
-        let html = '<a href="#/files" class="breadcrumb-item">My Drive</a>';
+        el.innerHTML = `<h1 class="page-hero-title">${esc(text)}</h1>`;
+    }
+
+    function setBreadcrumbHtml(html) {
+        const el = getPageHeaderEl();
+        if (!el) return;
+        el.innerHTML = `<nav class="page-hero-breadcrumb breadcrumb" aria-label="Breadcrumb">${html}</nav>`;
+    }
+
+    function syncPageActions() {
+        document.querySelector('.new-btn-wrap')?.classList.remove('hidden');
+    }
+
+    function folderNavPath(folderId) {
+        if (currentPage === 'computers') return `/computers/${folderId}`;
+        return `/files/${folderId}`;
+    }
+
+    function canAcceptUploads() {
+        return !(currentPage === 'computers' && !currentFolderId);
+    }
+
+    async function ensureComputersLoaded() {
+        if (registeredComputers.length) return registeredComputers;
+        try {
+            const data = await API.computers.list();
+            registeredComputers = Array.isArray(data.computers) ? data.computers : [];
+        } catch {
+            registeredComputers = [];
+        }
+        return registeredComputers;
+    }
+
+    function findComputerByRootFolderId(folderId) {
+        return registeredComputers.find((c) => c.root_folder_id === folderId) || null;
+    }
+
+    async function ensureComputerContext(folderId) {
+        await ensureComputersLoaded();
         if (!folderId) {
-            el.innerHTML = html;
+            currentComputerContext = null;
+            return null;
+        }
+
+        let comp = findComputerByRootFolderId(folderId);
+        if (!comp) {
+            try {
+                const data = await API.folders.breadcrumb(folderId);
+                const crumbs = data.breadcrumb || [];
+                if (crumbs.length) comp = findComputerByRootFolderId(crumbs[0].id);
+            } catch {
+                comp = null;
+            }
+        }
+        currentComputerContext = comp;
+        return comp;
+    }
+
+    async function updateComputerBreadcrumb(folderId) {
+        let html = '<a href="/computers" class="breadcrumb-item">Computers</a>';
+        if (!folderId) {
+            setBreadcrumbHtml(html);
             return;
         }
 
+        const comp = await ensureComputerContext(folderId);
+        if (!comp) {
+            setBreadcrumbHtml(html);
+            return;
+        }
+
+        try {
+            const data = await API.folders.breadcrumb(folderId);
+            const crumbs = data.breadcrumb || [];
+            const subCrumbs = crumbs[0]?.id === comp.root_folder_id ? crumbs.slice(1) : crumbs;
+
+            html += '<span class="breadcrumb-sep">›</span>';
+            if (!subCrumbs.length) {
+                html += `<span class="breadcrumb-item">${esc(comp.name)}</span>`;
+            } else {
+                html += `<a href="/computers/${comp.root_folder_id}" class="breadcrumb-item">${esc(comp.name)}</a>`;
+                subCrumbs.forEach((c, idx) => {
+                    html += '<span class="breadcrumb-sep">›</span>';
+                    if (idx === subCrumbs.length - 1) {
+                        html += `<span class="breadcrumb-item">${esc(c.name)}</span>`;
+                    } else {
+                        html += `<a href="/computers/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
+                    }
+                });
+            }
+            setBreadcrumbHtml(html);
+        } catch {
+            setBreadcrumbHtml(html);
+        }
+    }
+
+    function renderComputersEmptyState() {
+        const grid = document.getElementById('file-grid');
+        const empty = document.getElementById('empty-state');
+        const header = document.getElementById('file-list-header');
+
+        grid.innerHTML = '';
+        grid.classList.add('hidden');
+        header?.classList.add('hidden');
+        empty?.classList.remove('hidden');
+        document.getElementById('empty-title').textContent = 'No computers registered';
+        document.getElementById('empty-desc').textContent =
+            'Register a computer from the API or a future desktop client to back up files here.';
+        updateSelectionUI();
+    }
+
+    async function updateBreadcrumb(folderId) {
+        if (!folderId) {
+            setBreadcrumbText('My Drive');
+            return;
+        }
+
+        let html = '<a href="/files" class="breadcrumb-item">My Drive</a>';
         try {
             const data = await API.folders.breadcrumb(folderId);
             const crumbs = data.breadcrumb || [];
@@ -573,24 +864,29 @@ const FileManager = (() => {
                 if (idx === crumbs.length - 1) {
                     html += `<span class="breadcrumb-item">${esc(c.name)}</span>`;
                 } else {
-                    html += `<a href="#/files/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
+                    html += `<a href="/files/${c.id}" class="breadcrumb-item">${esc(c.name)}</a>`;
                 }
             });
-            el.innerHTML = html;
+            setBreadcrumbHtml(html);
         } catch {
-            el.innerHTML = html;
+            setBreadcrumbHtml(html);
         }
     }
 
     async function loadFolder(folderId) {
         currentPage = 'files';
         currentFolderId = folderId || null;
+        currentComputerContext = null;
         clearSelection();
         showFilesView();
         showLoading(true);
+        syncPageActions();
+        folderFilesPageToken = '';
+        folderFilesHasMore = false;
 
         try {
-            const data = folderId ? await API.folders.get(folderId) : await API.folders.root();
+            const opts = { page_size: 100 };
+            const data = folderId ? await API.folders.get(folderId, opts) : await API.folders.root(opts);
             allFolders = Array.isArray(data.folders) ? data.folders : [];
             allFiles = Array.isArray(data.files) ? data.files : [];
             // #8 - Remove duplicate filenames, keep only first occurrence
@@ -600,13 +896,137 @@ const FileManager = (() => {
                 seenNames.add(f.name);
                 return true;
             });
+            folderFilesPageToken = data.next_page_token || '';
+            folderFilesHasMore = Boolean(folderFilesPageToken);
+            filteredFolders = [...allFolders];
+            filteredFiles = [...allFiles];
+            await refreshSharedByMeCache();
+            renderItems(filteredFolders, filteredFiles);
+            HOME_CHIP_DEFS.forEach((d) => setFilterSelect(d.select, '', d.anyLabel));
+            renderSearchChipBar();
+            await updateBreadcrumb(folderId || null);
+            await updateStorageInfo();
+            syncTrashActionLabels();
+        } catch (err) {
+            Components.toast(`Failed to load files: ${err.message}`, 'error');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    async function loadMoreFolderFiles() {
+        if (folderFilesLoadingMore || !folderFilesHasMore || !folderFilesPageToken) return;
+        if (currentPage !== 'files' && currentPage !== 'computers') return;
+        if (currentPage === 'computers' && !currentFolderId) return;
+        folderFilesLoadingMore = true;
+        try {
+            const opts = { page_size: 100, page_token: folderFilesPageToken };
+            const data = currentFolderId
+                ? await API.folders.get(currentFolderId, opts)
+                : await API.folders.root(opts);
+            const more = Array.isArray(data.files) ? data.files : [];
+            const seenNames = new Set(allFiles.map((f) => f.name));
+            for (const f of more) {
+                if (seenNames.has(f.name)) continue;
+                seenNames.add(f.name);
+                allFiles.push(f);
+            }
+            folderFilesPageToken = data.next_page_token || '';
+            folderFilesHasMore = Boolean(folderFilesPageToken);
             filteredFolders = [...allFolders];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
-            await updateBreadcrumb(folderId || null);
-            await updateStorageInfo();
         } catch (err) {
-            Components.toast(`Failed to load files: ${err.message}`, 'error');
+            Components.toast(`Failed to load more files: ${err.message}`, 'error');
+        } finally {
+            folderFilesLoadingMore = false;
+        }
+    }
+
+    async function loadComputers() {
+        currentPage = 'computers';
+        currentFolderId = null;
+        currentComputerContext = null;
+        clearSelection();
+        showFilesView();
+        showLoading(true);
+        syncPageActions();
+        setBreadcrumbText('Computers');
+
+        try {
+            const data = await API.computers.list();
+            registeredComputers = data.computers || [];
+            allFiles = [];
+            allFolders = registeredComputers
+                .filter((c) => c.root_folder_id)
+                .map((c) => ({
+                    id: c.root_folder_id,
+                    owner_id: c.owner_id,
+                    name: c.name || c.hostname || 'Computer',
+                    mime_type: 'application/x-freedrive-computer',
+                    updated_at: c.last_seen_at || c.updated_at || c.created_at,
+                    created_at: c.created_at,
+                    computer_id: c.id,
+                }));
+            filteredFolders = [...allFolders];
+            filteredFiles = [];
+
+            if (!allFolders.length) {
+                renderComputersEmptyState();
+            } else {
+                const grid = document.getElementById('file-grid');
+                const empty = document.getElementById('empty-state');
+                const header = document.getElementById('file-list-header');
+                grid?.classList.remove('hidden');
+                empty?.classList.add('hidden');
+                header?.classList.remove('hidden');
+                renderItems(filteredFolders, filteredFiles);
+            }
+            await updateStorageInfo();
+            syncTrashActionLabels();
+            syncToolbarSlot();
+        } catch (err) {
+            Components.toast(`Failed to load computers: ${err.message}`, 'error');
+            renderComputersEmptyState();
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    async function loadComputerFolder(folderId) {
+        currentPage = 'computers';
+        currentFolderId = folderId || null;
+        clearSelection();
+        showFilesView();
+        showLoading(true);
+        syncPageActions();
+
+        if (!folderId) {
+            return loadComputers();
+        }
+
+        await ensureComputerContext(folderId);
+        try {
+            folderFilesPageToken = '';
+            folderFilesHasMore = false;
+            const data = await API.folders.get(folderId, { page_size: 100 });
+            allFolders = Array.isArray(data.folders) ? data.folders : [];
+            allFiles = Array.isArray(data.files) ? data.files : [];
+            folderFilesPageToken = data.next_page_token || '';
+            folderFilesHasMore = Boolean(folderFilesPageToken);
+            filteredFolders = [...allFolders];
+            filteredFiles = [...allFiles];
+            renderItems(filteredFolders, filteredFiles);
+            await updateComputerBreadcrumb(folderId);
+            if (currentComputerContext?.id) {
+                API.computers.heartbeat(currentComputerContext.id).catch(() => {});
+            }
+            await updateStorageInfo();
+            syncTrashActionLabels();
+            syncToolbarSlot();
+        } catch (err) {
+            Components.toast(`Failed to load computer folder: ${err.message}`, 'error');
+            await loadComputers();
         } finally {
             showLoading(false);
         }
@@ -617,6 +1037,11 @@ const FileManager = (() => {
         currentFolderId = null;
         clearSelection();
         showHomeView();
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) searchInput.value = '';
+        document.getElementById('search-filter-panel')?.classList.add('hidden');
+        hideSearchDropdown();
+        homeSuggestedVisible = HOME_SUGGESTED_INITIAL;
         showLoading(true);
         try {
             const data = await API.files.list({ sort: 'accessed_at', dir: 'desc', page_size: '60' });
@@ -629,13 +1054,24 @@ const FileManager = (() => {
                 seenNames.add(f.name);
                 return true;
             });
-            
+
+            // Fetch top-level folders for the "Suggested folders" section and to
+            // seed the location-name cache used by the live search dropdown.
+            homeSuggestedFolders = [];
+            try {
+                const root = await API.folders.root();
+                const rootFolders = Array.isArray(root.folders) ? root.folders : [];
+                rootFolders.forEach((f) => { if (f && f.id) folderNameCache.set(f.id, f.name); });
+                homeSuggestedFolders = [...rootFolders].sort((a, b) =>
+                    new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0));
+            } catch { /* folders optional */ }
+
             const flt = filterCollections(allFolders, allFiles);
             filteredFolders = flt.folders;
             filteredFiles = flt.files;
 
-            renderHomeItems(filteredFiles);
-            setBreadcrumbText('Home');
+            renderHomeItems(filteredFiles, homeSuggestedFolders);
+            setBreadcrumbText('Welcome to FreeDrive');
             await renderHomeWarning();
         } catch {
             Components.toast('Failed to load Home', 'error');
@@ -645,56 +1081,206 @@ const FileManager = (() => {
         }
     }
 
-    function renderHomeItems(files) {
+    // Filter chips shown under the Home search box. They mirror the hidden
+    // #filter-* <select> elements used by applyAdvancedSearch().
+    const HOME_CHIP_DEFS = [
+        { key: 'type', label: 'Type', select: 'filter-type', anyLabel: 'Any', options: ['Photos', 'Documents', 'Spreadsheets', 'PDFs', 'Presentations', 'Videos', 'Audio', 'Archives', 'Folders'] },
+        { key: 'people', label: 'People', select: 'filter-owner', anyLabel: 'Anyone', options: ['Me', 'Not me'] },
+        { key: 'modified', label: 'Modified', select: 'filter-modified', anyLabel: 'Any time', options: ['Today', 'Yesterday', 'Last 7 days', 'Last 30 days', 'Last 90 days'] },
+        { key: 'location', label: 'Location', select: 'filter-location', anyLabel: 'Anywhere', options: ['My Drive', 'Shared with me', 'Computers'] },
+    ];
+
+    function resetAdvancedSearchForm() {
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) searchInput.value = '';
+        setFilterSelect('filter-type', '', 'Any');
+        setFilterSelect('filter-owner', 'Anyone', 'Anyone');
+        setFilterSelect('filter-modified', 'Any time', 'Any time');
+        setFilterSelect('filter-location', 'Anywhere', 'Anywhere');
+        setFilterSelect('filter-followups', '-', '-');
+        const words = document.getElementById('filter-words');
+        const itemName = document.getElementById('filter-item-name');
+        const ownerEmail = document.getElementById('filter-owner-email');
+        const sharedTo = document.getElementById('filter-shared-to');
+        const modFrom = document.getElementById('filter-modified-from');
+        const modTo = document.getElementById('filter-modified-to');
+        if (words) words.value = '';
+        if (itemName) itemName.value = '';
+        if (ownerEmail) ownerEmail.value = '';
+        if (sharedTo) sharedTo.value = '';
+        if (modFrom) modFrom.value = '';
+        if (modTo) modTo.value = '';
+        ['filter-location-bin', 'filter-location-starred', 'filter-location-encrypted', 'filter-approval-awaiting', 'filter-approval-requested'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.checked = false;
+        });
+        syncAdvancedSearchDependentFields();
+    }
+
+    function syncAdvancedSearchDependentFields() {
+        const owner = document.getElementById('filter-owner')?.value || 'Anyone';
+        const modified = document.getElementById('filter-modified')?.value || 'Any time';
+        document.getElementById('filter-owner-email')?.classList.toggle('hidden', owner !== 'Specific person');
+        document.getElementById('filter-modified-custom')?.classList.toggle('hidden', modified !== 'Custom');
+    }
+
+    function showAdvancedSearchHelp() {
+        Components.toast(
+            'Includes the words searches file names and comments, not encrypted file contents. Approvals use a simplified workflow. More locations folder picker is coming soon.',
+            'info',
+        );
+    }
+
+    function collectAdvancedSearchParams() {
+        const q = document.getElementById('search-input')?.value?.trim() || '';
+        const name = document.getElementById('filter-item-name')?.value?.trim() || '';
+        const words = document.getElementById('filter-words')?.value?.trim() || '';
+        const type = document.getElementById('filter-type')?.value || '';
+        const owner = document.getElementById('filter-owner')?.value || 'Anyone';
+        const ownerEmail = document.getElementById('filter-owner-email')?.value?.trim() || '';
+        const location = document.getElementById('filter-location')?.value || 'Anywhere';
+        const modified = document.getElementById('filter-modified')?.value || 'Any time';
+        const sharedTo = document.getElementById('filter-shared-to')?.value?.trim() || '';
+        const followups = document.getElementById('filter-followups')?.value || '-';
+
+        const params = {
+            page_size: '100',
+        };
+        if (q) params.q = q;
+        if (name) params.name = name;
+        if (words) params.words = words;
+        if (type) params.type = type;
+        if (owner && owner !== 'Anyone') params.owner = owner;
+        if (owner === 'Specific person' && ownerEmail) params.owner_email = ownerEmail;
+        if (location && location !== 'Anywhere') params.location = location;
+        if (sharedTo) params.shared_to = sharedTo;
+        if (followups && followups !== '-') params.followups = followups;
+
+        if (document.getElementById('filter-location-bin')?.checked) params.in_trash = 'true';
+        if (document.getElementById('filter-location-starred')?.checked) params.starred = 'true';
+        if (document.getElementById('filter-location-encrypted')?.checked) params.encrypted = 'true';
+        if (document.getElementById('filter-approval-awaiting')?.checked) params.approval_awaiting = 'true';
+        if (document.getElementById('filter-approval-requested')?.checked) params.approval_requested = 'true';
+
+        if (modified === 'Custom') {
+            const from = document.getElementById('filter-modified-from')?.value || '';
+            const to = document.getElementById('filter-modified-to')?.value || '';
+            params.modified = 'Custom';
+            if (from) params.modified_from = from;
+            if (to) params.modified_to = to;
+        } else if (modified !== 'Any time') {
+            params.modified = modified;
+        }
+
+        return params;
+    }
+
+    function homeChipHtml(defs, options = {}) {
+        const withClear = !!options.withClear;
+        const caretSvg = '<span class="gd-chip-caret"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg></span>';
+        const clearSvg = '<span class="gd-chip-clear" role="button" aria-label="Clear filter"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>';
+        return defs.map((d) => {
+            const sel = document.getElementById(d.select);
+            const current = sel && sel.value && sel.value !== d.anyLabel ? sel.value : '';
+            const active = current ? ' active' : '';
+            const label = current || d.label;
+            const trailing = (withClear && current) ? clearSvg : caretSvg;
+            const opts = `<button class="gd-chip-option" data-value="">${esc(d.anyLabel)}</button>` +
+                d.options.map((o) => `<button class="gd-chip-option" data-value="${esc(o)}">${esc(o)}</button>`).join('');
+            return `
+                <div class="gd-chip${active}" data-chip="${d.key}" data-select="${d.select}" data-any="${esc(d.anyLabel)}" data-label="${esc(d.label)}">
+                    <button class="gd-chip-btn" type="button">
+                        <span class="gd-chip-text">${esc(label)}</span>
+                        ${trailing}
+                    </button>
+                    <div class="gd-chip-menu hidden">${opts}</div>
+                </div>`;
+        }).join('');
+    }
+
+    function formatHomeReason(item) {
+        const created = item.created_at ? new Date(item.created_at).getTime() : 0;
+        const accessed = item.accessed_at ? new Date(item.accessed_at).getTime() : 0;
+        const opened = accessed > created + 60000;
+        const when = new Date(opened
+            ? (item.accessed_at || item.updated_at || item.created_at)
+            : (item.created_at || item.updated_at || item.accessed_at));
+        return `${opened ? 'You opened' : 'You created'} \u00b7 ${formatHomeReasonDate(when)}`;
+    }
+
+    function formatHomeReasonDate(d) {
+        if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '—';
+        const now = new Date();
+        const sameDay = d.getFullYear() === now.getFullYear()
+            && d.getMonth() === now.getMonth()
+            && d.getDate() === now.getDate();
+        if (sameDay) {
+            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const day = d.getDate();
+        const mon = months[d.getMonth()];
+        if (d.getFullYear() !== now.getFullYear()) return `${day} ${mon} ${d.getFullYear()}`;
+        return `${day} ${mon}`;
+    }
+
+    function renderHomeItems(files, folders) {
         const homePage = document.getElementById('home-page');
         if (!homePage) return;
 
-        const rawUserName = String(getCurrentUser().username || getCurrentUser().email || '').split('@')[0];
-        const displayName = rawUserName ? `${rawUserName.charAt(0).toUpperCase()}${rawUserName.slice(1)}` : '';
-        const greeting = displayName ? `Welcome to Drive, ${esc(displayName)}` : 'Welcome to Drive';
-        
-        const justFiles = files.filter(f => f.mime_type !== 'folder' && !f.isDir);
-        const suggestedFolders = [];
-        const suggestedFiles = [...justFiles].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        document.getElementById('file-list-header')?.classList.add('hidden');
 
-        const topCards = suggestedFiles.slice(0, 4);
-        const listFiles = suggestedFiles.slice(4);
+        const justFiles = files.filter(f => f.mime_type !== 'folder' && !f.isDir);
+        const suggestedFiles = [...justFiles].sort((a, b) =>
+            new Date(b.accessed_at || b.updated_at || b.created_at || 0)
+            - new Date(a.accessed_at || a.updated_at || a.created_at || 0));
+        const suggestedFolders = (Array.isArray(folders) ? folders : []).slice(0, 6);
+
+        homeSuggestedFiles = suggestedFiles;
+        homeSuggestedVisible = HOME_SUGGESTED_INITIAL;
+        const initialCards = suggestedFiles.slice(0, HOME_SUGGESTED_INITIAL);
+        const showViewMore = suggestedFiles.length > HOME_SUGGESTED_INITIAL;
+        const useList = currentView === 'list';
 
         let html = '';
 
         if (suggestedFolders.length > 0) {
             html += `
-                <h3 class="gd-home-section-title"><span class="caret">▾</span> Suggested folders</h3>
+                <h3 class="gd-home-section-title collapsible" data-target="gd-suggested-grid"><span class="caret">▾</span> Suggested folders</h3>
                 <div class="gd-suggested-grid" id="gd-suggested-grid"></div>
             `;
         }
 
-        if (topCards.length > 0) {
-            html += `
-                <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-cards"><span class="caret">▾</span> Suggested files</h3>
-                <div class="file-grid grid-view" id="gd-home-suggested-cards"></div>
-            `;
-        }
-
-        if (listFiles.length > 0) {
-            html += `
-                <h3 class="gd-home-section-title collapsible" data-target="gd-home-recent-list"><span class="caret">▾</span> Files</h3>
-                <div class="file-list-header gd-home-list-header">
-                    <div class="col-name">Name <span class="sort-arrow">↕</span></div>
-                    <div class="col-owner">Last modified</div>
-                    <div class="col-date">Owner</div>
-                    <div class="col-size">Location</div>
-                    <div class="col-actions">File size</div>
-                </div>
-                <div class="gd-home-recent-list" id="gd-home-recent-list"></div>
-            `;
+        if (initialCards.length > 0) {
+            if (useList) {
+                html += `
+                    <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-wrap"><span class="caret">▾</span> Suggested files</h3>
+                    <div id="gd-home-suggested-wrap">
+                        <div class="file-list-header gd-home-list-header">
+                            <div class="col-name">Name</div>
+                            <div class="col-owner">Reason suggested</div>
+                            <div class="col-date">Owner</div>
+                            <div class="col-size">Location</div>
+                            <div class="col-actions"></div>
+                        </div>
+                        <div class="file-grid gd-home-recent-list" id="gd-home-suggested-list"></div>
+                        ${showViewMore ? '<div class="gd-home-viewmore"><button type="button" class="gd-viewmore-link" id="home-view-more-btn">View more</button></div>' : ''}
+                    </div>
+                `;
+            } else {
+                html += `
+                    <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-wrap"><span class="caret">▾</span> Suggested files</h3>
+                    <div id="gd-home-suggested-wrap">
+                        <div class="file-grid grid-view" id="gd-home-suggested-cards"></div>
+                        ${showViewMore ? '<div class="gd-home-viewmore"><button type="button" class="gd-viewmore-link" id="home-view-more-btn">View more</button></div>' : ''}
+                    </div>
+                `;
+            }
         }
 
         if (!suggestedFiles.length && !suggestedFolders.length) {
             html += `
-                <div style="text-align:center; padding: 40px; color:#5f6368;">
-                    Welcome to your Drive. You don't have any files yet.
-                </div>
+                <div class="gd-home-empty">Welcome to your Drive. You don't have any files yet.</div>
             `;
         }
 
@@ -706,41 +1292,37 @@ const FileManager = (() => {
                 const card = document.createElement('div');
                 card.className = 'gd-suggested-card gd-suggested-folder';
                 card.dataset.id = f.id;
-                card.dataset.type = 'file';
+                card.dataset.type = 'folder';
                 card.innerHTML = `
-                    <div class="gd-card-top" style="padding-bottom: 0;">
+                    <div class="gd-card-top">
                         <div class="gd-card-icon"><svg viewBox="0 0 24 24" fill="#5F6368" width="24" height="24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
                         <div class="gd-card-content">
                             <div class="gd-card-name" title="${esc(f.name)}">${esc(f.name)}</div>
-                            <div class="gd-card-action" style="font-size: 11px;">in My Drive</div>
+                            <div class="gd-card-action">in My Drive</div>
                         </div>
                     </div>
                 `;
-                
-                card.addEventListener('dblclick', () => openFile(f));
-                card.addEventListener('click', (e) => {
-                    if (window.matchMedia('(max-width: 820px)').matches) {
-                        openFile(f);
-                        return;
-                    }
-                    selectSingle(f.id, { type: 'file', data: f, isTrash: false }, card, e);
-                });
+                card.addEventListener('click', () => { App.navigate(`/files/${f.id}`); });
                 grid.appendChild(card);
             });
         }
 
-        if (topCards.length > 0) {
-            const gridContainer = document.getElementById('gd-home-suggested-cards');
-            topCards.forEach(f => {
-                gridContainer.appendChild(createGridCard(f, 'file', false));
-            });
-        }
-
-        if (listFiles.length > 0) {
-            const listContainer = document.getElementById('gd-home-recent-list');
-            listFiles.forEach(f => {
-                listContainer.appendChild(createRow(f, 'file', false));
-            });
+        if (initialCards.length > 0) {
+            if (useList) {
+                const listContainer = document.getElementById('gd-home-suggested-list');
+                const myAvatar = getMyProfileAvatar();
+                listContainer.style.setProperty('--fd-me-avatar', myAvatar ? `url("${myAvatar}")` : 'none');
+                initialCards.forEach((f) => {
+                    listContainer.appendChild(createRow(f, 'file', false));
+                });
+                resolveHomeListLocations(initialCards, listContainer);
+            } else {
+                const gridContainer = document.getElementById('gd-home-suggested-cards');
+                initialCards.forEach((f) => {
+                    gridContainer.appendChild(createGridCard(f, 'file', false));
+                });
+            }
+            document.getElementById('home-view-more-btn')?.addEventListener('click', expandHomeSuggestedFiles);
         }
 
         homePage.querySelectorAll('.gd-home-section-title.collapsible').forEach((header) => {
@@ -753,9 +1335,308 @@ const FileManager = (() => {
                 if (caret) caret.textContent = target.classList.contains('hidden') ? '▸' : '▾';
             });
         });
-        
+
         clearSelection();
     }
+
+    function expandHomeSuggestedFiles() {
+        const useList = currentView === 'list';
+        const container = useList
+            ? document.getElementById('gd-home-suggested-list')
+            : document.getElementById('gd-home-suggested-cards');
+        if (!container) return;
+        if (useList) {
+            const myAvatar = getMyProfileAvatar();
+            container.style.setProperty('--fd-me-avatar', myAvatar ? `url("${myAvatar}")` : 'none');
+        }
+        const next = homeSuggestedFiles.slice(homeSuggestedVisible, homeSuggestedVisible + HOME_SUGGESTED_STEP);
+        next.forEach((f) => {
+            container.appendChild(useList ? createRow(f, 'file', false) : createGridCard(f, 'file', false));
+        });
+        if (useList) resolveHomeListLocations(next, container);
+        homeSuggestedVisible += next.length;
+        if (homeSuggestedVisible >= homeSuggestedFiles.length) {
+            document.getElementById('home-view-more-btn')?.closest('.gd-home-viewmore')?.classList.add('hidden');
+        }
+    }
+
+    function hideSearchDropdown() {
+        document.getElementById('search-live-dropdown')?.classList.add('hidden');
+        document.querySelectorAll('.gd-chip-menu').forEach(m => m.classList.add('hidden'));
+        document.querySelectorAll('.gd-chip.open').forEach(c => c.classList.remove('open'));
+    }
+
+    function setFilterSelect(selectId, value, anyLabel) {
+        const sel = document.getElementById(selectId);
+        if (!sel) return;
+        if (!value) sel.value = (selectId === 'filter-type') ? '' : (anyLabel || '');
+        else sel.value = value;
+    }
+
+    function updateChipLabel(chip, value) {
+        const textEl = chip.querySelector('.gd-chip-text');
+        if (textEl) textEl.textContent = value || (chip.dataset.label || '');
+        chip.classList.toggle('active', !!value);
+    }
+
+    // Keep chips that target the same underlying <select> visually in sync
+    // (e.g. an inline dropdown chip and the outer Home chip).
+    function syncChipsForSelect(selectId, value) {
+        document.querySelectorAll(`.gd-chip[data-select="${selectId}"]`).forEach((chip) => {
+            updateChipLabel(chip, value);
+        });
+    }
+
+    function bindChip(chip, onSelect) {
+        const btn = chip.querySelector('.gd-chip-btn');
+        const menu = chip.querySelector('.gd-chip-menu');
+        if (!btn || !menu) return;
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const willOpen = menu.classList.contains('hidden');
+            document.querySelectorAll('.gd-chip-menu').forEach(m => m.classList.add('hidden'));
+            document.querySelectorAll('.gd-chip.open').forEach(c => c.classList.remove('open'));
+            if (willOpen) { menu.classList.remove('hidden'); chip.classList.add('open'); }
+        });
+        menu.querySelectorAll('.gd-chip-option').forEach((opt) => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.classList.add('hidden');
+                chip.classList.remove('open');
+                onSelect(opt.dataset.value || '');
+            });
+        });
+    }
+
+    function bindSearchGlobalClose() {
+        if (searchGlobalCloseBound) return;
+        searchGlobalCloseBound = true;
+        document.addEventListener('click', (e) => {
+            const wrap = document.querySelector('.search-wrap');
+            if (wrap && !wrap.contains(e.target)) {
+                hideSearchDropdown();
+            }
+        });
+    }
+
+    function highlightMatch(name, qLower) {
+        const raw = String(name || '');
+        const idx = raw.toLowerCase().indexOf(qLower);
+        if (idx < 0 || !qLower) return esc(raw);
+        return `${esc(raw.slice(0, idx))}<strong>${esc(raw.slice(idx, idx + qLower.length))}</strong>${esc(raw.slice(idx + qLower.length))}`;
+    }
+
+    function resolveHomeLocationName(folderId) {
+        if (!folderId) return 'My Drive';
+        return folderNameCache.get(folderId) || '';
+    }
+
+    async function ensureFolderNames(ids, onResolved) {
+        const missing = [...new Set((ids || []).filter((id) => id && !folderNameCache.has(id)))];
+        for (const id of missing) {
+            let name = 'My Drive';
+            try {
+                const data = await API.folders.breadcrumb(id);
+                const crumbs = data.breadcrumb || [];
+                name = crumbs.length ? crumbs[crumbs.length - 1].name : 'My Drive';
+            } catch { /* keep fallback */ }
+            folderNameCache.set(id, name);
+            onResolved?.(id, name);
+        }
+    }
+
+    async function resolveUnknownLocations(items, dropdown) {
+        await ensureFolderNames(
+            items.map((f) => f.folder_id),
+            (id, name) => {
+                dropdown.querySelectorAll(`.gd-sr-row[data-folder="${id}"] .gd-sr-loc-text`).forEach((el) => {
+                    el.textContent = name;
+                });
+            }
+        );
+    }
+
+    async function resolveHomeListLocations(items, listContainer) {
+        if (!listContainer) return;
+        await ensureFolderNames(
+            items.map((f) => f.folder_id),
+            (id, name) => {
+                listContainer.querySelectorAll(`.home-location-cell[data-folder="${id}"] .home-location-text`).forEach((el) => {
+                    el.textContent = name;
+                });
+            }
+        );
+    }
+
+    // Apply the Type/People/Modified filter selects to a live search list.
+    function applyHomeInlineFilters(list) {
+        const me = getCurrentUser();
+        const type = document.getElementById('filter-type')?.value || '';
+        const owner = document.getElementById('filter-owner')?.value || 'Anyone';
+        const modified = document.getElementById('filter-modified')?.value || 'Any time';
+
+        let out = [...list];
+        if (type && type !== 'Any') {
+            out = out.filter((f) => {
+                const g = getMimeGroup(f.mime_type, f.mime_type === 'folder' ? 'folder' : 'file', f.name);
+                if (type === 'Folders') return f.mime_type === 'folder';
+                if (type === 'Photos') return g === 'image';
+                if (type === 'Documents') return g === 'document' || g === 'text';
+                if (type === 'Spreadsheets') return g === 'sheet';
+                if (type === 'Presentations') return g === 'presentation';
+                if (type === 'PDFs') return g === 'pdf';
+                if (type === 'Images') return g === 'image';
+                if (type === 'Videos') return g === 'video';
+                if (type === 'Audio') return g === 'audio';
+                if (type === 'Archives') return g === 'archive';
+                return true;
+            });
+        }
+        if (owner === 'Me') out = out.filter((f) => f.owner_id === me.id);
+        else if (owner === 'Not me') out = out.filter((f) => f.owner_id !== me.id);
+        if (modified !== 'Any time') {
+            const now = Date.now();
+            out = out.filter((f) => {
+                const diffDays = (now - new Date(f.updated_at || f.created_at).getTime()) / (1000 * 60 * 60 * 24);
+                if (modified === 'Today') return diffDays < 1;
+                if (modified === 'Yesterday') return diffDays >= 1 && diffDays < 2;
+                if (modified === 'Last 7 days') return diffDays <= 7;
+                if (modified === 'Last 30 days') return diffDays <= 30;
+                if (modified === 'Last 90 days') return diffDays <= 90;
+                return true;
+            });
+        }
+        return out;
+    }
+
+    async function renderSearchDropdown(query) {
+        const dropdown = document.getElementById('search-live-dropdown');
+        if (!dropdown) return;
+        const q = String(query || '').trim();
+        if (!q) { hideSearchDropdown(); return; }
+
+        dropdown.classList.remove('hidden');
+
+        let list = [];
+        try {
+            const data = await API.files.list({ search: q, page_size: '20' });
+            list = data.files || [];
+        } catch { list = []; }
+
+        list = applyHomeInlineFilters(list);
+        const top = list.slice(0, 5);
+        const qLower = q.toLowerCase();
+
+        const chipsHtml = homeChipHtml(HOME_CHIP_DEFS.filter((d) => d.key !== 'location'));
+        const folderIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#5f6368"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+
+        let rowsHtml;
+        if (!top.length) {
+            rowsHtml = '<div class="gd-sr-empty">No results found</div>';
+        } else {
+            rowsHtml = top.map((f) => {
+                const type = (f.mime_type === 'folder') ? 'folder' : 'file';
+                const loc = resolveHomeLocationName(f.folder_id);
+                return `
+                    <button type="button" class="gd-sr-row" data-id="${esc(f.id)}" data-type="${type}" data-folder="${esc(f.folder_id || '')}">
+                        <span class="gd-sr-icon">${getIcon(type, f.mime_type, f.name)}</span>
+                        <span class="gd-sr-main">
+                            <span class="gd-sr-name">${highlightMatch(f.name, qLower)}</span>
+                            <span class="gd-sr-owner">${esc(itemOwner(f))}</span>
+                        </span>
+                        <span class="gd-sr-date">${esc(Components.formatDate(f.updated_at || f.created_at))}</span>
+                        <span class="gd-sr-loc">${folderIcon}<span class="gd-sr-loc-text">${esc(loc || 'My Drive')}</span></span>
+                    </button>`;
+            }).join('');
+        }
+
+        dropdown.innerHTML = `
+            <div class="gd-sr-chips">${chipsHtml}</div>
+            <div class="gd-sr-list">${rowsHtml}</div>
+            <div class="gd-sr-footer">
+                <a href="#" class="gd-sr-advanced">Advanced search</a>
+                <a href="#" class="gd-sr-all">${'\u2190'} All results</a>
+            </div>
+        `;
+
+        dropdown.querySelectorAll('.gd-chip').forEach((chip) => {
+            bindChip(chip, (value) => {
+                setFilterSelect(chip.dataset.select, value, chip.dataset.any);
+                syncChipsForSelect(chip.dataset.select, value);
+                renderSearchDropdown(q);
+            });
+        });
+
+        dropdown.querySelectorAll('.gd-sr-row').forEach((row) => {
+            row.addEventListener('click', () => {
+                const id = row.dataset.id;
+                if (row.dataset.type === 'folder') { App.navigate(`/files/${id}`); hideSearchDropdown(); return; }
+                const f = top.find((x) => x.id === id);
+                if (f) openFile(f);
+                hideSearchDropdown();
+            });
+        });
+
+        dropdown.querySelector('.gd-sr-advanced')?.addEventListener('click', (e) => { e.preventDefault(); openAdvancedSearchPanel(q); });
+        dropdown.querySelector('.gd-sr-all')?.addEventListener('click', (e) => { e.preventDefault(); searchAllResults(q); });
+
+        resolveUnknownLocations(top, dropdown);
+    }
+
+    function searchAllResults(query) {
+        hideSearchDropdown();
+        const topInput = document.getElementById('search-input');
+        if (topInput) topInput.value = query;
+        quickSearch(query);
+    }
+
+    function openAdvancedSearchPanel(query) {
+        hideSearchDropdown();
+        const topInput = document.getElementById('search-input');
+        const itemName = document.getElementById('filter-item-name');
+        if (topInput) topInput.value = query;
+        if (itemName && query) itemName.value = query;
+        document.getElementById('search-filter-panel')?.classList.remove('hidden');
+        syncAdvancedSearchDependentFields();
+        topInput?.focus();
+    }
+
+    // Google Drive-style filter chip bar shown above the search results.
+    function renderSearchChipBar() {
+        const bar = document.getElementById('md3-chip-bar');
+        if (!bar) return;
+
+        const anyActive = HOME_CHIP_DEFS.some((d) => {
+            const s = document.getElementById(d.select);
+            return s && s.value && s.value !== d.anyLabel;
+        });
+        bar.innerHTML = homeChipHtml(HOME_CHIP_DEFS, { withClear: true })
+            + (anyActive ? '<button type="button" class="gd-chip-clearall">Clear filters</button>' : '');
+
+        bar.querySelectorAll('.gd-chip').forEach((chip) => {
+            const clearEl = chip.querySelector('.gd-chip-clear');
+            if (clearEl) {
+                clearEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setFilterSelect(chip.dataset.select, '', chip.dataset.any);
+                    applyAdvancedSearch();
+                });
+            }
+            bindChip(chip, (value) => {
+                setFilterSelect(chip.dataset.select, value, chip.dataset.any);
+                syncChipsForSelect(chip.dataset.select, value);
+                applyAdvancedSearch();
+            });
+        });
+
+        bar.querySelector('.gd-chip-clearall')?.addEventListener('click', () => {
+            HOME_CHIP_DEFS.forEach((d) => setFilterSelect(d.select, '', d.anyLabel));
+            applyAdvancedSearch();
+        });
+
+        bar.classList.remove('hidden');
+    }
+
     async function loadRecent() {
         currentPage = 'recent';
         currentFolderId = null;
@@ -805,18 +1686,112 @@ const FileManager = (() => {
         showFilesView();
         showLoading(true);
         try {
-            const data = await API.files.trash();
-            allFolders = [];
-            allFiles = data.files || [];
-            filteredFolders = [];
+            const [fileData, folderData] = await Promise.all([API.files.trash(), API.folders.trash()]);
+            allFolders = folderData.folders || [];
+            allFiles = fileData.files || [];
+            filteredFolders = [...allFolders];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles, { isTrash: true });
             setBreadcrumbText('Trash');
+            syncTrashActionLabels();
+            updateTrashBinBanner();
         } catch {
             Components.toast('Failed to load trash', 'error');
         } finally {
             showLoading(false);
         }
+    }
+
+    function updateTrashBinBanner() {
+        const banner = document.getElementById('trash-bin-banner');
+        if (!banner) return;
+        const inTrash = currentPage === 'trash';
+        const hasItems = inTrash && ((allFolders && allFolders.length) || (allFiles && allFiles.length));
+        banner.classList.toggle('hidden', !hasItems);
+    }
+
+    async function emptyBin() {
+        if (currentPage !== 'trash') return;
+        const hasItems = (allFolders && allFolders.length) || (allFiles && allFiles.length);
+        if (!hasItems) return;
+        const ok = await Components.confirm(
+            'Empty bin?',
+            'All items in the bin will be deleted forever. This cannot be undone.',
+            'Empty bin',
+        );
+        if (!ok) return;
+        Components.toast('Emptying bin…', 'info');
+        try {
+            await API.trash.empty();
+            Components.toast('Bin emptied', 'success');
+            clearSelection();
+            await loadTrash();
+        } catch (e) {
+            Components.toast(e?.message || 'Failed to empty bin', 'error');
+        }
+    }
+
+    async function resolveSharedListings(items, mode) {
+        const fileResults = await Promise.all(items
+            .filter((item) => item.item_type === 'file' && item.item_id)
+            .map(async (item) => {
+                try {
+                    const f = await API.files.get(item.item_id);
+                    if (!f) return null;
+                    const base = {
+                        ...f,
+                        share_role: permissionToRole(item.share?.permission),
+                        shared_at: item.share?.created_at || f.updated_at || f.created_at,
+                    };
+                    if (mode === 'with-me') {
+                        return {
+                            ...base,
+                            shared_by_name: item.owner_name || 'User',
+                            shared_by_email: item.owner_email || '',
+                        };
+                    }
+                    const recipient = usersCache.find((u) => u.id === item.share?.shared_with);
+                    return {
+                        ...base,
+                        shared_with_name: recipient?.label || recipient?.email || item.share?.shared_with || 'User',
+                        shared_with_email: recipient?.email || '',
+                    };
+                } catch {
+                    return null;
+                }
+            }));
+
+        const folderResults = items
+            .filter((item) => item.item_type === 'folder' && item.item_id)
+            .map((item) => {
+                const base = {
+                    id: item.item_id,
+                    name: item.item_name || 'Folder',
+                    updated_at: item.share?.created_at || new Date().toISOString(),
+                    created_at: item.share?.created_at || new Date().toISOString(),
+                    share_role: permissionToRole(item.share?.permission),
+                    shared_at: item.share?.created_at || new Date().toISOString(),
+                };
+                if (mode === 'with-me') {
+                    return {
+                        ...base,
+                        shared_by_name: item.owner_name || 'User',
+                        shared_by_email: item.owner_email || '',
+                    };
+                }
+                const recipient = usersCache.find((u) => u.id === item.share?.shared_with);
+                return {
+                    ...base,
+                    shared_with_name: recipient?.label || recipient?.email || item.share?.shared_with || 'User',
+                    shared_with_email: recipient?.email || '',
+                };
+            });
+
+        const sortByShared = (a, b) => new Date(b.shared_at) - new Date(a.shared_at);
+        return {
+            files: fileResults.filter(Boolean).sort(sortByShared),
+            folders: folderResults.sort(sortByShared),
+        };
     }
 
     async function loadSharedWithMe() {
@@ -827,41 +1802,11 @@ const FileManager = (() => {
         showLoading(true);
 
         try {
-            const me = getCurrentUser();
-            const shared = meta.shares.filter((s) => s.shared_with_email === me.email || s.shared_with_id === me.id);
-            // Ensure decryption keys for shared items are imported for this user session.
-            for (const s of shared) {
-                if (!s.shared_key || !s.item_id) continue;
-                try {
-                    const imported = await CryptoModule.importKey(s.shared_key);
-                    await CryptoModule.storeKey(s.item_id, imported);
-                } catch {
-                    // ignore bad/missing keys and continue
-                }
-            }
-
-            allFolders = [];
-            const resolved = await Promise.all(shared.map(async (s) => {
-                try {
-                    const f = await API.files.get(s.item_id);
-                    if (!f) return null;
-                    return {
-                        ...f,
-                        shared_by_name: s.shared_by_name || 'User',
-                        shared_by_email: s.shared_by_email || '',
-                        shared_with_name: s.shared_with_name || '',
-                        share_role: s.role || 'viewer',
-                        shared_at: s.created_at || f.updated_at || f.created_at,
-                    };
-                } catch {
-                    return null;
-                }
-            }));
-            allFiles = resolved
-                .filter(Boolean)
-                .sort((a, b) => new Date(b.shared_at) - new Date(a.shared_at));
-
-            filteredFolders = [];
+            const data = await API.shares.sharedWithMe();
+            const { files, folders } = await resolveSharedListings(data.items || [], 'with-me');
+            allFolders = folders;
+            allFiles = files;
+            filteredFolders = [...allFolders];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
             setBreadcrumbText('Shared with me');
@@ -872,50 +1817,6 @@ const FileManager = (() => {
             filteredFiles = [];
             renderItems([], []);
             setBreadcrumbText('Shared with me');
-        } finally {
-            showLoading(false);
-        }
-    }
-
-    async function loadSharedByMe() {
-        currentPage = 'shared-by';
-        currentFolderId = null;
-        clearSelection();
-        showFilesView();
-        showLoading(true);
-
-        try {
-            const me = getCurrentUser();
-            const shared = meta.shares.filter((s) => s.shared_by_id === me.id);
-            const data = await API.files.list({ page_size: '300' });
-            const filesMap = new Map((data.files || []).map((f) => [f.id, f]));
-            allFolders = [];
-            allFiles = shared
-                .map((s) => {
-                    const f = filesMap.get(s.item_id);
-                    if (!f) return null;
-                    return {
-                        ...f,
-                        shared_with_name: s.shared_with_name || s.shared_with_email || 'User',
-                        shared_with_email: s.shared_with_email || '',
-                        share_role: s.role || 'viewer',
-                        shared_at: s.created_at || f.updated_at || f.created_at,
-                    };
-                })
-                .filter(Boolean)
-                .sort((a, b) => new Date(b.shared_at) - new Date(a.shared_at));
-
-            filteredFolders = [];
-            filteredFiles = [...allFiles];
-            renderItems(filteredFolders, filteredFiles);
-            setBreadcrumbText('Shared by me');
-        } catch {
-            allFolders = [];
-            allFiles = [];
-            filteredFolders = [];
-            filteredFiles = [];
-            renderItems([], []);
-            setBreadcrumbText('Shared by me');
         } finally {
             showLoading(false);
         }
@@ -944,18 +1845,24 @@ const FileManager = (() => {
     }
 
     async function createFolder() {
+        if (!canAcceptUploads()) {
+            Components.toast('Connect a computer to add folders here', 'info');
+            return;
+        }
         const name = await Components.prompt('New folder', '', 'Folder name');
         if (!name || !name.trim()) return;
         try {
             await API.folders.create(name.trim(), currentFolderId || null);
             Components.toast('Folder created', 'success');
             refresh();
+            if (currentPage === 'files') SidebarTree.refresh(currentFolderId || null);
         } catch (err) {
             Components.toast(err.message, 'error');
         }
     }
 
     async function quickSearch(query) {
+        hideSearchDropdown();
         const q = String(query || '').trim().toLowerCase();
 
         // In folder view, search only within the currently opened folder.
@@ -978,6 +1885,7 @@ const FileManager = (() => {
             filteredFolders = [];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
+            renderSearchChipBar();
             setBreadcrumbText(`Search: ${query}`);
         } catch {
             Components.toast('Search failed', 'error');
@@ -987,71 +1895,21 @@ const FileManager = (() => {
     }
 
     async function applyAdvancedSearch() {
-        const query = document.getElementById('search-input')?.value?.trim() || '';
-        const type = document.getElementById('filter-type')?.value || '';
-        const owner = document.getElementById('filter-owner')?.value || 'Anyone';
-        const modified = document.getElementById('filter-modified')?.value || 'Any time';
-        const location = document.getElementById('filter-location')?.value || 'Anywhere';
+        hideSearchDropdown();
+        const params = collectAdvancedSearchParams();
 
+        currentPage = 'search';
         showFilesView();
         showLoading(true);
 
         try {
-            const data = await API.files.list({ search: query, page_size: '500' });
-            let list = data.files || [];
-            const me = getCurrentUser();
-
-            if (type && type !== 'Any') {
-                list = list.filter((f) => {
-                    const g = getMimeGroup(f.mime_type, 'file', f.name);
-                    if (type === 'Folders') return false;
-                    if (type === 'Documents') return g === 'document' || g === 'text';
-                    if (type === 'Spreadsheets') return g === 'sheet';
-                    if (type === 'PDFs') return g === 'pdf';
-                    if (type === 'Images') return g === 'image';
-                    if (type === 'Videos') return g === 'video';
-                    if (type === 'Audio') return g === 'audio';
-                    return true;
-                });
-            }
-
-            if (owner === 'Me') {
-                list = list.filter((f) => f.owner_id === me.id);
-            } else if (owner === 'Not me') {
-                list = list.filter((f) => f.owner_id !== me.id);
-            }
-
-            if (modified !== 'Any time') {
-                const now = Date.now();
-                list = list.filter((f) => {
-                    const t = new Date(f.updated_at || f.created_at).getTime();
-                    const diffDays = (now - t) / (1000 * 60 * 60 * 24);
-                    if (modified === 'Today') return diffDays < 1;
-                    if (modified === 'Last 7 days') return diffDays <= 7;
-                    if (modified === 'Last 30 days') return diffDays <= 30;
-                    return true;
-                });
-            }
-
-            if (location === 'Trash') {
-                const trashData = await API.files.trash();
-                const trashIds = new Set((trashData.files || []).map((f) => f.id));
-                list = list.filter((f) => trashIds.has(f.id));
-            }
-            if (location === 'My Drive') {
-                list = list.filter((f) => !f.is_trashed);
-            }
-            if (location === 'Shared with me') {
-                const meId = me.id;
-                const sharedIds = new Set(meta.shares.filter((s) => s.shared_with_id === meId || s.shared_with_email === me.email).map((s) => s.item_id));
-                list = list.filter((f) => sharedIds.has(f.id));
-            }
-
-            allFolders = [];
-            allFiles = list;
-            filteredFolders = [];
+            const data = await API.search.advanced(params);
+            allFolders = data.folders || [];
+            allFiles = data.files || [];
+            filteredFolders = [...allFolders];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
+            renderSearchChipBar();
             setBreadcrumbText('Advanced Search');
         } catch {
             Components.toast('Advanced search failed', 'error');
@@ -1073,18 +1931,14 @@ const FileManager = (() => {
             if (sortBy === 'owner') {
                 const ownerA = currentPage === 'shared-with'
                     ? (a.shared_by_name || a.shared_by_email || itemOwner(a))
-                    : (currentPage === 'shared-by'
-                        ? (a.shared_with_name || a.shared_with_email || itemOwner(a))
-                        : itemOwner(a));
+                    : itemOwner(a);
                 const ownerB = currentPage === 'shared-with'
                     ? (b.shared_by_name || b.shared_by_email || itemOwner(b))
-                    : (currentPage === 'shared-by'
-                        ? (b.shared_with_name || b.shared_with_email || itemOwner(b))
-                        : itemOwner(b));
+                    : itemOwner(b);
                 return ownerA.localeCompare(ownerB) * factor;
             }
             if (sortBy === 'size') {
-                if (currentPage === 'shared-with' || currentPage === 'shared-by') {
+                if (currentPage === 'shared-with') {
                     const roleA = String(a.share_role || 'viewer');
                     const roleB = String(b.share_role || 'viewer');
                     return roleA.localeCompare(roleB) * factor;
@@ -1099,10 +1953,10 @@ const FileManager = (() => {
                 return am.localeCompare(bm) * factor;
             }
 
-            const at = new Date((currentPage === 'shared-with' || currentPage === 'shared-by')
+            const at = new Date((currentPage === 'shared-with')
                 ? (a.shared_at || a.updated_at || a.created_at || 0)
                 : (a.updated_at || a.created_at || 0)).getTime();
-            const bt = new Date((currentPage === 'shared-with' || currentPage === 'shared-by')
+            const bt = new Date((currentPage === 'shared-with')
                 ? (b.shared_at || b.updated_at || b.created_at || 0)
                 : (b.updated_at || b.created_at || 0)).getTime();
             return (at - bt) * factor;
@@ -1205,6 +2059,10 @@ const FileManager = (() => {
             grid.classList.add('hidden');
             empty.classList.remove('hidden');
             header.classList.add('hidden');
+            if (currentPage === 'computers' && !currentFolderId) {
+                renderComputersEmptyState();
+                return;
+            }
             document.getElementById('empty-title').textContent = isTrash ? 'Trash is empty' : 'No files found';
             document.getElementById('empty-desc').textContent = isTrash
                 ? 'Items in Trash are deleted after 30 days.'
@@ -1220,11 +2078,28 @@ const FileManager = (() => {
             grid.classList.add('grid-view');
             header.classList.add('hidden');
             let gi = 0;
-            filteredFolders.forEach((f) => { const el = createGridCard(f, 'folder', isTrash); el.style.setProperty('--fd-i', gi++); grid.appendChild(el); });
+            if (filteredFolders.length) {
+                const fh = document.createElement('div');
+                fh.className = 'fd-grid-section-title';
+                fh.textContent = 'Folders';
+                grid.appendChild(fh);
+                const fw = document.createElement('div');
+                fw.className = 'fd-folder-chips';
+                filteredFolders.forEach((f) => fw.appendChild(createGridCard(f, 'folder', isTrash)));
+                grid.appendChild(fw);
+                if (filteredFiles.length) {
+                    const dh = document.createElement('div');
+                    dh.className = 'fd-grid-section-title';
+                    dh.textContent = 'Files';
+                    grid.appendChild(dh);
+                }
+            }
             filteredFiles.forEach((f)   => { const el = createGridCard(f, 'file',   isTrash); el.style.setProperty('--fd-i', gi++); grid.appendChild(el); });
         } else {
             grid.classList.remove('grid-view');
             header.classList.remove('hidden');
+            const myAvatar = getMyProfileAvatar();
+            grid.style.setProperty('--fd-me-avatar', myAvatar ? `url("${myAvatar}")` : 'none');
             let ri = 0;
             filteredFolders.forEach((f) => { const el = createRow(f, 'folder', isTrash); el.style.setProperty('--fd-i', ri++); grid.appendChild(el); });
             filteredFiles.forEach((f)   => { const el = createRow(f, 'file',   isTrash); el.style.setProperty('--fd-i', ri++); grid.appendChild(el); });
@@ -1246,7 +2121,6 @@ const FileManager = (() => {
 
         const isHomeSuggested = currentPage === 'home';
         const isSharedWith = currentPage === 'shared-with';
-        const isSharedBy = currentPage === 'shared-by';
 
         let owner = itemOwner(item);
         let modifiedBy = item.last_modified_by || owner || 'Admin';
@@ -1254,41 +2128,40 @@ const FileManager = (() => {
         let modifiedText = `${Components.formatDate(item.updated_at || item.created_at)}${type === 'file' ? ` by ${modifiedBy}` : ''}`;
         let locationText = buildLocationLabel(item.folder_id);
         if (isSharedWith) {
-            owner = item.shared_by_name || owner;
-            modifiedText = Components.formatDate(item.shared_at || item.updated_at || item.created_at);
-            sizeText = capitalizeRole(item.share_role || 'viewer');
-        }
-        if (isSharedBy) {
-            owner = item.shared_with_name || item.shared_with_email || owner;
             modifiedText = Components.formatDate(item.shared_at || item.updated_at || item.created_at);
             sizeText = capitalizeRole(item.share_role || 'viewer');
         }
         if (isHomeSuggested) {
-            owner = itemOwner(item) || 'Admin';
-            modifiedBy = item.last_modified_by || owner || 'Admin';
-            modifiedText = Components.formatAbsoluteDate(item.updated_at || item.created_at);
-            locationText = buildLocationLabel(item.folder_id) || 'My Drive';
+            locationText = resolveHomeLocationName(item.folder_id) || '…';
         }
         const lockBadge = '';
+        const sharedBadge = showSharedBadgeForItem(item) ? renderSharedBadge() : '';
+        const folderIconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="#5f6368"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>';
+        const reasonText = isHomeSuggested ? formatHomeReason(item) : '';
+        const ownerCellHtml = renderOwnerCell(item);
 
         row.innerHTML = `
             <div class="file-cell file-name">
                 <input type="checkbox" class="file-checkbox" aria-label="Select">
                 <span class="file-icon">${getIcon(type, item.mime_type, item.name)}</span>
                 <span class="file-label">${esc(item.name)}</span>
+                ${sharedBadge}
                 ${lockBadge}
             </div>
-            <div class="file-cell cell-owner ${isHomeSuggested ? '' : 'owner-pill'}">${esc(isHomeSuggested ? modifiedText : owner)}</div>
-            <div class="file-cell cell-date">${esc(isHomeSuggested ? owner : modifiedText)}</div>
-            <div class="file-cell cell-size">${isHomeSuggested ? `<a class="home-location-link" href="#/files${item.folder_id ? `/${item.folder_id}` : ''}">${esc(locationText)}</a>` : sizeText}</div>
-            ${isHomeSuggested
-                ? `<div class="file-cell file-actions home-size-cell">${esc(sizeText)}</div>`
-                : `<div class="file-cell file-actions">
-                    <button class="btn-icon action-share" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
-                    <button class="btn-icon action-download" title="Download"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
-                    <button class="btn-icon action-more" title="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
-                </div>`
-            }
+            <div class="file-cell cell-owner">${isHomeSuggested
+                ? `<span class="home-reason-cell">${esc(reasonText)}</span>`
+                : ownerCellHtml}</div>
+            <div class="file-cell cell-date">${isHomeSuggested
+                ? ownerCellHtml
+                : esc(modifiedText)}</div>
+            <div class="file-cell cell-size">${isHomeSuggested
+                ? `<a class="home-location-cell" data-folder="${esc(item.folder_id || '')}" href="/files${item.folder_id ? `/${item.folder_id}` : ''}">${folderIconSvg}<span class="home-location-text">${esc(locationText)}</span></a>`
+                : sizeText}</div>
+            <div class="file-cell file-actions">
+                <button class="btn-icon action-share" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
+                <button class="btn-icon action-download" title="Download"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
+                <button class="btn-icon action-more" title="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+            </div>
         `;
 
         bindItemRowEvents(row, item, type, isTrash);
@@ -1303,20 +2176,39 @@ const FileManager = (() => {
         card.dataset.type = type;
         card.draggable = true;
 
-        const sizeText = type === 'folder' ? 'Folder' : Components.formatSize(item.size);
-        const lockBadge = '';
-        card.innerHTML = `
-            <div class="card-thumb" id="thumb-${item.id}">${getIcon(type, item.mime_type, item.name)}</div>
-            <div class="card-meta">
-                <div class="card-name">${esc(item.name)} ${lockBadge}</div>
-                <div class="card-size">${sizeText}</div>
-            </div>
+        const overlayHtml = `
             <div class="card-overlay">
                 <input type="checkbox" class="file-checkbox" aria-label="Select">
-                <div class="file-actions" style="opacity:1;">
-                    <button class="btn-icon action-share" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
-                    <button class="btn-icon action-download" title="Download"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
-                    <button class="btn-icon action-more" title="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+            </div>
+            <button class="btn-icon action-more card-more-btn" title="More" aria-label="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>`;
+
+        if (type === 'folder') {
+            const folderSharedBadge = showSharedBadgeForItem(item) ? renderSharedBadge() : '';
+            card.innerHTML = `
+                <span class="folder-chip-icon">${getIcon('folder', item.mime_type, item.name)}</span>
+                <span class="folder-chip-name" title="${esc(item.name)}">${esc(item.name)}</span>${folderSharedBadge}
+                <button class="btn-icon action-more card-more-btn" title="More" aria-label="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+            `;
+            bindItemRowEvents(card, item, type, isTrash);
+            setupDropTarget(card, item, type);
+            return card;
+        }
+
+        const me = getCurrentUser();
+        const edited = item.updated_at && item.created_at
+            && new Date(item.updated_at).getTime() > new Date(item.created_at).getTime();
+        const who = (item.owner_id && me.id && item.owner_id === me.id) ? 'You' : (itemOwner(item) || 'You');
+        const reason = `${who} ${edited ? 'edited' : 'created'} \u00b7 ${Components.formatDate(item.updated_at || item.created_at)}`;
+        const fileSharedBadge = showSharedBadgeForItem(item) ? renderSharedBadge() : '';
+
+        card.innerHTML = `
+            <div class="card-thumb" id="thumb-${item.id}">${getIcon('file', item.mime_type, item.name)}</div>
+            ${overlayHtml}
+            <div class="card-meta">
+                <span class="card-type-icon">${getIcon('file', item.mime_type, item.name)}</span>
+                <div class="card-meta-text">
+                    <div class="card-name" title="${esc(item.name)}">${esc(item.name)}${fileSharedBadge}</div>
+                    <div class="card-sub">${esc(reason)}</div>
                 </div>
             </div>
         `;
@@ -1324,7 +2216,7 @@ const FileManager = (() => {
         bindItemRowEvents(card, item, type, isTrash);
         setupDropTarget(card, item, type);
 
-        if (type === 'file' && getMimeGroup(item.mime_type, type, item.name) === 'image') {
+        if (getMimeGroup(item.mime_type, type, item.name) === 'image') {
             renderImageThumb(item, card.querySelector('.card-thumb'));
         }
 
@@ -1360,7 +2252,7 @@ const FileManager = (() => {
             // Recent page should open items with a single click.
             if (currentPage === 'recent') {
                 if (type === 'folder' || type === 'suggested-folder') {
-                    window.location.hash = `#/files/${item.id}`;
+                    App.navigate(folderNavPath(item.id));
                 } else {
                     openFile(item);
                 }
@@ -1371,7 +2263,7 @@ const FileManager = (() => {
             // Open files and folders on single tap in mobile/tablet widths.
             if (window.matchMedia('(max-width: 820px)').matches) {
                 if (type === 'folder' || type === 'suggested-folder') {
-                    window.location.hash = `#/files/${item.id}`;
+                    App.navigate(folderNavPath(item.id));
                 } else {
                     openFile(item);
                 }
@@ -1383,7 +2275,7 @@ const FileManager = (() => {
 
         container.addEventListener('dblclick', () => {
             if (type === 'folder') {
-                window.location.hash = `#/files/${item.id}`;
+                App.navigate(folderNavPath(item.id));
                 return;
             }
             openFile(item);
@@ -1465,9 +2357,203 @@ const FileManager = (() => {
         document.querySelectorAll('.folder-drop-target').forEach((el) => el.classList.remove('folder-drop-target'));
     }
 
+    const TrashCopy = {
+        deleteForever: 'Delete forever',
+        deleteForeverTitle: 'Delete forever?',
+        deleteForeverButton: 'Delete forever',
+        deleteForeverToast: 'Deleted forever',
+        moveToTrash: 'Move to trash',
+        moveToTrashTitle: 'Move to trash?',
+        moveToTrashButton: 'Move to trash',
+        movedToTrashToast: 'Moved to trash',
+        restore: 'Restore',
+        singleDeleteBody(name) {
+            return `"${name}" will be deleted forever.`;
+        },
+        bulkDeleteBody(count) {
+            return count === 1 ? '1 item will be deleted forever.' : `${count} items will be deleted forever.`;
+        },
+        singleMoveBody(name) {
+            return `"${name}" will be moved to trash.`;
+        },
+        bulkMoveBody() {
+            return 'Selected items will be moved to trash.';
+        },
+        restoredToast(count) {
+            return count === 1 ? 'Restored' : `${count} items restored`;
+        },
+    };
+
+    function inTrashView() {
+        return currentPage === 'trash';
+    }
+
+    function isTrashMode(target) {
+        // Permanent-delete UX is tied to the Trash page only — never stale
+        // contextTarget.isTrash from a previous visit.
+        return inTrashView() || Boolean(target?.isTrash && currentPage === 'trash');
+    }
+
+    function setElementHidden(el, hidden) {
+        if (!el) return;
+        if (hidden) {
+            el.setAttribute('hidden', '');
+        } else {
+            el.removeAttribute('hidden');
+        }
+    }
+
+    function setActionLabel(el, label) {
+        if (!el) return;
+        el.title = label;
+        el.setAttribute('aria-label', label);
+    }
+
+    function syncTrashActionLabels(target = contextTarget) {
+        const trashMode = inTrashView();
+        const computerList = currentPage === 'computers' && !currentFolderId;
+
+        setActionLabel(
+            document.getElementById('bulk-delete'),
+            trashMode ? TrashCopy.deleteForever : (computerList ? 'Remove device' : 'Delete'),
+        );
+        setActionLabel(document.getElementById('bulk-restore'), TrashCopy.restore);
+
+        setElementHidden(document.getElementById('bulk-share'), trashMode);
+        setElementHidden(document.getElementById('bulk-move'), trashMode);
+        setElementHidden(document.getElementById('bulk-restore'), !trashMode);
+
+        const detailsDeleteBtn = document.getElementById('details-delete-btn');
+        if (detailsDeleteBtn) {
+            const label = trashMode ? TrashCopy.deleteForever : 'Delete';
+            detailsDeleteBtn.title = trashMode ? TrashCopy.deleteForever : TrashCopy.moveToTrash;
+            detailsDeleteBtn.setAttribute('aria-label', label);
+            const textNode = detailsDeleteBtn.lastChild;
+            if (textNode?.nodeType === Node.TEXT_NODE) {
+                textNode.textContent = label;
+            }
+        }
+
+        configureContextMenu(target);
+    }
+
+    let contextMenuOrder = null;
+
+    function captureContextMenuOrder(menu) {
+        if (contextMenuOrder) return;
+        contextMenuOrder = Array.from(menu.children);
+    }
+
+    function restoreContextMenuOrder(menu) {
+        if (!contextMenuOrder) return;
+        contextMenuOrder.forEach((child) => menu.appendChild(child));
+    }
+
+    function configureContextMenu(target = contextTarget) {
+        const menu = document.getElementById('context-menu');
+        if (!menu) return;
+
+        captureContextMenuOrder(menu);
+        restoreContextMenuOrder(menu);
+
+        const actionMap = {};
+        menu.querySelectorAll('.context-item[data-action]').forEach((item) => {
+            actionMap[item.dataset.action] = item;
+            item.style.display = '';
+        });
+        menu.querySelectorAll('.context-divider').forEach((divider) => {
+            divider.style.display = '';
+        });
+
+        const inTrash = isTrashMode(target);
+        const isFolder = target && target.type === 'folder';
+        const allowed = inTrash
+            ? new Set(isFolder
+                ? ['open', 'restore', 'info', 'delete']
+                : ['open', 'restore', 'info', 'download', 'delete'])
+            : null;
+
+        Object.entries(actionMap).forEach(([action, item]) => {
+            const show = inTrash ? allowed.has(action) : action !== 'restore';
+            setElementHidden(item, !show);
+            item.style.display = show ? '' : 'none';
+        });
+
+        if (actionMap.delete) {
+            const computerEntry = target && target.type === 'folder' && isComputerListEntry(target.data);
+            if (computerEntry) {
+                actionMap.delete.textContent = 'Remove device';
+                setActionLabel(actionMap.delete, 'Remove device');
+            } else {
+                actionMap.delete.textContent = inTrash ? TrashCopy.deleteForever : TrashCopy.moveToTrash;
+                setActionLabel(actionMap.delete, actionMap.delete.textContent);
+            }
+        }
+        if (actionMap.restore) {
+            actionMap.restore.textContent = TrashCopy.restore;
+            setActionLabel(actionMap.restore, TrashCopy.restore);
+        }
+        if (actionMap.info) {
+            const infoLabel = (target && target.type === 'folder') ? 'Folder information' : 'File information';
+            actionMap.info.textContent = infoLabel;
+            setActionLabel(actionMap.info, infoLabel);
+        }
+        if (actionMap.request_approval) {
+            const showApproval = !inTrash && target && target.type === 'file' && canWriteFileItem(target.data);
+            setElementHidden(actionMap.request_approval, !showApproval);
+            actionMap.request_approval.style.display = showApproval ? '' : 'none';
+        }
+        if (actionMap.open_with) {
+            const showOpenWith = !inTrash && target && target.type === 'file';
+            setElementHidden(actionMap.open_with, !showOpenWith);
+            actionMap.open_with.style.display = showOpenWith ? '' : 'none';
+        }
+
+        const computerEntry = target && target.type === 'folder' && isComputerListEntry(target.data);
+        if (computerEntry) {
+            ['move', 'share', 'get_link', 'request_approval', 'copy', 'rename', 'offline', 'open_with', 'star', 'download'].forEach((action) => {
+                if (actionMap[action]) {
+                    setElementHidden(actionMap[action], true);
+                    actionMap[action].style.display = 'none';
+                }
+            });
+        }
+
+        if (inTrash) {
+            ['open', 'restore', 'download', 'info', 'delete'].forEach((action) => {
+                if (actionMap[action]) menu.appendChild(actionMap[action]);
+            });
+            menu.querySelectorAll('.context-divider').forEach((divider) => {
+                divider.style.display = 'none';
+            });
+        } else {
+            const isVisibleItem = (el) =>
+                el?.classList?.contains('context-item')
+                && el.style.display !== 'none'
+                && !el.hasAttribute('hidden');
+            const dividers = Array.from(menu.querySelectorAll('.context-divider'));
+            dividers.forEach((divider) => {
+                divider.style.display = 'none';
+            });
+            const visibleItems = Array.from(menu.children).filter(isVisibleItem);
+            for (let i = 0; i < visibleItems.length - 1; i++) {
+                let el = visibleItems[i].nextElementSibling;
+                let firstDivider = null;
+                while (el && el !== visibleItems[i + 1]) {
+                    if (el.classList.contains('context-divider') && !firstDivider) {
+                        firstDivider = el;
+                    }
+                    el = el.nextElementSibling;
+                }
+                if (firstDivider) firstDivider.style.display = '';
+            }
+        }
+    }
+
     function showContextMenu(x, y) {
         const menu = document.getElementById('context-menu');
         if (!menu) return;
+        configureContextMenu();
         menu.style.left = `${Math.min(x, window.innerWidth - 250)}px`;
         menu.style.top = `${Math.min(y, window.innerHeight - 320)}px`;
         menu.classList.remove('hidden');
@@ -1486,10 +2572,48 @@ const FileManager = (() => {
     function clearSelection() {
         selectedItems.clear();
         selectedPrimary = null;
+        selectionAnchor = null;
+        contextTarget = null;
         syncSelectionStyles();
     }
 
+    function getVisibleItemPayloads() {
+        const isTrash = currentPage === 'trash';
+        const items = [];
+        filteredFolders.forEach((f) => items.push({ id: f.id, type: 'folder', data: f, isTrash }));
+        filteredFiles.forEach((f) => items.push({ id: f.id, type: 'file', data: f, isTrash }));
+        return items;
+    }
+
+    function selectRange(anchorId, targetId) {
+        const items = getVisibleItemPayloads();
+        const anchorIdx = items.findIndex((x) => x.id === anchorId);
+        const targetIdx = items.findIndex((x) => x.id === targetId);
+        if (anchorIdx < 0 || targetIdx < 0) return;
+
+        const start = Math.min(anchorIdx, targetIdx);
+        const end = Math.max(anchorIdx, targetIdx);
+        selectedItems.clear();
+        for (let i = start; i <= end; i++) {
+            selectedItems.add(items[i].id);
+        }
+        selectedPrimary = items[targetIdx];
+    }
+
     function selectSingle(id, payload, el, event) {
+        if (event?.shiftKey) {
+            if (!selectionAnchor) {
+                selectionAnchor = id;
+                selectedItems.clear();
+                selectedItems.add(id);
+                selectedPrimary = payload;
+            } else {
+                selectRange(selectionAnchor, id);
+            }
+            syncSelectionStyles();
+            return;
+        }
+
         const preserve = event && (event.ctrlKey || event.metaKey);
         if (preserve) {
             const now = !selectedItems.has(id);
@@ -1500,8 +2624,11 @@ const FileManager = (() => {
         selectedItems.clear();
         selectedItems.add(id);
         selectedPrimary = payload;
+        selectionAnchor = id;
         syncSelectionStyles();
-        openDetailsPanel(payload);
+        if (!document.getElementById('details-panel')?.classList.contains('hidden')) {
+            openDetailsPanel(payload);
+        }
     }
 
     function toggleSelection(id, payload, checked, el) {
@@ -1517,29 +2644,35 @@ const FileManager = (() => {
             }
         }
 
-        if (selectedItems.size === 1 && selectedPrimary) {
-            openDetailsPanel(selectedPrimary);
-        }
-
-        if (!selectedItems.size) {
-            hideDetailsPanel();
-        }
-
         syncSelectionStyles();
+    }
+
+    function syncToolbarSlot() {
+        const app = document.getElementById('app');
+        const gridVisible = !document.getElementById('file-grid')?.classList.contains('hidden');
+        app?.classList.toggle('reserve-toolbar-slot', currentPage === 'computers' && gridVisible);
     }
 
     function updateSelectionUI() {
         const bar = document.getElementById('selection-bar');
         const count = document.getElementById('selection-count');
+        const chipBar = document.getElementById('md3-chip-bar');
         if (!bar || !count) return;
 
         if (!selectedItems.size) {
             bar.classList.add('hidden');
+            if (currentPage === 'files' || currentPage === 'search') {
+                chipBar?.classList.remove('hidden');
+            }
+            syncToolbarSlot();
             return;
         }
 
         count.textContent = `${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'} selected`;
+        syncTrashActionLabels();
+        chipBar?.classList.add('hidden');
         bar.classList.remove('hidden');
+        syncToolbarSlot();
     }
 
     async function handleContextAction(action, target) {
@@ -1547,13 +2680,13 @@ const FileManager = (() => {
         switch (action) {
             case 'open':
                 if (type === 'folder') {
-                    window.location.hash = `#/files/${data.id}`;
+                    App.navigate(`/files/${data.id}`);
                 } else {
                     openFile(data);
                 }
                 return;
             case 'open_with':
-                Components.toast('Open with is available for connected apps soon', 'info');
+                if (type === 'file') showOpenWithDialog(data);
                 return;
             case 'share':
                 openShareModal({ type, data });
@@ -1561,6 +2694,9 @@ const FileManager = (() => {
             case 'get_link':
                 await navigator.clipboard.writeText(buildShareLink(data.id));
                 Components.toast('Link copied to clipboard', 'success');
+                return;
+            case 'request_approval':
+                if (type === 'file') await requestApprovalForFile(data);
                 return;
             case 'move':
                 await moveItemPrompt(type, data);
@@ -1578,10 +2714,19 @@ const FileManager = (() => {
                 await renamePrompt(type, data);
                 return;
             case 'info':
-                showFileInfo(type, data);
+                openDetailsPanel({ type, data, isTrash });
                 return;
             case 'download':
                 await downloadPayloadAsZip({ type, data });
+                return;
+            case 'restore':
+                if (type === 'folder') {
+                    await API.folders.restore(data.id);
+                } else {
+                    await API.files.restore(data.id);
+                }
+                Components.toast(TrashCopy.restoredToast(1), 'success');
+                refresh();
                 return;
             case 'delete':
                 await moveToTrash(type, data, isTrash);
@@ -1708,13 +2853,42 @@ const FileManager = (() => {
         Components.showModal('File information', html, [{ text: 'Close' }]);
     }
 
+    async function removeComputerDevice(data) {
+        const name = data.name || 'this device';
+        const ok = await Components.confirm(
+            'Remove device?',
+            `Remove "${name}" and all synced files from FreeDrive? This cannot be undone.`,
+            'Remove device',
+        );
+        if (!ok) return;
+        Components.toast('Removing device…', 'info');
+        await API.computers.delete(data.computer_id);
+        Components.toast('Device removed', 'success');
+        clearSelection();
+        refresh();
+    }
+
     async function moveToTrash(type, data, isTrash) {
-        if (isTrash && type === 'file') {
-            const ok = await Components.confirm('Delete permanently?', `${data.name} will be removed forever.`, 'Delete permanently');
+        if (type === 'folder' && isComputerListEntry(data)) {
+            await removeComputerDevice(data);
+            return;
+        }
+
+        // Permanent delete only on the Trash page — ignore stale payload.isTrash.
+        if (inTrashView()) {
+            const ok = await Components.confirm(
+                TrashCopy.deleteForeverTitle,
+                TrashCopy.singleDeleteBody(data.name),
+                TrashCopy.deleteForeverButton,
+            );
             if (!ok) return;
-            await API.files.permanentDelete(data.id);
-            await CryptoModule.deleteKey(data.id);
-            Components.toast('Deleted permanently', 'success');
+            if (type === 'folder') {
+                await API.folders.permanentDelete(data.id);
+            } else {
+                await API.files.permanentDelete(data.id);
+                await CryptoModule.deleteKey(data.id);
+            }
+            Components.toast(TrashCopy.deleteForeverToast, 'success');
             refresh();
             return;
         }
@@ -1722,17 +2896,23 @@ const FileManager = (() => {
         if (type === 'file') {
             await API.files.delete(data.id);
         } else {
-            const ok = await Components.confirm('Move folder to trash?', `${data.name} and its items will be moved to Trash.`, 'Move');
+            const ok = await Components.confirm(
+                TrashCopy.moveToTrashTitle,
+                TrashCopy.singleMoveBody(data.name),
+                TrashCopy.moveToTrashButton,
+            );
             if (!ok) return;
             await API.folders.delete(data.id);
         }
 
-        Components.toast('Moved to Trash', 'success', {
+        Components.toast(TrashCopy.movedToTrashToast, 'success', {
             actionText: 'Undo',
             onAction: async () => {
                 try {
                     if (type === 'file') {
                         await API.files.restore(data.id);
+                    } else {
+                        await API.folders.restore(data.id);
                     }
                     refresh();
                 } catch {
@@ -1743,6 +2923,13 @@ const FileManager = (() => {
         });
 
         refresh();
+    }
+
+    function permissionToRole(permission) {
+        const p = String(permission || 'read').toLowerCase();
+        if (p === 'write' || p === 'upload') return 'editor';
+        if (p === 'commenter') return 'commenter';
+        return 'viewer';
     }
 
     function openShareModal(payload) {
@@ -1770,12 +2957,12 @@ const FileManager = (() => {
     }
 
     async function buildShareLink(itemId) {
-        let link = `${location.origin}/#/open/${itemId}`;
+        let link = `${location.origin}/open/${itemId}`;
         try {
             const key = await CryptoModule.getKey(itemId);
             if (key) {
                 const exported = await CryptoModule.exportKey(key);
-                link += `?k=${encodeURIComponent(exported)}`;
+                link += `#k=${encodeURIComponent(exported)}`;
             }
         } catch {
             // If key export fails, still return base link.
@@ -1785,6 +2972,23 @@ const FileManager = (() => {
 
     async function copyCurrentShareLink() {
         if (!shareTarget) return;
+        const access = document.getElementById('share-general-access')?.value;
+        const role = document.getElementById('share-link-role')?.value || 'viewer';
+        if (access === 'link' || access === 'anyone') {
+            try {
+                const payload = shareTarget.type === 'folder'
+                    ? { folder_id: shareTarget.data.id, permission: role }
+                    : { file_id: shareTarget.data.id, permission: role };
+                const created = await API.shares.createLink(payload);
+                const link = `${location.origin}/api/v1/public/share/${created.token}/download`;
+                await navigator.clipboard.writeText(link);
+                Components.toast('Share link copied', 'success');
+                return;
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to create share link', 'error');
+                return;
+            }
+        }
         const me = getCurrentUser();
         const link = await buildShareLink(shareTarget.data.id);
         await navigator.clipboard.writeText(link);
@@ -1867,12 +3071,11 @@ const FileManager = (() => {
         wrap.appendChild(chip);
     }
 
-    function renderShareExisting() {
+    async function renderShareExisting() {
         if (!shareTarget) return;
         const existingWrap = document.getElementById('share-existing');
         existingWrap.innerHTML = '';
 
-        const entries = meta.shares.filter((s) => s.item_id === shareTarget.data.id && s.item_type === shareTarget.type);
         const me = getCurrentUser();
 
         const ownerRow = document.createElement('div');
@@ -1903,22 +3106,37 @@ const FileManager = (() => {
         `;
         existingWrap.appendChild(ownerRow);
 
-        entries.forEach((entry) => {
+        let entries = [];
+        try {
+            const data = await API.shares.sharedByMe();
+            entries = (data.items || []).filter((item) => {
+                if (shareTarget.type === 'file') {
+                    return item.item_type === 'file' && item.item_id === shareTarget.data.id;
+                }
+                return item.item_type === 'folder' && item.item_id === shareTarget.data.id;
+            });
+        } catch {
+            entries = [];
+        }
+
+        entries.forEach((item) => {
+            const share = item.share || {};
+            const recipient = usersCache.find((u) => u.id === share.shared_with);
+            const displayName = recipient?.label || recipient?.email || share.shared_with || 'User';
             const row = document.createElement('div');
             row.className = 'share-existing-entry';
             
-            let userAvatarHtml = Components.initials(entry.shared_with_name || entry.shared_with_email || 'U');
-            const cachedUser = usersCache.find(u => u.email === entry.shared_with_email);
-            if (cachedUser && cachedUser.avatar_url) {
-                userAvatarHtml = `<img src="${esc(cachedUser.avatar_url)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+            let userAvatarHtml = Components.initials(displayName);
+            if (recipient?.avatar_url) {
+                userAvatarHtml = `<img src="${esc(recipient.avatar_url)}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
             }
 
             row.innerHTML = `
                 <div class="share-person">
                     <span class="share-avatar">${userAvatarHtml}</span>
                     <div>
-                        <div class="share-name">${esc(entry.shared_with_name || entry.shared_with_email)}</div>
-                        <div class="share-meta">Shared by ${esc(entry.shared_by_name || currentUserLabel())} · ${Components.formatDate(entry.created_at)}</div>
+                        <div class="share-name">${esc(displayName)}</div>
+                        <div class="share-meta">Shared · ${Components.formatDate(share.created_at)}</div>
                     </div>
                 </div>
                 <div class="share-existing-actions">
@@ -1931,15 +3149,28 @@ const FileManager = (() => {
                 </div>
             `;
             const sel = row.querySelector('select');
-            sel.value = entry.role;
-            sel.addEventListener('change', () => {
-                entry.role = sel.value;
-                saveMeta();
+            sel.value = permissionToRole(share.permission);
+            sel.addEventListener('change', async () => {
+                try {
+                    await API.shares.updateUserShare(share.id, { permission: sel.value });
+                    Components.toast('Permission updated', 'success');
+                } catch (err) {
+                    Components.toast(err?.message || 'Failed to update permission', 'error');
+                    sel.value = permissionToRole(share.permission);
+                }
             });
-            row.querySelector('button').addEventListener('click', () => {
-                meta.shares = meta.shares.filter((s) => s.id !== entry.id);
-                saveMeta();
-                renderShareExisting();
+            row.querySelector('button').addEventListener('click', async () => {
+                try {
+                    await API.shares.deleteUserShare(share.id);
+                    Components.toast('Share removed', 'success');
+                    await refreshSharedByMeCache();
+                    if (isMyDrivePage()) {
+                        renderItems(filteredFolders, filteredFiles);
+                    }
+                    renderShareExisting();
+                } catch (err) {
+                    Components.toast(err?.message || 'Failed to remove share', 'error');
+                }
             });
             existingWrap.appendChild(row);
         });
@@ -1956,40 +3187,31 @@ const FileManager = (() => {
     async function saveShareModal() {
         if (!shareTarget) return;
 
-        const me = getCurrentUser();
         const now = new Date().toISOString();
-        let exportedKey = '';
         try {
-            const key = await CryptoModule.getKey(shareTarget.data.id);
-            if (key) exportedKey = await CryptoModule.exportKey(key);
-        } catch {
-            exportedKey = '';
+            for (const d of shareDraft) {
+                const payload = {
+                    permission: d.role || 'viewer',
+                };
+                if (d.userId) payload.shared_with = d.userId;
+                if (d.email) payload.shared_email = d.email;
+                if (shareTarget.type === 'folder') payload.folder_id = shareTarget.data.id;
+                else payload.file_id = shareTarget.data.id;
+                await API.shares.createUserShare(payload);
+                createNotification(`${currentUserLabel()} shared a file with you: ${shareTarget.data.name}`, now, false, d.name || d.email);
+            }
+
+            addFileActivity(shareTarget.data.id, 'shared', shareTarget.data.name, now);
+            await refreshSharedByMeCache();
+            if (isMyDrivePage()) {
+                renderItems(filteredFolders, filteredFiles);
+            }
+            Components.toast('Sharing updated', 'success');
+            closeShareModal();
+            await copyCurrentShareLink();
+        } catch (err) {
+            Components.toast(err?.message || 'Failed to save sharing', 'error');
         }
-
-        shareDraft.forEach((d) => {
-            const row = {
-                id: Components.uuid(),
-                item_id: shareTarget.data.id,
-                item_type: shareTarget.type,
-                item_name: shareTarget.data.name,
-                shared_by_id: me.id,
-                shared_by_name: currentUserLabel(),
-                shared_by_email: me.email || '',
-                shared_with_id: d.userId || '',
-                shared_with_email: d.email,
-                shared_with_name: d.name,
-                shared_key: exportedKey,
-                role: d.role,
-                created_at: now,
-            };
-            meta.shares.push(row);
-            createNotification(`${currentUserLabel()} shared a file with you: ${shareTarget.data.name}`, now, false, d.name || d.email);
-        });
-
-        addFileActivity(shareTarget.data.id, 'shared', shareTarget.data.name, now);
-        saveMeta();
-        closeShareModal();
-        await copyCurrentShareLink();
     }
 
     function createNotification(text, createdAt = new Date().toISOString(), read = false, actor = '') {
@@ -2023,9 +3245,45 @@ const FileManager = (() => {
         const panel = document.getElementById('notifications-panel');
         if (!panel) return;
         document.getElementById('details-panel')?.classList.add('hidden');
+        document.querySelector('.app')?.classList.remove('details-open');
         panel.classList.toggle('hidden');
         if (!panel.classList.contains('hidden')) {
-            renderNotifications();
+            syncNotificationsFromServer().then(() => renderNotifications());
+        }
+    }
+
+    async function syncNotificationsFromServer() {
+        try {
+            const data = await API.activity.list(1, 40);
+            const me = getCurrentUser();
+            if (!me) return;
+            const known = new Set(meta.notifications.map((n) => n.id));
+            (data.activities || []).forEach((log) => {
+                const id = `srv-${log.id}`;
+                if (known.has(id)) return;
+                const action = String(log.action || '').toLowerCase();
+                if (!['login', 'failed_login', 'share', 'upload', 'download', 'delete'].some((k) => action.includes(k))) {
+                    return;
+                }
+                if (log.user_id && log.user_id !== me.id && !action.includes('share')) return;
+                const text = log.details || `${log.action} — ${log.target_name || log.target_type || 'item'}`;
+                meta.notifications.push({
+                    id,
+                    text,
+                    created_at: log.created_at || new Date().toISOString(),
+                    read: false,
+                    actor: log.username || '',
+                    source: 'server',
+                });
+                known.add(id);
+            });
+            if (meta.notifications.length > 200) {
+                meta.notifications = meta.notifications.slice(0, 200);
+            }
+            saveMeta();
+            updateNotificationsBadge();
+        } catch {
+            // keep local notifications if activity fetch fails
         }
     }
 
@@ -2149,28 +3407,24 @@ const FileManager = (() => {
         const role = await Components.prompt('Role (viewer/commenter/editor)', 'viewer');
         if (!role) return;
 
-        const me = getCurrentUser();
         const now = new Date().toISOString();
-        ids.forEach((id) => {
-            const payload = findSelectedPayload(id);
-            if (!payload) return;
-            meta.shares.push({
-                id: Components.uuid(),
-                item_id: id,
-                item_type: payload.type,
-                item_name: payload.data.name,
-                shared_by_id: me.id,
-                shared_by_name: currentUserLabel(),
-                shared_by_email: me.email || '',
-                shared_with_id: '',
-                shared_with_email: email,
-                shared_with_name: email,
-                role,
-                created_at: now,
-            });
-        });
-        saveMeta();
-        Components.toast('Shared selected items', 'success');
+        try {
+            for (const id of ids) {
+                const payload = findSelectedPayload(id);
+                if (!payload) continue;
+                const body = {
+                    permission: role,
+                    shared_email: email,
+                };
+                if (payload.type === 'folder') body.folder_id = id;
+                else body.file_id = id;
+                await API.shares.createUserShare(body);
+                addFileActivity(id, 'shared', payload.data.name, now);
+            }
+            Components.toast('Shared selected items', 'success');
+        } catch (err) {
+            Components.toast(err?.message || 'Failed to share items', 'error');
+        }
     }
 
     async function bulkDownload() {
@@ -2201,7 +3455,55 @@ const FileManager = (() => {
     async function bulkDelete() {
         const ids = Array.from(selectedItems);
         if (!ids.length) return;
-        const ok = await Components.confirm('Move selected to Trash?', 'Selected items will be moved to Trash.', 'Move');
+
+        if (currentPage === 'computers' && !currentFolderId) {
+            const devices = ids
+                .map((id) => findSelectedPayload(id))
+                .filter((payload) => payload && isComputerListEntry(payload.data));
+            if (!devices.length) return;
+            const ok = await Components.confirm(
+                'Remove devices?',
+                `Remove ${devices.length} device(s) and all synced files from FreeDrive? This cannot be undone.`,
+                'Remove devices',
+            );
+            if (!ok) return;
+            for (const payload of devices) {
+                await API.computers.delete(payload.data.computer_id);
+            }
+            clearSelection();
+            Components.toast('Devices removed', 'success');
+            refresh();
+            return;
+        }
+
+        if (inTrashView()) {
+            const count = ids.length;
+            const ok = await Components.confirm(
+                TrashCopy.deleteForeverTitle,
+                TrashCopy.bulkDeleteBody(count),
+                TrashCopy.deleteForeverButton,
+            );
+            if (!ok) return;
+            for (const id of ids) {
+                const payload = findSelectedPayload(id);
+                if (payload && payload.type === 'folder') {
+                    await API.folders.permanentDelete(id);
+                } else {
+                    await API.files.permanentDelete(id);
+                    await CryptoModule.deleteKey(id);
+                }
+            }
+            clearSelection();
+            Components.toast(TrashCopy.deleteForeverToast, 'success');
+            refresh();
+            return;
+        }
+
+        const ok = await Components.confirm(
+            TrashCopy.moveToTrashTitle,
+            TrashCopy.bulkMoveBody(),
+            TrashCopy.moveToTrashButton,
+        );
         if (!ok) return;
         for (const id of ids) {
             const payload = findSelectedPayload(id);
@@ -2213,7 +3515,24 @@ const FileManager = (() => {
             }
         }
         clearSelection();
-        Components.toast('Moved to Trash', 'success');
+        Components.toast(TrashCopy.movedToTrashToast, 'success');
+        refresh();
+        if (currentPage === 'files') SidebarTree.refresh(currentFolderId || null);
+    }
+
+    async function bulkRestore() {
+        const ids = Array.from(selectedItems);
+        if (!ids.length) return;
+        for (const id of ids) {
+            const payload = findSelectedPayload(id);
+            if (payload && payload.type === 'folder') {
+                await API.folders.restore(id);
+            } else {
+                await API.files.restore(id);
+            }
+        }
+        clearSelection();
+        Components.toast(TrashCopy.restoredToast(ids.length), 'success');
         refresh();
     }
 
@@ -2228,7 +3547,7 @@ const FileManager = (() => {
     function getIconLarge(type, mime, name = '') {
         const group = getMimeGroup(mime, type, name);
         const colors = {
-            folder:   ['#fbbc04', '#f4b400'],
+            folder:   ['#5f6368', '#5f6368'],
             image:    ['#34a853', '#2d9248'],
             video:    ['#ea4335', '#d33427'],
             audio:    ['#a142f4', '#8e35d9'],
@@ -2240,7 +3559,7 @@ const FileManager = (() => {
         const c = colors[group] || colors.document;
 
         const svgs = {
-            folder: `<svg viewBox="0 0 24 24" width="48" height="48"><path d="M10 4H4c-1.1 0-2 .9-2 2v2h20V8c0-1.1-.9-2-2-2h-8l-2-2z" fill="${c[0]}"/><path d="M22 10H2v8c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-8z" fill="${c[1]}"/></svg>`,
+            folder: `<svg viewBox="0 0 24 24" width="48" height="48"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" fill="${c[0]}"/></svg>`,
             image:  `<svg viewBox="0 0 24 24" width="48" height="48"><path d="M21 19V5c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5A1.5 1.5 0 1 1 8.5 10a1.5 1.5 0 0 1 0 3.5zM5 18l3.5-4.5 2.5 3 3.5-4.5 4.5 6H5z" fill="${c[0]}"/></svg>`,
             video:  `<svg viewBox="0 0 24 24" width="48" height="48"><path d="M17 10.5V7c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10c1.1 0 2-.9 2-2v-3.5l4 4v-11l-4 4z" fill="${c[0]}"/></svg>`,
             audio:  `<svg viewBox="0 0 24 24" width="48" height="48"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55a4 4 0 1 0 4 4V7h4V3h-6z" fill="${c[0]}"/></svg>`,
@@ -2288,11 +3607,12 @@ const FileManager = (() => {
     }
 
     async function openDetailsPanel(payload) {
-        if (!payload || selectedItems.size !== 1) return;
+        if (!payload) return;
         const panel = document.getElementById('details-panel');
         if (!panel) return;
         document.getElementById('notifications-panel')?.classList.add('hidden');
         panel.classList.remove('hidden');
+        document.querySelector('.app')?.classList.add('details-open');
 
         const { data, type } = payload;
         const preview = document.getElementById('details-preview');
@@ -2314,7 +3634,7 @@ const FileManager = (() => {
             if (type === 'file') {
                 openFile(data);
             } else if (type === 'folder') {
-                window.location.hash = `#/files/${data.id}`;
+                App.navigate(`/files/${data.id}`);
             }
         });
 
@@ -2331,9 +3651,15 @@ const FileManager = (() => {
 
         // hide delete/rename for read-only shared items
         const isOwned = !data.shared_by_name;
-        document.getElementById('details-rename-btn')?.style.setProperty('display', isOwned ? '' : 'none');
+        const isTrash = isTrashMode(payload);
+        const detailsShareBtn = document.getElementById('details-share-btn');
+        const detailsShareBtn2 = document.getElementById('details-share-btn2');
+        document.getElementById('details-rename-btn')?.style.setProperty('display', isOwned && !isTrash ? '' : 'none');
         document.getElementById('details-delete-btn')?.style.setProperty('display', isOwned ? '' : 'none');
         if (!isOwned) nameInput.setAttribute('readonly', '');
+        if (detailsShareBtn) detailsShareBtn.style.setProperty('display', isTrash ? 'none' : '');
+        if (detailsShareBtn2) detailsShareBtn2.style.setProperty('display', isTrash ? 'none' : '');
+        syncTrashActionLabels(payload);
 
         // hide download for folders
         document.getElementById('details-download-btn')?.style.setProperty('display', type === 'folder' ? 'none' : '');
@@ -2351,16 +3677,30 @@ const FileManager = (() => {
 
     function hideDetailsPanel() {
         document.getElementById('details-panel')?.classList.add('hidden');
+        document.querySelector('.app')?.classList.remove('details-open');
     }
 
-    function renderAccessAvatars(itemId, itemType) {
+    async function renderAccessAvatars(itemId, itemType) {
         const wrap = document.getElementById('access-avatars');
         if (!wrap) return;
         wrap.innerHTML = '';
 
         const me = getCurrentUser();
-        const entries = meta.shares.filter((s) => s.item_id === itemId && s.item_type === itemType);
-        const names = [currentUserLabel()].concat(entries.map((e) => e.shared_with_name || e.shared_with_email));
+        let entries = [];
+        try {
+            const data = await API.shares.sharedByMe();
+            entries = (data.items || []).filter((item) => {
+                if (itemType === 'file') return item.item_type === 'file' && item.item_id === itemId;
+                return item.item_type === 'folder' && item.item_id === itemId;
+            });
+        } catch {
+            entries = [];
+        }
+
+        const names = [currentUserLabel()].concat(entries.map((item) => {
+            const recipient = usersCache.find((u) => u.id === item.share?.shared_with);
+            return recipient?.label || recipient?.email || 'User';
+        }));
 
         names.slice(0, 6).forEach((name) => {
             const el = document.createElement('div');
@@ -2401,11 +3741,7 @@ const FileManager = (() => {
             ? sharedPropRow(ICON_PERSON, 'Shared by',   esc(data.shared_by_name || 'User'))
               + sharedPropRow(ICON_CLOCK,  'Date shared', Components.formatAbsoluteDate(data.shared_at || data.updated_at || data.created_at))
               + sharedPropRow(ICON_KEY,    'Access',      esc(capitalizeRole(data.share_role || 'viewer')))
-            : (currentPage === 'shared-by'
-                ? sharedPropRow(ICON_PERSON, 'Shared with', esc(data.shared_with_name || data.shared_with_email || 'User'))
-                  + sharedPropRow(ICON_CLOCK,  'Date shared', Components.formatAbsoluteDate(data.shared_at || data.updated_at || data.created_at))
-                  + sharedPropRow(ICON_KEY,    'Access',      esc(capitalizeRole(data.share_role || 'viewer')))
-                : '');
+            : '';
 
         function formatMimeType(mime, filename) {
             if (!mime) return 'File';
@@ -2472,7 +3808,7 @@ const FileManager = (() => {
             <div class="details-section-title">Details</div>
             ${propRow('type',     'Type',         esc(typeValue))}
             ${propRow('size',     'Size',         esc(folderSizeValue))}
-            ${propRow('location', 'Location',     `<a href="#/files${data.folder_id ? `/${data.folder_id}` : ''}">${esc(locationLabel)}</a>`)}
+            ${propRow('location', 'Location',     `<a href="/files${data.folder_id ? `/${data.folder_id}` : ''}">${esc(locationLabel)}</a>`)}
             ${propRow('owner',    'Owner',        esc(itemOwner(data)))}
             ${sharedRows}
             ${propRow('modified', 'Modified',     `${Components.formatAbsoluteDate(data.updated_at || data.created_at)}<br><span style="color:#5f6368;font-size:12px;">by ${esc(ownerName)}</span>`)}
@@ -2506,19 +3842,18 @@ const FileManager = (() => {
         }
     }
 
-    function renderDetailsActivity(payload) {
+    async function renderDetailsActivity(payload) {
         const box = document.getElementById('details-activity');
         if (!box) return;
-        const { data } = payload;
+        const { data, type } = payload;
         const list = meta.file_activity[data.id] || [];
+        const me = getCurrentUser();
 
+        let html = `<div class="details-section-title">Activity</div>`;
         if (!list.length) {
-            box.innerHTML = `<div class="details-section-title">Activity</div><div style="padding:16px;color:#5f6368;font-size:13px;font-family:'Roboto',Arial,sans-serif;">No activity yet.</div>`;
-            return;
-        }
-
-        box.innerHTML = `<div class="details-section-title">Activity</div>` + list.map((a) => {
-            return `
+            html += `<div style="padding:16px;color:#5f6368;font-size:13px;font-family:'Roboto',Arial,sans-serif;">No local activity yet.</div>`;
+        } else {
+            html += list.map((a) => `
                 <div class="activity-item">
                     <div class="activity-avatar">${Components.initials(a.text)}</div>
                     <div class="activity-body">
@@ -2526,12 +3861,160 @@ const FileManager = (() => {
                         <div class="activity-time">${Components.formatDate(a.created_at)}</div>
                     </div>
                 </div>
-            `;
-        }).join('');
+            `).join('');
+        }
+
+        if (type === 'file') {
+            html += `<div class="details-section-title" style="margin-top:16px;">Comments</div>`;
+            let comments = [];
+            try {
+                const res = await API.comments.list(data.id);
+                comments = res.comments || [];
+                if (!comments.length) {
+                    html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">No comments yet.</div>`;
+                } else {
+                    html += comments.map((c) => {
+                        const canDelete = me && (c.user_id === me.id || canWriteFileItem(data));
+                        const assigneeBadge = c.assigned_to_username || c.assigned_to
+                            ? `<span style="font-size:11px;color:#5f6368;margin-left:6px;">→ ${esc(c.assigned_to_username || lookupUserLabel(c.assigned_to))}</span>`
+                            : '';
+                        return `
+                        <div class="activity-item" data-comment-id="${esc(c.id)}">
+                            <div class="activity-avatar">${Components.initials(c.username || 'U')}</div>
+                            <div class="activity-body" style="flex:1;">
+                                <div class="activity-text">${esc(c.content)}${assigneeBadge}</div>
+                                <div class="activity-time">${Components.formatDate(c.created_at)}</div>
+                            </div>
+                            ${canDelete ? `<button class="btn-icon comment-delete-btn" data-id="${esc(c.id)}" title="Delete comment" aria-label="Delete comment" style="align-self:flex-start;">✕</button>` : ''}
+                        </div>`;
+                    }).join('');
+                }
+                html += `
+                    <div style="padding:16px;">
+                        <textarea id="detail-comment-input" placeholder="Add a comment..." style="width:100%;min-height:64px;border-radius:8px;border:1px solid var(--fd-border);padding:8px;font-family:inherit;"></textarea>
+                        <input id="detail-comment-assignee" type="email" placeholder="Assign to (email, optional)" style="width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--fd-border);padding:8px;font-family:inherit;" autocomplete="off">
+                        <button class="btn btn-primary btn-sm" id="detail-comment-submit" style="margin-top:8px;">Comment</button>
+                    </div>`;
+            } catch {
+                html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">Comments unavailable.</div>`;
+            }
+
+            try {
+                const approvalRes = await API.approvals.list('');
+                const fileApprovals = (approvalRes.approvals || []).filter((a) => a.file_id === data.id);
+                const hasPending = fileApprovals.some((a) => a.status === 'pending');
+                const canRequest = canWriteFileItem(data) && !hasPending;
+
+                html += `<div class="details-section-title" style="margin-top:16px;">Approvals</div>`;
+                if (!fileApprovals.length) {
+                    html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">No approval requests yet.</div>`;
+                } else {
+                    fileApprovals.forEach((a) => {
+                        const status = String(a.status || 'pending').toLowerCase();
+                        const canResolve = me && a.approver_id === me.id && status === 'pending';
+                        const isRequester = me && a.requested_by === me.id;
+                        let statusText = status.charAt(0).toUpperCase() + status.slice(1);
+                        if (status === 'pending' && isRequester) {
+                            statusText = `Awaiting ${esc(lookupUserLabel(a.approver_id))}`;
+                        } else if (status === 'pending') {
+                            statusText = `Pending — approver: ${esc(lookupUserLabel(a.approver_id))}`;
+                        }
+                        html += `
+                            <div class="activity-item" data-approval-id="${esc(a.id)}">
+                                <div class="activity-body">
+                                    <div class="activity-text">${statusText}</div>
+                                    <div class="activity-time">${Components.formatDate(a.created_at)}</div>
+                                    ${canResolve ? `
+                                        <div style="margin-top:8px;display:flex;gap:8px;">
+                                            <button class="btn btn-primary btn-sm approval-approve-btn" data-id="${esc(a.id)}">Approve</button>
+                                            <button class="btn btn-secondary btn-sm approval-reject-btn" data-id="${esc(a.id)}">Reject</button>
+                                        </div>` : ''}
+                                </div>
+                            </div>`;
+                    });
+                }
+                if (canRequest) {
+                    html += `
+                        <div style="padding:8px 16px 16px;">
+                            <button class="btn btn-secondary btn-sm" id="detail-request-approval-btn">Request approval</button>
+                        </div>`;
+                }
+            } catch {
+                // approvals optional
+            }
+        }
+
+        box.innerHTML = html;
+
+        document.getElementById('detail-comment-submit')?.addEventListener('click', async () => {
+            const input = document.getElementById('detail-comment-input');
+            const assigneeInput = document.getElementById('detail-comment-assignee');
+            const content = String(input?.value || '').trim();
+            if (!content) return;
+            const body = { content };
+            const assigneeEmail = String(assigneeInput?.value || '').trim();
+            if (assigneeEmail) body.assigned_to_email = assigneeEmail;
+            try {
+                await API.comments.create(data.id, body);
+                input.value = '';
+                if (assigneeInput) assigneeInput.value = '';
+                await renderDetailsActivity(payload);
+                Components.toast('Comment added', 'success');
+            } catch (err) {
+                Components.toast(err?.message || 'Failed to add comment', 'error');
+            }
+        });
+
+        box.querySelectorAll('.comment-delete-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await API.comments.delete(data.id, btn.dataset.id);
+                    Components.toast('Comment deleted', 'success');
+                    await renderDetailsActivity(payload);
+                } catch (err) {
+                    Components.toast(err?.message || 'Failed to delete comment', 'error');
+                }
+            });
+        });
+
+        document.getElementById('detail-request-approval-btn')?.addEventListener('click', async () => {
+            await requestApprovalForFile(data);
+            await renderDetailsActivity(payload);
+        });
+
+        box.querySelectorAll('.approval-approve-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await API.approvals.update(btn.dataset.id, { status: 'approved' });
+                    Components.toast('Approval granted', 'success');
+                    await renderDetailsActivity(payload);
+                } catch (err) {
+                    Components.toast(err?.message || 'Failed to approve', 'error');
+                }
+            });
+        });
+        box.querySelectorAll('.approval-reject-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await API.approvals.update(btn.dataset.id, { status: 'rejected' });
+                    Components.toast('Approval rejected', 'success');
+                    await renderDetailsActivity(payload);
+                } catch (err) {
+                    Components.toast(err?.message || 'Failed to reject', 'error');
+                }
+            });
+        });
     }
 
     function buildLocationLabel(folderId) {
-        if (!folderId) return 'My Drive';
+        if (!folderId) return currentPage === 'computers' ? 'Computers' : 'My Drive';
+        if (currentComputerContext) {
+            const folder = allFolders.find((f) => f.id === folderId);
+            if (folder) return `Computers > ${currentComputerContext.name} > ${folder.name}`;
+            if (folderId === currentComputerContext.root_folder_id) {
+                return `Computers > ${currentComputerContext.name}`;
+            }
+        }
         const folder = allFolders.find((f) => f.id === folderId);
         if (!folder) return 'My Drive';
         return `My Drive > ${folder.name}`;
@@ -2547,17 +4030,37 @@ const FileManager = (() => {
         const list = document.getElementById('activity-list');
         list.innerHTML = '<div class="loading-state" style="min-height:180px;"><div class="spinner"></div></div>';
 
-        try {
-            let logs = [];
-            try {
-                const data = await API.activity.list(1, 120);
-                logs = data.activities || [];
-            } catch {
-                const data = await API.admin.activity(1, 120);
-                logs = data.activities || [];
-            }
+        const me = getCurrentUser() || { id: 'unknown' };
+        const isAdmin = String(me.role || '').toLowerCase() === 'admin';
 
-            const me = getCurrentUser() || { id: 'unknown' };
+        // Fetch server activity. Only fall back to the admin endpoint for admins
+        // (a non-admin would get 403 there and double-fault).
+        let logs = [];
+        try {
+            const data = await API.activity.list(1, 120);
+            logs = data.activities || [];
+        } catch (err) {
+            console.error('loadActivity fetch error (/activity):', err);
+            if (isAdmin) {
+                try {
+                    const data = await API.admin.activity(1, 120);
+                    logs = data.activities || [];
+                } catch (err2) {
+                    console.error('loadActivity fetch error (/admin/activity):', err2);
+                    list.innerHTML = '';
+                    Components.toast('Failed to load activity', 'error');
+                    setBreadcrumbText('Activity');
+                    return;
+                }
+            } else {
+                list.innerHTML = '';
+                Components.toast('Failed to load activity', 'error');
+                setBreadcrumbText('Activity');
+                return;
+            }
+        }
+
+        try {
             const extra = Object.values(meta.file_activity || {})
                 .flat()
                 .map((it) => ({
@@ -2586,30 +4089,48 @@ const FileManager = (() => {
                 myAvatar = JSON.parse(localStorage.getItem('fd_user_prefs') || '{}').profileAvatar || '';
             } catch {}
 
-            list.innerHTML = merged.map((a) => {
-                const actor = a.username || 'User';
-                const isMe = a.user_id === me.id || actor === currentUserLabel();
-                const avatarStyle = (isMe && myAvatar) ? `background-image:url(${myAvatar}); background-size:cover; background-position:center; color:transparent;` : '';
-                
-                let textHtml = '';
-                if (a.action === 'local_event') {
-                    // old format backwards compatibility
-                    textHtml = `<div class="activity-text">${esc(a.target_name)}</div>`;
-                } else {
-                    const action = formatAction(a.action);
-                    textHtml = `<div class="activity-text"><strong>${esc(actor)}</strong> ${esc(action)} <strong>${esc(a.target_name || 'item')}</strong></div>`;
-                }
+            // The activity feed only needs recent items; capping also prevents a
+            // huge joined string (RangeError: Invalid string length).
+            const MAX_ACTIVITY_ROWS = 100;
+            merged = merged.slice(0, MAX_ACTIVITY_ROWS);
 
-                return `
+            // Inject the (potentially large base64) avatar ONCE via a scoped CSS
+            // rule instead of inlining it into every row's style attribute.
+            const meAvatarCss = myAvatar
+                ? `#activity-list .activity-avatar.is-me{background-image:url("${myAvatar}");background-size:cover;background-position:center;color:transparent;}`
+                : '';
+
+            const rows = merged.map((a) => {
+                try {
+                    const actor = a.username || 'User';
+                    const isMe = a.user_id === me.id || actor === currentUserLabel();
+                    const showPhoto = isMe && myAvatar;
+
+                    let textHtml = '';
+                    if (a.action === 'local_event') {
+                        // old format backwards compatibility
+                        textHtml = `<div class="activity-text">${esc(a.target_name)}</div>`;
+                    } else {
+                        const action = formatAction(a.action);
+                        textHtml = `<div class="activity-text"><strong>${esc(actor)}</strong> ${esc(action)} <strong>${esc(a.target_name || 'item')}</strong></div>`;
+                    }
+
+                    return `
                     <div class="activity-item">
-                        <div class="activity-avatar" style="${avatarStyle}">${isMe && myAvatar ? '' : esc(Components.initials(actor))}</div>
+                        <div class="activity-avatar${showPhoto ? ' is-me' : ''}">${showPhoto ? '' : esc(Components.initials(actor))}</div>
                         <div>
                             ${textHtml}
                             <div class="activity-time">${Components.formatAbsoluteDate(a.created_at)}</div>
                         </div>
                     </div>
                 `;
+                } catch (rowErr) {
+                    console.error('loadActivity row error:', rowErr, a);
+                    return '';
+                }
             }).join('');
+
+            list.innerHTML = `<style>${meAvatarCss}</style>` + rows;
         } catch (err) {
             console.error('loadActivity error:', err);
             list.innerHTML = '';
@@ -2641,15 +4162,32 @@ const FileManager = (() => {
         setBreadcrumbText('Storage');
 
         try {
-            const [disk, listResp] = await Promise.all([
-                API.diskStats(),
-                API.files.list({ page_size: '500' }),
+            const pageSize = 500;
+            const firstResp = await Promise.all([
+                API.myStorage(),
+                API.files.list({ page: '1', page_size: String(pageSize) }),
             ]);
+            const disk = firstResp[0];
+            const firstList = firstResp[1];
+
+            // Fetch ALL non-trashed files (paginate) so breakdown, count and
+            // "largest files" reflect the full picture, not just the first page.
+            const totalFiles = Number(firstList.total || (firstList.files || []).length);
+            let files = firstList.files || [];
+            if (totalFiles > files.length) {
+                const pages = Math.ceil(totalFiles / pageSize);
+                const rest = [];
+                for (let p = 2; p <= pages; p++) {
+                    rest.push(API.files.list({ page: String(p), page_size: String(pageSize) }));
+                }
+                const restResp = await Promise.all(rest);
+                restResp.forEach((r) => { files = files.concat(r.files || []); });
+            }
 
             const used = Number(disk.used_bytes || 0);
             const total = Number(disk.total_bytes || 1);
-            const pct = Math.min((used / total) * 100, 100);
-            const targetDeg = pct * 3.6;
+            const arcPct = storageQuotaPercentRaw(used, total);
+            const targetDeg = arcPct * 3.6;
 
             const circle = document.getElementById('storage-circle');
             circle.style.setProperty('--storage-target-deg', `${targetDeg}deg`);
@@ -2677,32 +4215,42 @@ const FileManager = (() => {
             const totalStr = Components.formatSize(total);
             document.getElementById('storage-circle-text').innerHTML = `
                 <div class="storage-circle-inner">
-                    <span class="storage-circle-pct">${(Math.round((used / total) * 100 * 10) / 10).toFixed(1)}%</span>
+                    <span class="storage-circle-pct">${formatStoragePercentRounded(used, total)}%</span>
                     <span class="storage-circle-label">${usedStr} of ${totalStr}</span>
                 </div>
             `;
 
-            const files = listResp.files || [];
             const free = Math.max(total - used, 0);
             const freeEl = document.getElementById('storage-free-space');
             const filesEl = document.getElementById('storage-total-files');
             if (freeEl) freeEl.textContent = Components.formatSize(free);
-            if (filesEl) filesEl.textContent = String(files.length);
-            const buckets = { Images: 0, Videos: 0, Documents: 0, Other: 0 };
-
-            files.forEach((f) => {
-                const g = getMimeGroup(f.mime_type, 'file', f.name);
-                if (g === 'image') buckets.Images += Number(f.size || 0);
-                else if (g === 'video') buckets.Videos += Number(f.size || 0);
-                else if (g === 'text' || g === 'document' || g === 'sheet' || g === 'pdf') buckets.Documents += Number(f.size || 0);
-                else buckets.Other += Number(f.size || 0);
-            });
+            if (filesEl) filesEl.textContent = String(totalFiles);
+            // Use the backend breakdown, computed over the same (non-trashed)
+            // file set as used_bytes, so the four categories add up exactly to
+            // "used" shown in the ring. Falls back to client-side categorization
+            // only if the API did not return a breakdown.
+            const b = disk.breakdown;
+            let buckets;
+            if (b && typeof b === 'object') {
+                buckets = {
+                    Images: Number(b.images || 0),
+                    Videos: Number(b.videos || 0),
+                    Documents: Number(b.documents || 0),
+                    Other: Number(b.other || 0),
+                };
+            } else {
+                buckets = { Images: 0, Videos: 0, Documents: 0, Other: 0 };
+                files.forEach((f) => {
+                    const bytes = Number(f.encrypted_size || f.size || 0);
+                    buckets[getStorageCategory(f.mime_type, f.name)] += bytes;
+                });
+            }
 
             document.getElementById('storage-breakdown').innerHTML = `
-                ${renderBreakdownItem('Images',    buckets.Images,    '#ea4335', used)}
-                ${renderBreakdownItem('Videos',    buckets.Videos,    '#fbbc04', used)}
-                ${renderBreakdownItem('Documents', buckets.Documents, '#4285f4', used)}
-                ${renderBreakdownItem('Other',     buckets.Other,     '#a142f4', used)}
+                ${renderBreakdownItem('Images',    buckets.Images,    '#ea4335', total)}
+                ${renderBreakdownItem('Videos',    buckets.Videos,    '#fbbc04', total)}
+                ${renderBreakdownItem('Documents', buckets.Documents, '#4285f4', total)}
+                ${renderBreakdownItem('Other',     buckets.Other,     '#a142f4', total)}
             `;
 
             const largest = [...files].sort((a, b) => Number(b.size || 0) - Number(a.size || 0)).slice(0, 20);
@@ -2713,8 +4261,10 @@ const FileManager = (() => {
         }
     }
 
-    function renderBreakdownItem(name, bytes, color, totalUsed) {
-        const sharePct = totalUsed > 0 ? Math.min((bytes / totalUsed) * 100, 100) : 0;
+    function renderBreakdownItem(name, bytes, color, quota) {
+        const widthPct = storageQuotaPercentRaw(bytes, quota);
+        const pctLabel = formatStoragePercentRounded(bytes, quota);
+        const activeClass = bytes > 0 ? ' break-bar-fill--active' : '';
         const icons = {
             Images: '<svg viewBox="0 0 24 24" width="18" height="18" fill="' + color + '"><path d="M21 19V5c0-1.1-.9-2-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>',
             Videos: '<svg viewBox="0 0 24 24" width="18" height="18" fill="' + color + '"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>',
@@ -2727,10 +4277,10 @@ const FileManager = (() => {
                     <div class="break-tag">
                         ${icons[name] || ''}<span>${name}</span>
                     </div>
-                    <span class="break-size">${bytes > 0 ? Components.formatSize(bytes) : '—'}</span>
+                    <span class="break-size">${bytes > 0 ? `${Components.formatSize(bytes)} · ${pctLabel}%` : '—'}</span>
                 </div>
                 <div class="break-bar-track">
-                    <div class="break-bar-fill" style="width:${sharePct.toFixed(1)}%; background:${color};"></div>
+                    <div class="break-bar-fill${activeClass}" style="width:${widthPct}%; background:${color};"></div>
                 </div>
             </div>
         `;
@@ -2794,21 +4344,123 @@ const FileManager = (() => {
         }
     }
 
+    function showOpenWithDialog(file) {
+        document.querySelector('.open-with-overlay')?.remove();
+
+        const group = getMimeGroup(file.mime_type, 'file', file.name);
+        const apps = [];
+        const addApp = (id, label, description, icon, action, recommended = false) => {
+            apps.push({ id, label, description, icon, action, recommended });
+        };
+
+        if (group === 'image') {
+            addApp('image', 'FreeDrive Photos', 'View and edit the image', 'photo', () => openImageEditor(file), true);
+        } else if (isJsonMimeOrName(file.mime_type, file.name)) {
+            addApp('json', 'FreeDrive JSON Viewer', 'Structured JSON editor', 'data_object', () => openJsonViewer(file), true);
+            addApp('text', 'FreeDrive Text Editor', 'Open as plain text', 'description', () => openTextEditor(file));
+        } else if (group === 'text' || file.mime_type === 'text/markdown') {
+            addApp('text', 'FreeDrive Docs', 'Edit text and documents', 'description', () => openTextEditor(file), true);
+        } else if (group === 'pdf') {
+            addApp('pdf', 'FreeDrive PDF Viewer', 'Read the PDF document', 'picture_as_pdf', () => openPdfViewer(file), true);
+        } else if (group === 'video') {
+            addApp('video', 'FreeDrive Video Player', 'Play the video', 'movie', () => openVideoPlayer(file), true);
+        } else if (group === 'audio') {
+            addApp('audio', 'FreeDrive Audio Player', 'Play the audio file', 'music_note', () => openAudioPlayer(file), true);
+        } else if (group === 'sheet') {
+            addApp('sheet', 'FreeDrive Sheets', 'View and edit the spreadsheet', 'table_chart', () => openSheetViewer(file), true);
+        }
+
+        if (!apps.length) {
+            addApp('download', 'Download', 'Download and open on this device', 'download', () => downloadFile(file), true);
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay open-with-overlay';
+        overlay.innerHTML = `
+            <div class="modal open-with-modal" role="dialog" aria-modal="true" aria-labelledby="open-with-title">
+                <div class="modal-header">
+                    <div>
+                        <h3 id="open-with-title">Open with</h3>
+                        <p class="open-with-filename">${esc(file.name || 'File')}</p>
+                    </div>
+                    <button type="button" class="btn-icon open-with-close" aria-label="Close"><span class="material-icons-outlined">close</span></button>
+                </div>
+                <div class="modal-body open-with-apps">
+                    ${apps.map((app) => `
+                        <button type="button" class="open-with-app" data-open-app="${app.id}">
+                            <span class="open-with-app-icon material-icons-outlined">${app.icon}</span>
+                            <span class="open-with-app-copy">
+                                <span class="open-with-app-title">${esc(app.label)}</span>
+                                <span class="open-with-app-description">${esc(app.description)}</span>
+                            </span>
+                            ${app.recommended ? '<span class="open-with-recommended">Recommended</span>' : ''}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        const close = () => {
+            document.removeEventListener('keydown', onKeyDown);
+            overlay.remove();
+        };
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') close();
+        };
+
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close();
+        });
+        overlay.querySelector('.open-with-close').addEventListener('click', close);
+        overlay.querySelectorAll('[data-open-app]').forEach((button) => {
+            button.addEventListener('click', async () => {
+                const app = apps.find((candidate) => candidate.id === button.dataset.openApp);
+                if (!app) return;
+                close();
+                try {
+                    await app.action();
+                } catch (err) {
+                    console.error('Failed to open file with selected app:', err);
+                    Components.toast('Failed to open file: ' + (err.message || 'Unknown error'), 'error');
+                }
+            });
+        });
+        document.addEventListener('keydown', onKeyDown);
+        document.body.appendChild(overlay);
+        overlay.querySelector('.open-with-app')?.focus();
+    }
+
     function openFileById(file) {
         openFile(file);
     }
 
     async function decryptFileBlob(file) {
-        const { blob, iv, mime } = await API.downloadBlob(file.id);
-        const cryptoModule = window.CryptoModule;
-        if (!cryptoModule?.getKey || !cryptoModule?.decryptFile || !iv) return blob;
+        try {
+            const { blob, iv, mime } = await API.downloadBlob(file.id);
+            const cryptoModule = window.CryptoModule;
+            if (!cryptoModule?.getKey || !cryptoModule?.decryptFile || !iv) return blob;
 
-        const key = await cryptoModule.getKey(file.id);
-        if (!key || !iv) return blob;
+            const key = await (window.CryptoSync?.ensureFileKey
+                ? CryptoSync.ensureFileKey(file.id)
+                : cryptoModule.getKey(file.id));
+            if (!key) {
+                throw new Error(
+                    window.CryptoSync?.describeFileKeyError
+                        ? CryptoSync.describeFileKeyError({ code: CryptoSync.ERR_UNLOCK_REQUIRED })
+                        : 'Sign out and sign in again with your password.',
+                );
+            }
+            if (!iv) return blob;
 
-        const encrypted = await blob.arrayBuffer();
-        const plain = await cryptoModule.decryptFile(encrypted, key, cryptoModule.base64ToUint8(iv));
-        return new Blob([plain], { type: mime || file.mime_type || blob.type });
+            const encrypted = await blob.arrayBuffer();
+            const plain = await cryptoModule.decryptFile(encrypted, key, cryptoModule.base64ToUint8(iv));
+            return new Blob([plain], { type: mime || file.mime_type || blob.type });
+        } catch (err) {
+            const message = window.CryptoSync?.describeFileKeyError
+                ? CryptoSync.describeFileKeyError(err)
+                : (err?.message || 'Decryption failed');
+            throw new Error(message);
+        }
     }
 
     async function downloadFile(file) {
@@ -2975,7 +4627,7 @@ const FileManager = (() => {
     async function collectFolderEntries(folderId, basePath, out, used, visited = new Set()) {
         if (!folderId || visited.has(folderId)) return;
         visited.add(folderId);
-        const contents = await API.folders.get(folderId);
+        const contents = await API.folders.getAll(folderId);
         const folders = Array.isArray(contents.folders) ? contents.folders : [];
         const files = Array.isArray(contents.files) ? contents.files : [];
 
@@ -3080,13 +4732,6 @@ const FileManager = (() => {
             setSortColLabel('.col-size', 'Access');
             return;
         }
-        if (currentPage === 'shared-by') {
-            setSortColLabel('.col-name', 'Name');
-            setSortColLabel('.col-owner', 'Shared with');
-            setSortColLabel('.col-date', 'Date shared');
-            setSortColLabel('.col-size', 'Access');
-            return;
-        }
         setSortColLabel('.col-name', 'Name');
         setSortColLabel('.col-owner', 'Owner');
         setSortColLabel('.col-date', 'Last modified');
@@ -3094,19 +4739,38 @@ const FileManager = (() => {
     }
 
     async function createQuickFile(name, mimeType, textContent) {
+        if (!canAcceptUploads()) {
+            Components.toast('Connect a computer to add files here', 'info');
+            return;
+        }
         const blob = new Blob([textContent || ''], { type: mimeType || 'text/plain' });
         try {
             const created = await uploadEncryptedBlob(blob, name, mimeType, currentFolderId);
             Components.toast('File created', 'success');
-            if (currentPage !== 'files' && currentPage !== 'home') {
-                window.location.hash = currentFolderId ? `#/files/${currentFolderId}` : '#/files';
+            if (currentPage !== 'files' && currentPage !== 'home' && currentPage !== 'computers') {
+                App.navigate(currentFolderId
+                    ? (currentPage === 'computers' ? `/computers/${currentFolderId}` : `/files/${currentFolderId}`)
+                    : '/files');
                 return;
             }
             refresh();
             if (created?.id) {
-                setTimeout(() => {
+                setTimeout(async () => {
                     const row = document.querySelector(`[data-item-id="${created.id}"]`);
                     if (row && row.scrollIntoView) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const mime = (mimeType || created.mime_type || '').toLowerCase();
+                    const fileName = (name || created.name || '').toLowerCase();
+                    const isSheet = mime.includes('csv')
+                        || mime.includes('spreadsheet')
+                        || fileName.endsWith('.csv')
+                        || fileName.endsWith('.xlsx')
+                        || fileName.endsWith('.xls');
+                    try {
+                        if (isSheet) await openSheetViewer(created);
+                        else await openTextEditor(created);
+                    } catch (err) {
+                        Components.toast(`Open failed: ${err.message || err}`, 'error');
+                    }
                 }, 120);
             }
         } catch (err) {
@@ -3116,32 +4780,50 @@ const FileManager = (() => {
 
     async function uploadEncryptedBlob(blob, fileName, mimeType, folderId) {
         const cryptoModule = window.CryptoModule;
+        if (!window.CryptoSync?.requireReadyForUpload) {
+            throw new Error('Encryption key sync is unavailable. Reload FreeDrive and sign in again.');
+        }
+        CryptoSync.requireReadyForUpload();
         const canEncrypt = Boolean(cryptoModule?.canEncrypt?.() && cryptoModule?.generateKey);
-
-        const form = new FormData();
-        form.append('name', fileName);
-        form.append('mime_type', mimeType || blob.type || 'application/octet-stream');
-        form.append('original_size', String(blob.size));
+        if (!canEncrypt) throw new Error('Secure browser encryption is unavailable. Use HTTPS or the FreeDrive desktop app.');
 
         let key = null;
+        let payload;
+        let ivB64 = '';
+        const originalSize = blob.size;
+
         if (canEncrypt) {
             key = await cryptoModule.generateKey();
             const data = await blob.arrayBuffer();
             const { ciphertext, iv } = await cryptoModule.encryptFile(data, key);
-            const encryptedBlob = new Blob([ciphertext], { type: 'application/octet-stream' });
-            form.append('file', encryptedBlob, fileName);
-            form.append('iv', cryptoModule.uint8ToBase64(iv));
+            payload = ciphertext;
+            ivB64 = cryptoModule.uint8ToBase64(iv);
         } else {
             if (!insecureUploadNoticeShown) {
                 insecureUploadNoticeShown = true;
                 Components.toast('HTTPS is not enabled, so files will be uploaded without browser encryption.', 'info', { duration: 7000 });
             }
-            form.append('file', blob, fileName);
+            payload = await blob.arrayBuffer();
         }
-        if (folderId) form.append('folder_id', folderId);
 
-        const result = await API.uploadFile(form);
-        if (key) await cryptoModule.storeKey(result.id, key);
+        const result = await API.uploadBytes({
+            data: payload,
+            name: fileName,
+            mimeType: mimeType || blob.type || 'application/octet-stream',
+            originalSize,
+            iv: ivB64,
+            folderId: folderId || undefined,
+        });
+        if (key) {
+            await cryptoModule.storeKey(result.id, key);
+            try {
+                await CryptoSync.pushFileKey(result.id, key);
+            } catch (keyError) {
+                await API.files.permanentDelete(result.id).catch(() => API.files.delete(result.id).catch(() => {}));
+                await cryptoModule.deleteKey?.(result.id).catch(() => {});
+                throw new Error(`Upload rolled back because its encryption key could not be synced: ${keyError.message || keyError}`);
+            }
+        }
         addFileActivity(result.id, 'uploaded', result.name);
         createNotification('File uploaded successfully', new Date().toISOString(), true, currentUserLabel());
         return result;
@@ -3151,31 +4833,45 @@ const FileManager = (() => {
         const oldName = file.name;
         const nameToUse = newName || file.name;
         const cryptoModule = window.CryptoModule;
+        if (!window.CryptoSync?.requireReadyForUpload) {
+            throw new Error('Encryption key sync is unavailable. Reload FreeDrive and sign in again.');
+        }
+        CryptoSync.requireReadyForUpload();
         const canEncrypt = Boolean(cryptoModule?.canEncrypt?.() && cryptoModule?.generateKey);
+        if (!canEncrypt) throw new Error('Secure browser encryption is unavailable. Use HTTPS or the FreeDrive desktop app.');
 
         let key = null;
-        const form = new FormData();
-        form.append('name', nameToUse);
-        form.append('mime_type', mimeType || file.mime_type || blob.type || 'application/octet-stream');
-        form.append('original_size', String(blob.size));
+        let payload;
+        let ivB64 = '';
+        const originalSize = blob.size;
 
         if (canEncrypt) {
             key = (await cryptoModule.getKey(file.id)) || (await cryptoModule.generateKey());
             const plain = await blob.arrayBuffer();
             const { ciphertext, iv } = await cryptoModule.encryptFile(plain, key);
-            form.append('file', new Blob([ciphertext], { type: 'application/octet-stream' }), nameToUse);
-            form.append('iv', cryptoModule.uint8ToBase64(iv));
+            payload = ciphertext;
+            ivB64 = cryptoModule.uint8ToBase64(iv);
         } else {
             if (!insecureUploadNoticeShown) {
                 insecureUploadNoticeShown = true;
                 Components.toast('HTTPS is not enabled, so this file will be saved without browser encryption.', 'info', { duration: 7000 });
             }
-            form.append('file', blob, nameToUse);
+            payload = await blob.arrayBuffer();
         }
 
         try {
-            await API.files.updateContent(file.id, form);
-            if (key) await cryptoModule.storeKey(file.id, key);
+            if (key) {
+                await cryptoModule.storeKey(file.id, key);
+                await CryptoSync.pushFileKey(file.id, key);
+            }
+            await API.uploadBytes({
+                data: payload,
+                name: nameToUse,
+                mimeType: mimeType || file.mime_type || blob.type || 'application/octet-stream',
+                originalSize,
+                iv: ivB64,
+                fileId: file.id,
+            });
             if (nameToUse !== oldName) {
                 await API.files.update(file.id, { name: nameToUse });
             }
@@ -3360,62 +5056,72 @@ const FileManager = (() => {
         const shell = openEditorShell(file);
 
         const layout = document.createElement('div');
-        layout.className = 'editor-layout';
+        layout.className = 'image-editor-wrap';
         layout.innerHTML = `
-            <div class="editor-side">
-                <div class="tool-group"><h5>Tools</h5>
-                    <div class="tool-list" id="img-tool-list">
-                        <button class="tool-btn active" data-tool="pen">Pen</button>
-                        <button class="tool-btn" data-tool="brush">Brush</button>
-                        <button class="tool-btn" data-tool="eraser">Eraser</button>
-                        <button class="tool-btn" data-tool="line">Line</button>
-                        <button class="tool-btn" data-tool="arrow">Arrow</button>
-                        <button class="tool-btn" data-tool="rect">Rectangle</button>
-                        <button class="tool-btn" data-tool="circle">Circle</button>
-                        <button class="tool-btn" data-tool="triangle">Triangle</button>
-                        <button class="tool-btn" data-tool="text">Text</button>
-                        <button class="tool-btn" data-tool="emoji">Sticker</button>
-                        <button class="tool-btn" data-tool="blur">Blur</button>
-                        <button class="tool-btn" data-tool="crop">Crop</button>
-                    </div>
+            <div class="image-toolbar" id="image-toolbar">
+                <div class="tool-list" id="img-tool-list">
+                    <button type="button" class="tool-btn tool-btn-icon active" data-tool="pen" title="Pen"><span class="material-icons-outlined">edit</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="brush" title="Brush"><span class="material-icons-outlined">brush</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="eraser" title="Eraser"><span class="material-icons-outlined">auto_fix_off</span></button>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="line" title="Line"><span class="material-icons-outlined">show_chart</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="arrow" title="Arrow"><span class="material-icons-outlined">north_east</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="rect" title="Rectangle"><span class="material-icons-outlined">crop_square</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="circle" title="Circle"><span class="material-icons-outlined">circle</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="triangle" title="Triangle"><span class="material-icons-outlined">change_history</span></button>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="text" title="Text"><span class="material-icons-outlined">title</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="emoji" title="Sticker"><span class="material-icons-outlined">emoji_emotions</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="blur" title="Blur"><span class="material-icons-outlined">blur_on</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="crop" title="Crop"><span class="material-icons-outlined">crop</span></button>
                 </div>
-                <div class="tool-group">
-                    <h5>Rotate & Flip</h5>
-                    <div class="tool-list">
-                        <button class="tool-btn" id="img-rot-l">⟲ 90°</button>
-                        <button class="tool-btn" id="img-rot-r">⟳ 90°</button>
-                        <button class="tool-btn" id="img-flip-h">Flip H</button>
-                        <button class="tool-btn" id="img-flip-v">Flip V</button>
-                    </div>
-                </div>
+                <span class="tool-sep" aria-hidden="true"></span>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-rot-l" title="Rotate left"><span class="material-icons-outlined">rotate_left</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-rot-r" title="Rotate right"><span class="material-icons-outlined">rotate_right</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-flip-h" title="Flip horizontal"><span class="material-icons-outlined">flip</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-flip-v" title="Flip vertical"><span class="material-icons-outlined img-flip-v-icon">flip</span></button>
+                <span class="tool-sep" aria-hidden="true"></span>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-btn-tune" title="Adjustments" data-panel="adjust"><span class="material-icons-outlined">tune</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-btn-filters" title="Filters" data-panel="filters"><span class="material-icons-outlined">photo_filter</span></button>
             </div>
-            <div class="editor-canvas-wrap" id="img-canvas-wrap">
-                <canvas id="img-editor-canvas"></canvas>
-                <div class="zoom-indicator" id="img-zoom-indicator">100%</div>
-                <div class="selection-indicator" id="img-selection-indicator">0 × 0 px</div>
-            </div>
-            <div class="editor-adjust">
-                <div class="tool-group"><h5>Adjustments</h5>
-                    ${renderAdjustSlider('brightness', -100, 100, 0)}
-                    ${renderAdjustSlider('contrast', -100, 100, 0)}
-                    ${renderAdjustSlider('saturation', -100, 100, 0)}
-                    ${renderAdjustSlider('sharpness', 0, 100, 0)}
-                    ${renderAdjustSlider('blur', 0, 20, 0)}
-                    ${renderAdjustSlider('opacity', 0, 100, 100)}
+            <div class="image-editor-body">
+                <div class="editor-canvas-wrap" id="img-canvas-wrap">
+                    <canvas id="img-editor-canvas"></canvas>
+                    <div class="zoom-indicator" id="img-zoom-indicator">100%</div>
+                    <div class="selection-indicator" id="img-selection-indicator">0 × 0 px</div>
                 </div>
-                <div class="tool-group">
-                    <h5>Presets</h5>
-                    <div class="tool-list">
-                        <button class="tool-btn img-preset" data-preset="original">Original</button>
-                        <button class="tool-btn img-preset" data-preset="grayscale">Grayscale</button>
-                        <button class="tool-btn img-preset" data-preset="sepia">Sepia</button>
-                        <button class="tool-btn img-preset" data-preset="vivid">Vivid</button>
-                        <button class="tool-btn img-preset" data-preset="cool">Cool</button>
-                        <button class="tool-btn img-preset" data-preset="warm">Warm</button>
-                        <button class="tool-btn img-preset" data-preset="fade">Fade</button>
-                        <button class="tool-btn img-preset" data-preset="dramatic">Dramatic</button>
+                <aside class="image-panel" id="img-panel-adjust" hidden>
+                    <div class="image-panel-header">
+                        <h5>Adjustments</h5>
+                        <button type="button" class="tool-btn tool-btn-icon image-panel-close" data-close-panel="adjust" title="Close"><span class="material-icons-outlined">close</span></button>
                     </div>
-                </div>
+                    <div class="image-panel-body">
+                        ${renderAdjustSlider('brightness', -100, 100, 0)}
+                        ${renderAdjustSlider('contrast', -100, 100, 0)}
+                        ${renderAdjustSlider('saturation', -100, 100, 0)}
+                        ${renderAdjustSlider('sharpness', 0, 100, 0)}
+                        ${renderAdjustSlider('blur', 0, 20, 0)}
+                        ${renderAdjustSlider('opacity', 0, 100, 100)}
+                    </div>
+                </aside>
+                <aside class="image-panel" id="img-panel-filters" hidden>
+                    <div class="image-panel-header">
+                        <h5>Filters</h5>
+                        <button type="button" class="tool-btn tool-btn-icon image-panel-close" data-close-panel="filters" title="Close"><span class="material-icons-outlined">close</span></button>
+                    </div>
+                    <div class="image-panel-body">
+                        <div class="tool-list img-preset-list">
+                            <button type="button" class="tool-btn img-preset" data-preset="original">Original</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="grayscale">Grayscale</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="sepia">Sepia</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="vivid">Vivid</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="cool">Cool</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="warm">Warm</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="fade">Fade</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="dramatic">Dramatic</button>
+                        </div>
+                    </div>
+                </aside>
             </div>
         `;
         shell.appendChild(layout);
@@ -3627,20 +5333,50 @@ const FileManager = (() => {
             });
         });
 
-        document.querySelectorAll('.adjust-slider').forEach((s) => {
+        const panelAdjust = document.getElementById('img-panel-adjust');
+        const panelFilters = document.getElementById('img-panel-filters');
+        const btnTune = document.getElementById('img-btn-tune');
+        const btnFilters = document.getElementById('img-btn-filters');
+
+        function setImagePanel(name) {
+            const showAdjust = name === 'adjust';
+            const showFilters = name === 'filters';
+            panelAdjust.hidden = !showAdjust;
+            panelFilters.hidden = !showFilters;
+            panelAdjust.classList.toggle('open', showAdjust);
+            panelFilters.classList.toggle('open', showFilters);
+            btnTune.classList.toggle('active', showAdjust);
+            btnFilters.classList.toggle('active', showFilters);
+        }
+
+        btnTune.addEventListener('click', () => {
+            setImagePanel(panelAdjust.classList.contains('open') ? null : 'adjust');
+        });
+        btnFilters.addEventListener('click', () => {
+            setImagePanel(panelFilters.classList.contains('open') ? null : 'filters');
+        });
+        layout.querySelectorAll('[data-close-panel]').forEach((b) => {
+            b.addEventListener('click', () => setImagePanel(null));
+        });
+
+        layout.querySelectorAll('.adjust-slider').forEach((s) => {
             s.addEventListener('input', () => {
                 const key = s.dataset.key;
                 adjustment[key] = Number(s.value);
+                const label = document.getElementById(`adj-${key}`);
+                if (label) label.textContent = String(s.value);
                 applyImageTransform();
                 setEditorSaved(false);
             });
         });
 
-        document.querySelectorAll('.img-preset').forEach((b) => {
+        layout.querySelectorAll('.img-preset').forEach((b) => {
             b.addEventListener('click', () => {
                 applyPreset(b.dataset.preset, adjustment);
-                document.querySelectorAll('.adjust-slider').forEach((s) => {
+                layout.querySelectorAll('.adjust-slider').forEach((s) => {
                     s.value = String(adjustment[s.dataset.key]);
+                    const label = document.getElementById(`adj-${s.dataset.key}`);
+                    if (label) label.textContent = String(s.value);
                 });
                 applyImageTransform();
                 setEditorSaved(false);
@@ -3668,8 +5404,10 @@ const FileManager = (() => {
             adjustment.blur       = 0;
             adjustment.opacity    = 100;
 
-            document.querySelectorAll('.adjust-slider').forEach((s) => {
+            layout.querySelectorAll('.adjust-slider').forEach((s) => {
                 s.value = String(adjustment[s.dataset.key] ?? 0);
+                const label = document.getElementById(`adj-${s.dataset.key}`);
+                if (label) label.textContent = String(s.value);
             });
 
             zoom = 1;
@@ -3816,32 +5554,76 @@ const FileManager = (() => {
         const blob = await decryptFileBlob(file);
         const text = await blob.text();
         const shell = openEditorShell(file);
-        
+
         const ext = getFileExtension(file.name);
-        const isRichText = ['md', 'html', 'htm'].includes(ext);
+        const isRichText = ['md', 'html', 'htm', 'txt'].includes(ext);
 
         const wrap = document.createElement('div');
-        wrap.className = 'text-editor-wrap';
+        wrap.className = `text-editor-wrap${isRichText ? ' text-editor-docs' : ' text-editor-code'}`;
+
         if (isRichText) {
             wrap.innerHTML = `
                 <div class="text-toolbar" id="text-toolbar">
-                    <button class="tool-btn" data-cmd="bold">Bold</button>
-                    <button class="tool-btn" data-cmd="italic">Italic</button>
-                    <button class="tool-btn" data-cmd="underline">Underline</button>
-                    <button class="tool-btn" data-cmd="strikeThrough">Strikethrough</button>
-                    <button class="tool-btn" data-block="h1">H1</button>
-                    <button class="tool-btn" data-block="h2">H2</button>
-                    <button class="tool-btn" data-block="h3">H3</button>
-                    <button class="tool-btn" data-cmd="insertUnorderedList">• List</button>
-                    <button class="tool-btn" data-cmd="insertOrderedList">1. List</button>
-                    <button class="tool-btn" id="text-link">Link</button>
-                    <button class="tool-btn" id="text-code">Code block</button>
-                    <select id="text-font"><option>Manrope</option><option>Space Grotesk</option><option>Georgia</option><option>Courier New</option></select>
-                    <select id="text-size"><option>12</option><option>14</option><option selected>16</option><option>18</option><option>24</option><option>32</option></select>
-                    <input type="color" id="text-color" value="#ffffff">
-                    <input type="color" id="text-highlight" value="#7c5cfc">
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="undo" title="Undo"><span class="material-icons-outlined">undo</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="redo" title="Redo"><span class="material-icons-outlined">redo</span></button>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <select id="text-block" class="tool-select" title="Styles">
+                        <option value="p">Normal</option>
+                        <option value="h1">Heading 1</option>
+                        <option value="h2">Heading 2</option>
+                        <option value="h3">Heading 3</option>
+                        <option value="h4">Heading 4</option>
+                        <option value="h5">Heading 5</option>
+                        <option value="h6">Heading 6</option>
+                    </select>
+                    <select id="text-font" class="tool-select" title="Font">
+                        <option value="Arial">Arial</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Manrope">Manrope</option>
+                        <option value="Space Grotesk">Space Grotesk</option>
+                    </select>
+                    <select id="text-size" class="tool-select" title="Font size">
+                        <option value="12">12</option>
+                        <option value="14">14</option>
+                        <option value="16" selected>16</option>
+                        <option value="18">18</option>
+                        <option value="24">24</option>
+                        <option value="32">32</option>
+                        <option value="48">48</option>
+                    </select>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="bold" title="Bold"><span class="material-icons-outlined">format_bold</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="italic" title="Italic"><span class="material-icons-outlined">format_italic</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="underline" title="Underline"><span class="material-icons-outlined">format_underlined</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="strikeThrough" title="Strikethrough"><span class="material-icons-outlined">strikethrough_s</span></button>
+                    <label class="tool-color" title="Text color"><span class="material-icons-outlined">format_color_text</span><input type="color" id="text-color" value="#202124"></label>
+                    <label class="tool-color" title="Highlight color"><span class="material-icons-outlined">format_color_fill</span><input type="color" id="text-highlight" value="#ffff00"></label>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="insertUnorderedList" title="Bulleted list"><span class="material-icons-outlined">format_list_bulleted</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="insertOrderedList" title="Numbered list"><span class="material-icons-outlined">format_list_numbered</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="outdent" title="Decrease indent"><span class="material-icons-outlined">format_indent_decrease</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="indent" title="Increase indent"><span class="material-icons-outlined">format_indent_increase</span></button>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyLeft" title="Align left"><span class="material-icons-outlined">format_align_left</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyCenter" title="Align center"><span class="material-icons-outlined">format_align_center</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyRight" title="Align right"><span class="material-icons-outlined">format_align_right</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyFull" title="Justify"><span class="material-icons-outlined">format_align_justify</span></button>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="subscript" title="Subscript"><span class="material-icons-outlined">subscript</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="superscript" title="Superscript"><span class="material-icons-outlined">superscript</span></button>
+                    <span class="tool-sep" aria-hidden="true"></span>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-link" title="Insert link"><span class="material-icons-outlined">link</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-image" title="Insert image"><span class="material-icons-outlined">image</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-quote" title="Quote"><span class="material-icons-outlined">format_quote</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-code" title="Code block"><span class="material-icons-outlined">code</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="removeFormat" title="Clear formatting"><span class="material-icons-outlined">format_clear</span></button>
+                    <input type="file" id="text-image-input" accept="image/*" hidden>
                 </div>
-                <div class="text-editor" id="text-editor" contenteditable="true"></div>
+                <div class="text-editor-scroll">
+                    <div class="text-editor text-editor-page" id="text-editor" contenteditable="true" spellcheck="true"></div>
+                </div>
                 <div class="text-meta">
                     <span id="text-autosave">Auto-save every 30s</span>
                     <span id="text-count">0 words · 0 chars</span>
@@ -3849,7 +5631,7 @@ const FileManager = (() => {
             `;
         } else {
             wrap.innerHTML = `
-                <textarea class="text-editor text-editor-plain" id="text-editor-plain" spellcheck="false" style="width:100%;height:100%;resize:none;border:none;outline:none;padding:16px;font-family:monospace;font-size:14px;background:#f8f9fa;"></textarea>
+                <textarea class="text-editor text-editor-plain" id="text-editor-plain" spellcheck="false"></textarea>
                 <div class="text-meta">
                     <span id="text-autosave">Auto-save every 30s</span>
                     <span id="text-count">0 words · 0 chars</span>
@@ -3859,44 +5641,91 @@ const FileManager = (() => {
         shell.appendChild(wrap);
 
         let editor, getEditorValue, setEditorValue;
+        let selectionListener = null;
 
         if (isRichText) {
             editor = document.getElementById('text-editor');
-            editor.textContent = text;
+            const loadRichContent = (v) => {
+                const trimmed = (v || '').trim();
+                if (trimmed.startsWith('<') || /<[a-z][\s\S]*>/i.test(trimmed)) {
+                    editor.innerHTML = v;
+                } else {
+                    editor.textContent = v;
+                }
+            };
+            loadRichContent(text);
             getEditorValue = () => editor.innerHTML;
-            setEditorValue = (v) => editor.textContent = v;
-            
+            setEditorValue = (v) => loadRichContent(v);
+
+            const syncToolbarState = () => {
+                document.querySelectorAll('#text-toolbar [data-cmd]').forEach((b) => {
+                    const cmd = b.dataset.cmd;
+                    if (['undo', 'redo', 'indent', 'outdent', 'removeFormat'].includes(cmd)) {
+                        b.classList.remove('active');
+                        return;
+                    }
+                    try {
+                        b.classList.toggle('active', document.queryCommandState(cmd));
+                    } catch (_) {
+                        b.classList.remove('active');
+                    }
+                });
+            };
+
+            const runCmd = (cmd, value = null) => {
+                document.execCommand(cmd, false, value);
+                editor.focus();
+                setEditorSaved(false);
+                syncToolbarState();
+            };
+
             document.querySelectorAll('#text-toolbar [data-cmd]').forEach((b) => {
-                b.addEventListener('click', () => {
-                    document.execCommand(b.dataset.cmd, false);
-                    editor.focus();
-                    setEditorSaved(false);
-                });
+                b.addEventListener('mousedown', (e) => e.preventDefault());
+                b.addEventListener('click', () => runCmd(b.dataset.cmd));
             });
 
-            document.querySelectorAll('#text-toolbar [data-block]').forEach((b) => {
-                b.addEventListener('click', () => {
-                    document.execCommand('formatBlock', false, b.dataset.block);
-                    editor.focus();
-                    setEditorSaved(false);
-                });
+            document.getElementById('text-block').addEventListener('change', (e) => {
+                const tag = e.target.value || 'p';
+                runCmd('formatBlock', `<${tag}>`);
             });
 
+            document.getElementById('text-link').addEventListener('mousedown', (e) => e.preventDefault());
             document.getElementById('text-link').addEventListener('click', () => {
                 const href = prompt('Enter URL');
                 if (!href) return;
-                document.execCommand('createLink', false, href);
+                runCmd('createLink', href);
+            });
+
+            document.getElementById('text-quote').addEventListener('mousedown', (e) => e.preventDefault());
+            document.getElementById('text-quote').addEventListener('click', () => {
+                runCmd('formatBlock', '<blockquote>');
+            });
+
+            document.getElementById('text-code').addEventListener('mousedown', (e) => e.preventDefault());
+            document.getElementById('text-code').addEventListener('click', () => {
+                document.execCommand('insertHTML', false, '<pre><code></code></pre>');
+                editor.focus();
                 setEditorSaved(false);
             });
 
-            document.getElementById('text-code').addEventListener('click', () => {
-                document.execCommand('insertHTML', false, '<pre><code>// code</code></pre>');
-                setEditorSaved(false);
+            const imageInput = document.getElementById('text-image-input');
+            document.getElementById('text-image').addEventListener('mousedown', (e) => e.preventDefault());
+            document.getElementById('text-image').addEventListener('click', () => imageInput.click());
+            imageInput.addEventListener('change', () => {
+                const fileObj = imageInput.files?.[0];
+                imageInput.value = '';
+                if (!fileObj) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    document.execCommand('insertImage', false, reader.result);
+                    editor.focus();
+                    setEditorSaved(false);
+                };
+                reader.readAsDataURL(fileObj);
             });
 
             document.getElementById('text-font').addEventListener('change', (e) => {
-                document.execCommand('fontName', false, e.target.value);
-                setEditorSaved(false);
+                runCmd('fontName', e.target.value);
             });
 
             document.getElementById('text-size').addEventListener('change', (e) => {
@@ -3909,28 +5738,34 @@ const FileManager = (() => {
                         fonts[i].style.fontSize = `${px}px`;
                     }
                 }
+                editor.focus();
                 setEditorSaved(false);
             });
 
             document.getElementById('text-color').addEventListener('input', (e) => {
-                document.execCommand('foreColor', false, e.target.value);
-                setEditorSaved(false);
+                runCmd('foreColor', e.target.value);
             });
 
             document.getElementById('text-highlight').addEventListener('input', (e) => {
-                document.execCommand('hiliteColor', false, e.target.value);
-                setEditorSaved(false);
+                runCmd('hiliteColor', e.target.value);
             });
 
             editor.addEventListener('input', () => {
                 updateWordCount(editor.innerText || '');
                 setEditorSaved(false);
             });
+
+            selectionListener = () => {
+                if (!editorState || document.getElementById('text-editor') !== editor) return;
+                syncToolbarState();
+            };
+            document.addEventListener('selectionchange', selectionListener);
+            syncToolbarState();
         } else {
             editor = document.getElementById('text-editor-plain');
             editor.value = text;
             getEditorValue = () => editor.value;
-            setEditorValue = (v) => editor.value = v;
+            setEditorValue = (v) => { editor.value = v; };
 
             editor.addEventListener('input', () => {
                 updateWordCount(editor.value || '');
@@ -3941,7 +5776,11 @@ const FileManager = (() => {
         updateWordCount(isRichText ? (editor.innerText || '') : editor.value);
 
         editorState.onUndo = () => {
-            document.execCommand('undo', false, null);
+            if (isRichText) {
+                document.execCommand('undo', false, null);
+            } else {
+                document.execCommand('undo', false, null);
+            }
             setEditorSaved(false);
         };
         editorState.onRedo = () => {
@@ -3973,10 +5812,14 @@ const FileManager = (() => {
 
         editorState.onReset = () => {
             setEditorValue(text);
+            updateWordCount(isRichText ? (editor.innerText || '') : editor.value);
             setEditorSaved(false);
         };
-        
-        editorState.cleanup = () => clearInterval(autosaveTimer);
+
+        editorState.cleanup = () => {
+            clearInterval(autosaveTimer);
+            if (selectionListener) document.removeEventListener('selectionchange', selectionListener);
+        };
     }
 
     function updateWordCount(text) {
@@ -3995,62 +5838,29 @@ const FileManager = (() => {
         wrap.innerHTML = `
             <div class="pdf-toolbar">
                 <div class="row-inline">
-                    <button class="btn btn-secondary btn-sm" id="pdf-prev">◀</button>
-                    <span id="pdf-page-ind">1 / 24</span>
-                    <button class="btn btn-secondary btn-sm" id="pdf-next">▶</button>
-                </div>
-                <div class="row-inline">
-                    <select id="pdf-zoom"><option>50%</option><option>75%</option><option selected>100%</option><option>125%</option><option>150%</option><option>Fit to page</option></select>
-                    <input id="pdf-search" placeholder="Search (Ctrl+F)" style="height:32px;border-radius:8px;border:1px solid var(--fd-border);background:var(--fd-bg-soft);color:var(--fd-text);padding:0 8px;">
-                    <button class="btn btn-secondary btn-sm" id="pdf-toggle-thumbs">Thumbnails</button>
                     <button class="btn btn-secondary btn-sm" id="pdf-print">Print</button>
+                    <button class="btn btn-secondary btn-sm" id="pdf-download">Download</button>
                 </div>
             </div>
             <div class="pdf-content">
-                <div class="pdf-thumbs" id="pdf-thumbs">${Array.from({ length: 24 }).map((_, i) => `<button data-page="${i + 1}">Page ${i + 1}</button>`).join('')}</div>
-                <iframe class="pdf-view" id="pdf-view" src="${url}#page=1&zoom=100"></iframe>
+                <iframe class="pdf-view" id="pdf-view" src="${url}" title="${esc(file.name)}"></iframe>
             </div>
         `;
         shell.appendChild(wrap);
 
-        let page = 1;
-        let zoom = '100';
-
-        const renderPDF = () => {
-            const src = `${url}#page=${page}&zoom=${zoom}`;
-            document.getElementById('pdf-view').src = src;
-            document.getElementById('pdf-page-ind').textContent = `${page} / 24`;
-        };
-
-        document.getElementById('pdf-prev').addEventListener('click', () => { page = Math.max(1, page - 1); renderPDF(); });
-        document.getElementById('pdf-next').addEventListener('click', () => { page = Math.min(24, page + 1); renderPDF(); });
-        document.getElementById('pdf-zoom').addEventListener('change', (e) => {
-            zoom = e.target.value === 'Fit to page' ? 'page-fit' : e.target.value.replace('%', '');
-            renderPDF();
-        });
-        document.getElementById('pdf-search').addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') e.preventDefault();
-            if (e.key === 'Enter') {
-                const q = e.currentTarget.value.trim();
-                document.getElementById('pdf-view').src = `${url}#search=${encodeURIComponent(q)}&page=${page}&zoom=${zoom}`;
-            }
-        });
-        document.getElementById('pdf-toggle-thumbs').addEventListener('click', () => {
-            document.getElementById('pdf-thumbs').classList.toggle('hidden');
-        });
         document.getElementById('pdf-print').addEventListener('click', () => {
-            const frame = document.getElementById('pdf-view');
-            frame.contentWindow?.print();
+            document.getElementById('pdf-view')?.contentWindow?.print();
         });
-        document.querySelectorAll('#pdf-thumbs button').forEach((b) => {
-            b.addEventListener('click', () => {
-                page = Number(b.dataset.page);
-                renderPDF();
-            });
+        document.getElementById('pdf-download').addEventListener('click', () => {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = file.name || 'document.pdf';
+            a.click();
         });
 
         editorState.onSave = async () => true;
-        editorState.onReset = () => renderPDF();
+        editorState.onReset = () => {};
+        editorState.cleanup = () => URL.revokeObjectURL(url);
     }
 
     async function openVideoPlayer(file) {
@@ -4249,34 +6059,91 @@ const FileManager = (() => {
 
     async function openAudioPlayer(file) {
         const blob = await decryptFileBlob(file);
-        const url = URL.createObjectURL(blob);
 
         const player = document.getElementById('audio-mini-player');
         const audio = document.getElementById('background-audio');
         const title = document.getElementById('audio-title');
+        const toggle = document.getElementById('audio-toggle');
+        const playIcon = toggle.querySelector('.audio-play-icon');
+        const pauseIcon = toggle.querySelector('.audio-pause-icon');
+        const seek = document.getElementById('audio-seek');
+        const currentTime = document.getElementById('audio-current-time');
+        const duration = document.getElementById('audio-duration');
+        const shuffleButton = document.getElementById('audio-shuffle');
+        const repeatButton = document.getElementById('audio-repeat');
         player.classList.remove('hidden');
         title.textContent = file.name;
+        title.title = file.name;
 
         const playlist = filteredFiles.filter((f) => getMimeGroup(f.mime_type, 'file', f.name) === 'audio');
         let idx = Math.max(0, playlist.findIndex((f) => f.id === file.id));
         let repeat = false;
         let shuffle = false;
+        shuffleButton.setAttribute('aria-pressed', 'false');
+        repeatButton.setAttribute('aria-pressed', 'false');
+
+        const formatAudioTime = (seconds) => {
+            if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+            const minutes = Math.floor(seconds / 60);
+            return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+        };
+
+        const audioMimeFor = (item, sourceBlob) => {
+            const sourceMime = String(sourceBlob.type || item?.mime_type || '').toLowerCase();
+            if (sourceMime && sourceMime !== 'application/octet-stream' && sourceMime !== 'binary/octet-stream') {
+                return sourceMime;
+            }
+            const extension = getFileExtension(item?.name || '');
+            return {
+                mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav',
+                flac: 'audio/flac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+            }[extension] || sourceMime || 'application/octet-stream';
+        };
+
+        const setAudioSource = (sourceBlob, item) => {
+            if (player.dataset.objectUrl) URL.revokeObjectURL(player.dataset.objectUrl);
+            const mime = audioMimeFor(item, sourceBlob);
+            const playableBlob = sourceBlob.type === mime ? sourceBlob : new Blob([sourceBlob], { type: mime });
+            const localURL = URL.createObjectURL(playableBlob);
+            player.dataset.objectUrl = localURL;
+            audio.src = localURL;
+        };
+
+        const syncPlayButton = () => {
+            const paused = audio.paused;
+            playIcon.classList.toggle('hidden', !paused);
+            pauseIcon.classList.toggle('hidden', paused);
+            toggle.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+            toggle.title = paused ? 'Play' : 'Pause';
+        };
+
+        const playAudio = async (silentAutoplay = false) => {
+            try {
+                await audio.play();
+            } catch (err) {
+                syncPlayButton();
+                if (silentAutoplay && err?.name === 'NotAllowedError') return;
+                const detail = err?.name === 'NotSupportedError'
+                    ? 'This audio codec is not supported by your browser.'
+                    : (err?.message || 'Unknown playback error');
+                Components.toast(`Could not play audio: ${detail}`, 'error');
+            }
+        };
 
         const playIndex = async (nextIdx) => {
             idx = nextIdx;
             const current = playlist[idx];
             const dec = await decryptFileBlob(current);
-            const localURL = URL.createObjectURL(dec);
-            audio.src = localURL;
+            setAudioSource(dec, current);
             title.textContent = current.name;
-            audio.play();
+            title.title = current.name;
+            await playAudio();
         };
 
-        audio.src = url;
-        audio.play();
+        setAudioSource(blob, file);
 
-        document.getElementById('audio-toggle').onclick = () => {
-            if (audio.paused) audio.play(); else audio.pause();
+        toggle.onclick = () => {
+            if (audio.paused) playAudio(); else audio.pause();
         };
         document.getElementById('audio-prev').onclick = () => {
             const next = idx <= 0 ? playlist.length - 1 : idx - 1;
@@ -4286,8 +6153,32 @@ const FileManager = (() => {
             const next = shuffle ? Math.floor(Math.random() * playlist.length) : (idx + 1) % playlist.length;
             playIndex(next);
         };
-        document.getElementById('audio-shuffle').onclick = () => { shuffle = !shuffle; };
-        document.getElementById('audio-repeat').onclick = () => { repeat = !repeat; };
+        shuffleButton.onclick = () => {
+            shuffle = !shuffle;
+            shuffleButton.setAttribute('aria-pressed', String(shuffle));
+        };
+        repeatButton.onclick = () => {
+            repeat = !repeat;
+            repeatButton.setAttribute('aria-pressed', String(repeat));
+        };
+
+        audio.onplay = syncPlayButton;
+        audio.onpause = syncPlayButton;
+        audio.onerror = () => {
+            syncPlayButton();
+            Components.toast('Could not play audio. The file may use an unsupported codec or be damaged.', 'error');
+        };
+        audio.onloadedmetadata = () => {
+            duration.textContent = formatAudioTime(audio.duration);
+            seek.value = '0';
+        };
+        audio.ontimeupdate = () => {
+            currentTime.textContent = formatAudioTime(audio.currentTime);
+            seek.value = audio.duration ? String((audio.currentTime / audio.duration) * 100) : '0';
+        };
+        seek.oninput = () => {
+            if (audio.duration) audio.currentTime = (Number(seek.value) / 100) * audio.duration;
+        };
 
         audio.onended = () => {
             if (repeat) {
@@ -4299,34 +6190,29 @@ const FileManager = (() => {
             }
         };
 
+        syncPlayButton();
         startWaveform(audio);
-        Components.toast('Audio playback started', 'success');
+        await playAudio(true);
+        Components.toast(audio.paused ? 'Audio ready — press Play' : 'Audio playback started', 'success');
     }
 
     function startWaveform(audio) {
         const canvas = document.getElementById('audio-wave');
         const ctx = canvas.getContext('2d');
 
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = actx.createMediaElementSource(audio);
-        const analyser = actx.createAnalyser();
-        analyser.fftSize = 128;
-        src.connect(analyser);
-        analyser.connect(actx.destination);
-        const data = new Uint8Array(analyser.frequencyBinCount);
+        if (audio.dataset.visualizerStarted === 'true') return;
+        audio.dataset.visualizerStarted = 'true';
 
         const draw = () => {
-            if (audio.paused) {
-                requestAnimationFrame(draw);
-                return;
-            }
-            analyser.getByteFrequencyData(data);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#7c5cfc';
-            const barW = canvas.width / data.length;
-            for (let i = 0; i < data.length; i += 1) {
-                const h = (data[i] / 255) * canvas.height;
-                ctx.fillRect(i * barW, canvas.height - h, barW - 1, h);
+            const bars = 48;
+            const barW = canvas.width / bars;
+            const progress = audio.duration ? audio.currentTime / audio.duration : 0;
+            for (let i = 0; i < bars; i += 1) {
+                const phase = i * 0.72 + (audio.paused ? 0 : audio.currentTime * 5);
+                const h = 5 + (Math.sin(phase) * 0.5 + 0.5) * (canvas.height - 8);
+                ctx.fillStyle = i / bars <= progress ? '#c4b5fd' : 'rgba(167,139,250,.42)';
+                ctx.fillRect(i * barW, canvas.height - h, Math.max(1, barW - 1.5), h);
             }
             requestAnimationFrame(draw);
         };
@@ -4345,64 +6231,57 @@ const FileManager = (() => {
         wrap.className = 'sheet-wrap';
         wrap.innerHTML = `
             <div class="sheet-toolbar">
-                <div class="row-inline">
-                    <input id="sheet-search" placeholder="Search / filter" style="height:32px;border-radius:8px;border:1px solid var(--fd-border);background:var(--fd-bg-soft);color:var(--fd-text);padding:0 8px;">
-                </div>
-                <div class="row-inline" id="sheet-tabs" style="display:none;gap:4px;flex-wrap:wrap;"></div>
-                <div class="row-inline">
-                    <button class="btn btn-secondary btn-sm" id="sheet-export">Export CSV</button>
-                </div>
+                <button type="button" class="tool-btn tool-btn-icon" id="sheet-undo" title="Undo"><span class="material-icons-outlined">undo</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="sheet-redo" title="Redo"><span class="material-icons-outlined">redo</span></button>
+                <span class="tool-sep" aria-hidden="true"></span>
+                <label class="sheet-search-wrap" title="Find rows">
+                    <span class="material-icons-outlined">search</span>
+                    <input id="sheet-search" placeholder="Search">
+                </label>
+                <span class="tool-sep" aria-hidden="true"></span>
+                <button type="button" class="tool-btn tool-btn-icon" id="sheet-export" title="Export CSV"><span class="material-icons-outlined">download</span></button>
+            </div>
+            <div class="sheet-formula-bar">
+                <span class="sheet-cell-address" id="sheet-cell-address">A1</span>
+                <span class="sheet-fx">fx</span>
+                <input id="sheet-formula-input" aria-label="Cell value or formula" placeholder="Select a cell">
             </div>
             <div class="sheet-body" id="sheet-body"><div style="padding:40px;text-align:center;color:var(--fd-text-muted)">Loading...</div></div>
+            <div class="sheet-tabs-bar" id="sheet-tabs"></div>
         `;
         shell.appendChild(wrap);
 
         let workbook = null;
         let sheetNames = [];
         let activeSheetIdx = 0;
-        let rows = [];
+        let csvRows = [];
+        let activeCell = { row: 0, col: 0 };
+        let searchTerm = '';
+        const changes = new Map();
+        const undoStack = [];
+        const redoStack = [];
 
         try {
             const blob = await decryptFileBlob(file);
             if (isXlsx) {
                 await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX');
                 const arrayBuffer = await blob.arrayBuffer();
-                workbook = window.XLSX.read(arrayBuffer, { type: 'array' });
+                workbook = window.XLSX.read(arrayBuffer, {
+                    type: 'array',
+                    cellFormula: true,
+                    cellStyles: true,
+                    cellNF: true,
+                    cellDates: true,
+                });
                 sheetNames = workbook.SheetNames || [];
                 if (!sheetNames.length) {
                     throw new Error('No worksheet found in this file');
                 }
-
-                if (sheetNames.length > 1) {
-                    const tabsEl = document.getElementById('sheet-tabs');
-                    if (tabsEl) {
-                        tabsEl.style.display = 'flex';
-                        sheetNames.forEach((name, i) => {
-                            const tab = document.createElement('button');
-                            tab.className = `btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-secondary'}`;
-                            tab.textContent = name;
-                            tab.style.fontSize = '12px';
-                            tab.addEventListener('click', () => {
-                                activeSheetIdx = i;
-                                tabsEl.querySelectorAll('button').forEach((b, j) => {
-                                    b.className = `btn btn-sm ${j === i ? 'btn-primary' : 'btn-secondary'}`;
-                                });
-                                const sheet = workbook.Sheets[sheetNames[i]];
-                                rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
-                                if (!rows.length) rows.push(['']);
-                                tableData = rows;
-                                renderTable('');
-                            });
-                            tabsEl.appendChild(tab);
-                        });
-                    }
-                }
-
-                const sheet = workbook.Sheets[sheetNames[0]];
-                rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
             } else {
                 const csv = await blob.text();
-                rows = csv.split(/\r?\n/).filter((r) => r.length > 0).map((r) => r.split(','));
+                csvRows = csv.split(/\r?\n/).filter((r) => r.length > 0).map((r) => r.split(','));
+                if (!csvRows.length) csvRows = [['']];
+                sheetNames = ['Sheet1'];
             }
         } catch (err) {
             const body = document.getElementById('sheet-body');
@@ -4412,46 +6291,183 @@ const FileManager = (() => {
             return;
         }
 
-        if (!rows.length) rows.push(['']);
-        let tableData = rows;
+        const changeKey = (sheetIdx, row, col) => `${sheetIdx}:${row}:${col}`;
+        const encodeCell = (row, col) => window.XLSX
+            ? window.XLSX.utils.encode_cell({ r: row, c: col })
+            : `${columnName(col)}${row + 1}`;
 
-        const renderTable = (search = '') => {
+        function columnName(index) {
+            let value = index + 1;
+            let name = '';
+            while (value > 0) {
+                const remainder = (value - 1) % 26;
+                name = String.fromCharCode(65 + remainder) + name;
+                value = Math.floor((value - 1) / 26);
+            }
+            return name;
+        }
+
+        function sheetDimensions() {
+            if (!workbook) {
+                return {
+                    rows: Math.max(20, csvRows.length),
+                    cols: Math.max(10, ...csvRows.map((row) => row.length)),
+                };
+            }
+            const sheet = workbook.Sheets[sheetNames[activeSheetIdx]];
+            const range = window.XLSX.utils.decode_range(sheet['!ref'] || 'A1:A1');
+            return {
+                rows: Math.max(20, range.e.r + 1),
+                cols: Math.max(10, range.e.c + 1),
+            };
+        }
+
+        function originalCellValue(sheetIdx, row, col, formula = false) {
+            if (!workbook) return String(csvRows[row]?.[col] ?? '');
+            const sheet = workbook.Sheets[sheetNames[sheetIdx]];
+            const cell = sheet?.[encodeCell(row, col)];
+            if (!cell) return '';
+            if (formula && cell.f) return `=${cell.f}`;
+            return String(window.XLSX.utils.format_cell(cell) ?? cell.v ?? '');
+        }
+
+        function displayedCellValue(sheetIdx, row, col, formula = false) {
+            const changed = changes.get(changeKey(sheetIdx, row, col));
+            return changed !== undefined ? changed : originalCellValue(sheetIdx, row, col, formula);
+        }
+
+        function recordChange(row, col, value, addHistory = true) {
+            const key = changeKey(activeSheetIdx, row, col);
+            const oldValue = displayedCellValue(activeSheetIdx, row, col, true);
+            const newValue = String(value ?? '');
+            if (oldValue === newValue) return;
+            const original = originalCellValue(activeSheetIdx, row, col, true);
+            if (newValue === original) changes.delete(key);
+            else changes.set(key, newValue);
+            if (addHistory) {
+                undoStack.push({ sheetIdx: activeSheetIdx, row, col, oldValue, newValue });
+                redoStack.length = 0;
+            }
+            setEditorSaved(false);
+        }
+
+        function selectCell(row, col, focus = false) {
+            activeCell = { row, col };
+            wrap.querySelectorAll('.sheet-table td.active').forEach((cell) => cell.classList.remove('active'));
+            const cell = wrap.querySelector(`.sheet-table td[data-row="${row}"][data-col="${col}"]`);
+            cell?.classList.add('active');
+            document.getElementById('sheet-cell-address').textContent = `${columnName(col)}${row + 1}`;
+            document.getElementById('sheet-formula-input').value = displayedCellValue(activeSheetIdx, row, col, true);
+            if (focus) cell?.focus();
+        }
+
+        const renderTable = () => {
             const body = document.getElementById('sheet-body');
             if (!body) return;
-            const headers = tableData[0] || ['Column'];
-            const dataRows = tableData.slice(1).filter((r) => {
-                if (!search) return true;
-                return r.join(' ').toLowerCase().includes(search.toLowerCase());
-            });
+            const dimensions = sheetDimensions();
+            const matchingRows = new Set();
+            for (let row = 0; row < dimensions.rows; row += 1) {
+                if (!searchTerm) {
+                    matchingRows.add(row);
+                    continue;
+                }
+                for (let col = 0; col < dimensions.cols; col += 1) {
+                    if (displayedCellValue(activeSheetIdx, row, col).toLowerCase().includes(searchTerm)) {
+                        matchingRows.add(row);
+                        break;
+                    }
+                }
+            }
 
             body.innerHTML = `
                 <table class="sheet-table" id="sheet-table">
-                    <thead><tr>${headers.map((h, i) => `<th data-col="${i}">${esc(String(h || ''))} ↕</th>`).join('')}</tr></thead>
+                    <thead><tr><th class="sheet-corner"></th>${Array.from({ length: dimensions.cols }, (_, col) => `<th>${columnName(col)}</th>`).join('')}</tr></thead>
                     <tbody>
-                        ${dataRows.map((r) => `<tr>${headers.map((_, i) => `<td contenteditable="true">${esc(String(r[i] || ''))}</td>`).join('')}</tr>`).join('')}
+                        ${Array.from({ length: dimensions.rows }, (_, row) => `
+                            <tr${matchingRows.has(row) ? '' : ' hidden'}>
+                                <th class="sheet-row-number">${row + 1}</th>
+                                ${Array.from({ length: dimensions.cols }, (_, col) => `<td contenteditable="true" spellcheck="false" data-row="${row}" data-col="${col}">${esc(displayedCellValue(activeSheetIdx, row, col))}</td>`).join('')}
+                            </tr>
+                        `).join('')}
                     </tbody>
                 </table>
             `;
 
-            document.querySelectorAll('#sheet-table th').forEach((th) => {
-                th.addEventListener('click', () => {
-                    const c = Number(th.dataset.col);
-                    dataRows.sort((a, b) => String(a[c] || '').localeCompare(String(b[c] || '')));
-                    renderTable(search);
-                    setEditorSaved(false);
+            body.querySelectorAll('#sheet-table td').forEach((td) => {
+                td.addEventListener('focus', () => {
+                    td.dataset.startDisplay = td.textContent;
+                    selectCell(Number(td.dataset.row), Number(td.dataset.col));
+                });
+                td.addEventListener('click', () => selectCell(Number(td.dataset.row), Number(td.dataset.col)));
+                td.addEventListener('blur', () => {
+                    const row = Number(td.dataset.row);
+                    const col = Number(td.dataset.col);
+                    if (td.textContent !== td.dataset.startDisplay) {
+                        recordChange(row, col, td.textContent);
+                    }
+                    td.textContent = displayedCellValue(activeSheetIdx, row, col);
+                    selectCell(row, col);
                 });
             });
-
-            document.querySelectorAll('#sheet-table td').forEach((td) => {
-                td.addEventListener('input', () => setEditorSaved(false));
-            });
+            selectCell(activeCell.row, activeCell.col);
         };
 
-        renderTable('');
+        function renderTabs() {
+            const tabs = document.getElementById('sheet-tabs');
+            tabs.innerHTML = sheetNames.map((name, index) => `
+                <button type="button" class="sheet-tab${index === activeSheetIdx ? ' active' : ''}" data-sheet-index="${index}">
+                    <span class="material-icons-outlined">table_chart</span>${esc(name)}
+                </button>
+            `).join('');
+            tabs.querySelectorAll('.sheet-tab').forEach((tab) => {
+                tab.addEventListener('click', () => {
+                    activeSheetIdx = Number(tab.dataset.sheetIndex);
+                    activeCell = { row: 0, col: 0 };
+                    renderTabs();
+                    renderTable();
+                });
+            });
+        }
 
-        document.getElementById('sheet-search')?.addEventListener('input', (e) => renderTable(e.target.value));
+        function applyHistoryEntry(entry, useOldValue) {
+            const key = changeKey(entry.sheetIdx, entry.row, entry.col);
+            const value = useOldValue ? entry.oldValue : entry.newValue;
+            const original = originalCellValue(entry.sheetIdx, entry.row, entry.col, true);
+            if (value === original) changes.delete(key);
+            else changes.set(key, value);
+            activeSheetIdx = entry.sheetIdx;
+            activeCell = { row: entry.row, col: entry.col };
+            renderTabs();
+            renderTable();
+            setEditorSaved(false);
+        }
+
+        editorState.onUndo = () => {
+            const entry = undoStack.pop();
+            if (!entry) return;
+            redoStack.push(entry);
+            applyHistoryEntry(entry, true);
+        };
+        editorState.onRedo = () => {
+            const entry = redoStack.pop();
+            if (!entry) return;
+            undoStack.push(entry);
+            applyHistoryEntry(entry, false);
+        };
+
+        document.getElementById('sheet-undo').addEventListener('click', () => editorState.onUndo());
+        document.getElementById('sheet-redo').addEventListener('click', () => editorState.onRedo());
+        document.getElementById('sheet-search').addEventListener('input', (e) => {
+            searchTerm = e.target.value.trim().toLowerCase();
+            renderTable();
+        });
+        document.getElementById('sheet-formula-input').addEventListener('change', (e) => {
+            recordChange(activeCell.row, activeCell.col, e.target.value);
+            renderTable();
+            selectCell(activeCell.row, activeCell.col, true);
+        });
         document.getElementById('sheet-export')?.addEventListener('click', () => {
-            const data = collectTableData();
+            const data = collectSheetData();
             const out = data.map((r) => r.join(',')).join('\n');
             const outBlob = new Blob([out], { type: 'text/csv' });
             const url = URL.createObjectURL(outBlob);
@@ -4462,26 +6478,67 @@ const FileManager = (() => {
             URL.revokeObjectURL(url);
         });
 
-        function collectTableData() {
-            const out = [];
-            const headers = Array.from(document.querySelectorAll('#sheet-table thead th')).map((h) => h.textContent.replace(' ↕', ''));
-            out.push(headers);
-            document.querySelectorAll('#sheet-table tbody tr').forEach((tr) => {
-                out.push(Array.from(tr.querySelectorAll('td')).map((td) => td.textContent));
-            });
-            return out;
+        function collectSheetData() {
+            const dimensions = sheetDimensions();
+            return Array.from({ length: dimensions.rows }, (_, row) =>
+                Array.from({ length: dimensions.cols }, (_, col) =>
+                    displayedCellValue(activeSheetIdx, row, col, true),
+                ),
+            );
+        }
+
+        function assignCellValue(sheet, address, value) {
+            const existing = sheet[address] || {};
+            const next = { ...existing };
+            delete next.w;
+            if (value.startsWith('=')) {
+                next.f = value.slice(1);
+                delete next.v;
+                if (!next.t) next.t = 'n';
+            } else {
+                delete next.f;
+                if (value === '') {
+                    next.v = '';
+                    next.t = 's';
+                } else if (/^-?(?:\d+|\d*\.\d+)$/.test(value)) {
+                    next.v = Number(value);
+                    next.t = 'n';
+                } else if (/^(true|false)$/i.test(value)) {
+                    next.v = value.toLowerCase() === 'true';
+                    next.t = 'b';
+                } else {
+                    next.v = value;
+                    next.t = 's';
+                }
+            }
+            sheet[address] = next;
+
+            const decoded = window.XLSX.utils.decode_cell(address);
+            const range = window.XLSX.utils.decode_range(sheet['!ref'] || address);
+            range.s.r = Math.min(range.s.r, decoded.r);
+            range.s.c = Math.min(range.s.c, decoded.c);
+            range.e.r = Math.max(range.e.r, decoded.r);
+            range.e.c = Math.max(range.e.c, decoded.c);
+            sheet['!ref'] = window.XLSX.utils.encode_range(range);
         }
 
         editorState.onSave = async () => {
-            const data = collectTableData();
             let saveBlob;
             let mimeType;
 
             if (workbook && window.XLSX) {
-                const ws = window.XLSX.utils.aoa_to_sheet(data);
-                workbook.Sheets[sheetNames[activeSheetIdx]] = ws;
+                changes.forEach((value, key) => {
+                    const [sheetIdx, row, col] = key.split(':').map(Number);
+                    const sheet = workbook.Sheets[sheetNames[sheetIdx]];
+                    assignCellValue(sheet, encodeCell(row, col), value);
+                });
                 const bookType = ext === 'xls' ? 'xls' : 'xlsx';
-                const out = window.XLSX.write(workbook, { bookType, type: 'array' });
+                const out = window.XLSX.write(workbook, {
+                    bookType,
+                    type: 'array',
+                    cellStyles: true,
+                    cellNF: true,
+                });
                 if (bookType === 'xls') {
                     saveBlob = new Blob([out], { type: 'application/vnd.ms-excel' });
                     mimeType = 'application/vnd.ms-excel';
@@ -4490,14 +6547,25 @@ const FileManager = (() => {
                     mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
                 }
             } else {
+                changes.forEach((value, key) => {
+                    const [, row, col] = key.split(':').map(Number);
+                    while (csvRows.length <= row) csvRows.push([]);
+                    csvRows[row][col] = value;
+                });
+                const data = csvRows;
                 const out = data.map((r) => r.join(',')).join('\n');
                 saveBlob = new Blob([out], { type: 'text/csv' });
                 mimeType = 'text/csv';
             }
 
             const fileName = document.getElementById('editor-file-name').value.trim() || file.name;
-            return await saveBlobToExistingFile(file, saveBlob, mimeType, fileName);
+            const saved = await saveBlobToExistingFile(file, saveBlob, mimeType, fileName);
+            if (saved) changes.clear();
+            return saved;
         };
+
+        renderTabs();
+        renderTable();
     }
 
     function loadScript(src, globalName) {
@@ -4677,7 +6745,7 @@ const FileManager = (() => {
                 title: 'Actions',
                 items: [
                     ['Enter', 'Open selected item'],
-                    ['Del / Backspace', 'Move to trash'],
+                    ['Del / Backspace', inTrashView() ? 'Delete forever' : 'Move to trash'],
                     ['s', 'Toggle star'],
                     ['.', 'Share selected'],
                     ['d', 'Download selected'],
@@ -4750,11 +6818,11 @@ const FileManager = (() => {
             clearTimeout(_gKeyTimer);
             const k = e.key.toLowerCase();
             e.preventDefault();
-            if (k === 'h') { window.location.hash = '#/home'; return; }
-            if (k === 'd') { window.location.hash = '#/files'; return; }
-            if (k === 'r') { window.location.hash = '#/recent'; return; }
-            if (k === 't') { window.location.hash = '#/trash'; return; }
-            if (k === 's') { window.location.hash = '#/storage'; return; }
+            if (k === 'h') { App.navigate('/home'); return; }
+            if (k === 'd') { App.navigate('/files'); return; }
+            if (k === 'r') { App.navigate('/recent'); return; }
+            if (k === 't') { App.navigate('/trash'); return; }
+            if (k === 's') { App.navigate('/storage'); return; }
             return;
         }
 
@@ -4779,6 +6847,10 @@ const FileManager = (() => {
             e.preventDefault();
             document.getElementById('search-input')?.focus();
         }
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            document.getElementById('search-input')?.focus();
+        }
 
         // --- New folder ---
         if (e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.metaKey) {
@@ -4793,11 +6865,12 @@ const FileManager = (() => {
         }
 
         // --- Select all ---
-        if (e.key.toLowerCase() === 'a' && !(e.ctrlKey || e.metaKey)) {
+        if (e.key.toLowerCase() === 'a' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             selectAllVisible();
+            return;
         }
-        if (e.key.toLowerCase() === 'a' && (e.ctrlKey || e.metaKey)) {
+        if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             e.preventDefault();
             selectAllVisible();
         }
@@ -4812,7 +6885,7 @@ const FileManager = (() => {
             e.preventDefault();
             if (currentFolderId) {
                 // Try to go to parent — reload files root
-                window.location.hash = '#/files';
+                App.navigate('/files');
             }
         }
 
@@ -4848,8 +6921,8 @@ const FileManager = (() => {
             renameSelected();
         }
 
-        // --- Enter — open selected (skip when modal is open) ---
-        if (e.key === 'Enter' && selectedPrimary && document.getElementById('modal-overlay')?.classList.contains('hidden')) {
+        // --- Enter — open selected ---
+        if (e.key === 'Enter' && selectedPrimary) {
             e.preventDefault();
             if (selectedPrimary.type === 'folder') {
                 loadFolder(selectedPrimary.data.id);
@@ -4899,13 +6972,14 @@ const FileManager = (() => {
     }
 
     function selectAllVisible() {
-        const ids = [];
-        filteredFolders.forEach((f) => ids.push({ id: f.id, type: 'folder', data: f }));
-        filteredFiles.forEach((f) => ids.push({ id: f.id, type: 'file', data: f }));
+        const items = getVisibleItemPayloads();
 
         selectedItems.clear();
-        ids.forEach((x) => selectedItems.add(x.id));
-        if (ids[0]) selectedPrimary = ids[0];
+        items.forEach((x) => selectedItems.add(x.id));
+        if (items[0]) {
+            selectedPrimary = items[0];
+            selectionAnchor = items[0].id;
+        }
         syncSelectionStyles();
     }
 
@@ -4920,6 +6994,12 @@ const FileManager = (() => {
 
         const header = document.getElementById('file-list-header');
         const grid = document.getElementById('file-grid');
+
+        if (currentPage === 'home') {
+            header?.classList.add('hidden');
+            renderHomeItems(filteredFiles, homeSuggestedFolders);
+            return;
+        }
 
         if (view === 'grid') {
             grid.classList.add('grid-view');
@@ -4946,27 +7026,51 @@ const FileManager = (() => {
         }
     }
 
+    function storageQuotaPercentRaw(usedBytes, totalBytes) {
+        const used = Math.max(0, Number(usedBytes) || 0);
+        const total = Math.max(0, Number(totalBytes) || 0);
+        if (used <= 0 || total <= 0) return 0;
+        return Math.min(100, (used / total) * 100);
+    }
+
+    function formatStoragePercentRounded(usedBytes, totalBytes) {
+        return String(Math.round(storageQuotaPercentRaw(usedBytes, totalBytes)));
+    }
+
+    function formatStorageSize(bytes) {
+        const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+        let value = Math.max(0, Number(bytes) || 0);
+        let i = 0;
+        while (value >= 1024 && i < units.length - 1) {
+            value /= 1024;
+            i++;
+        }
+        let str;
+        if (i === 0 || value >= 100) {
+            str = String(Math.round(value));
+        } else {
+            str = String(Math.round(value * 10) / 10);
+        }
+        return `${str} ${units[i]}`;
+    }
+
     async function updateStorageInfo() {
         try {
-            const me = getCurrentUser();
-            const isAdmin = me && String(me.role || '').toLowerCase() === 'admin';
-            const s = isAdmin ? await API.diskStats() : await API.myStorage();
+            const s = await API.myStorage();
             const rawUsed = Number(s.used_bytes || 0);
             const rawTotal = Number(s.total_bytes || 1);
 
-            // Display realistic storage based on actual disk capacity
-            const usedGB = (rawUsed / (1024 * 1024 * 1024)).toFixed(1);
-            const totalGB = (rawTotal / (1024 * 1024 * 1024)).toFixed(1);
-            let pct = Math.round((Number(usedGB) / Number(totalGB)) * 100);
-            if (pct > 100) pct = 100;
+            const rawPct = storageQuotaPercentRaw(rawUsed, rawTotal);
+            const pct = Math.round(rawPct);
+            const widthPct = rawPct;
 
             const barFill = document.getElementById('storage-bar-fill');
-            barFill.style.width = `${pct}%`;
-            barFill.style.background = pct >= 90 ? '#d93025' : '#1a73e8';
-            document.getElementById('storage-text').textContent = `${usedGB} GB of ${totalGB} GB used`;
-            document.getElementById('storage-percent').textContent = `${pct}% full`;
+            barFill.style.width = `${widthPct}%`;
+            barFill.style.background = rawPct >= 90 ? '#d93025' : '#1a73e8';
+            document.getElementById('storage-text').textContent =
+                `${formatStorageSize(rawUsed)} of ${formatStorageSize(rawTotal)} used`;
 
-            if (pct >= 80) {
+            if (rawPct >= 80) {
                 const key = 'fd_storage_notice_last';
                 const last = Number(localStorage.getItem(key) || 0);
                 const now = Date.now();
@@ -4983,21 +7087,27 @@ const FileManager = (() => {
     function refresh() {
         folderStatsCache.clear();
         folderStatsPending.clear();
-        const h = window.location.hash;
-        if (h === '#/admin' || h.startsWith('#/admin/')) {
-            const section = h.split('/')[2] || 'dashboard';
+        const route = window.location.pathname;
+        if (route === '/admin' || route.startsWith('/admin/')) {
+            const section = route.split('/')[2] || 'dashboard';
             return AdminPanel.load(section);
         }
-        if (h === '#/home') return loadHome();
-        if (h === '#/computers') return loadFolder(null);
-        if (h === '#/recent') return loadRecent();
-        if (h === '#/starred') return loadStarred();
-        if (h === '#/shared-with') return loadSharedWithMe();
-        if (h === '#/shared-by') return loadSharedByMe();
-        if (h === '#/offline') return loadOffline();
-        if (h === '#/trash') return loadTrash();
-        if (h === '#/activity') return loadActivity();
-        if (h === '#/storage') return loadStoragePage();
+        if (route === '/home') return loadHome();
+        if (route === '/computers' || route.startsWith('/computers/')) {
+            const folderId = route.startsWith('/computers/') ? route.split('/')[2] : null;
+            return loadComputerFolder(folderId);
+        }
+        if (route === '/recent') return loadRecent();
+        if (route === '/starred') return loadStarred();
+        if (route === '/shared-with') return loadSharedWithMe();
+        if (route === '/shared-by') {
+            App.navigate('/files', { replace: true });
+            return loadFolder(null);
+        }
+        if (route === '/offline') return loadOffline();
+        if (route === '/trash') return loadTrash();
+        if (route === '/activity') return loadActivity();
+        if (route === '/storage') return loadStoragePage();
         return loadFolder(currentFolderId);
     }
 
@@ -5052,21 +7162,29 @@ const FileManager = (() => {
         createFolder,
         createQuickFile,
         loadFolder,
+        loadComputers,
+        loadComputerFolder,
         loadHome,
         loadRecent,
         loadStarred,
         loadSharedWithMe,
-        loadSharedByMe,
         loadOffline,
         loadTrash,
+        emptyBin,
         loadActivity,
         loadStoragePage,
         loadAdminPanel,
         applyAdvancedSearch,
+        hideSearchDropdown,
+        resetAdvancedSearchForm,
+        syncAdvancedSearchDependentFields,
+        showAdvancedSearchHelp,
+        collectAdvancedSearchParams,
         bulkShare,
         bulkDownload,
         bulkMove,
         bulkDelete,
+        bulkRestore,
         showLargestFiles,
         hideDetailsPanel,
         shareSelectedItem,
@@ -5081,6 +7199,7 @@ const FileManager = (() => {
         showShortcuts,
         handleShortcut,
         hasSelection,
+        canAcceptUploads,
         afterUpload,
         updateStorageInfo,
         openFileById,

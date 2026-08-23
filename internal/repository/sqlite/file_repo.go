@@ -164,22 +164,56 @@ func (r *FileRepo) List(ctx context.Context, opts domain.FileListOptions) ([]dom
 }
 
 func (r *FileRepo) GetByFolderID(ctx context.Context, folderID *string, ownerID string) ([]domain.File, error) {
-	var rows *sql.Rows
-	var err error
+	files, _, err := r.GetByFolderIDPage(ctx, folderID, ownerID, 0, 0)
+	return files, err
+}
+
+// GetByFolderIDPage returns non-trashed files in a folder ordered by name.
+// limit <= 0 means return all remaining rows from offset.
+func (r *FileRepo) GetByFolderIDPage(ctx context.Context, folderID *string, ownerID string, limit, offset int) ([]domain.File, int, error) {
+	if offset < 0 {
+		offset = 0
+	}
+
+	var (
+		countQuery string
+		countArgs  []interface{}
+		listQuery  string
+		listArgs   []interface{}
+	)
 
 	if folderID == nil {
-		rows, err = r.reader.QueryContext(ctx,
-			`SELECT id, name, mime_type, size, encrypted_size, folder_id, owner_id, blob_path, iv, version,
+		countQuery = `SELECT COUNT(*) FROM files WHERE folder_id IS NULL AND owner_id = ? AND is_trashed = 0`
+		countArgs = []interface{}{ownerID}
+		listQuery = `SELECT id, name, mime_type, size, encrypted_size, folder_id, owner_id, blob_path, iv, version,
 			        is_starred, is_trashed, trashed_at, created_at, updated_at, accessed_at
-			 FROM files WHERE folder_id IS NULL AND owner_id = ? AND is_trashed = 0 ORDER BY name`, ownerID)
+			 FROM files WHERE folder_id IS NULL AND owner_id = ? AND is_trashed = 0 ORDER BY name COLLATE NOCASE, id`
+		listArgs = []interface{}{ownerID}
 	} else {
-		rows, err = r.reader.QueryContext(ctx,
-			`SELECT id, name, mime_type, size, encrypted_size, folder_id, owner_id, blob_path, iv, version,
+		countQuery = `SELECT COUNT(*) FROM files WHERE folder_id = ? AND owner_id = ? AND is_trashed = 0`
+		countArgs = []interface{}{*folderID, ownerID}
+		listQuery = `SELECT id, name, mime_type, size, encrypted_size, folder_id, owner_id, blob_path, iv, version,
 			        is_starred, is_trashed, trashed_at, created_at, updated_at, accessed_at
-			 FROM files WHERE folder_id = ? AND owner_id = ? AND is_trashed = 0 ORDER BY name`, *folderID, ownerID)
+			 FROM files WHERE folder_id = ? AND owner_id = ? AND is_trashed = 0 ORDER BY name COLLATE NOCASE, id`
+		listArgs = []interface{}{*folderID, ownerID}
 	}
+
+	var total int
+	if err := r.reader.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	if limit > 0 {
+		listQuery += ` LIMIT ? OFFSET ?`
+		listArgs = append(listArgs, limit, offset)
+	} else if offset > 0 {
+		listQuery += ` LIMIT -1 OFFSET ?`
+		listArgs = append(listArgs, offset)
+	}
+
+	rows, err := r.reader.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -189,11 +223,14 @@ func (r *FileRepo) GetByFolderID(ctx context.Context, folderID *string, ownerID 
 		if err := rows.Scan(&f.ID, &f.Name, &f.MimeType, &f.Size, &f.EncryptedSize,
 			&f.FolderID, &f.OwnerID, &f.BlobPath, &f.IV, &f.Version,
 			&f.IsStarred, &f.IsTrashed, &f.TrashedAt, &f.CreatedAt, &f.UpdatedAt, &f.AccessedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		files = append(files, f)
 	}
-	return files, nil
+	if files == nil {
+		files = []domain.File{}
+	}
+	return files, total, nil
 }
 
 func (r *FileRepo) MoveToTrash(ctx context.Context, id string) error {
@@ -214,7 +251,45 @@ func (r *FileRepo) GetTrashedFiles(ctx context.Context, ownerID string) ([]domai
 	rows, err := r.reader.QueryContext(ctx,
 		`SELECT id, name, mime_type, size, encrypted_size, folder_id, owner_id, blob_path, iv, version,
 		        is_starred, is_trashed, trashed_at, created_at, updated_at, accessed_at
-		 FROM files WHERE owner_id = ? AND is_trashed = 1 ORDER BY trashed_at DESC`, ownerID)
+		 FROM files
+		 WHERE owner_id = ? AND is_trashed = 1
+		   AND (folder_id IS NULL OR folder_id NOT IN (SELECT id FROM folders WHERE is_trashed = 1))
+		 ORDER BY trashed_at DESC`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []domain.File
+	for rows.Next() {
+		var f domain.File
+		if err := rows.Scan(&f.ID, &f.Name, &f.MimeType, &f.Size, &f.EncryptedSize,
+			&f.FolderID, &f.OwnerID, &f.BlobPath, &f.IV, &f.Version,
+			&f.IsStarred, &f.IsTrashed, &f.TrashedAt, &f.CreatedAt, &f.UpdatedAt, &f.AccessedAt); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, nil
+}
+
+// GetByFolderIDs returns all files (regardless of trash state) that live in any
+// of the given folders. Used to permanently delete a folder subtree.
+func (r *FileRepo) GetByFolderIDs(ctx context.Context, folderIDs []string) ([]domain.File, error) {
+	if len(folderIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(folderIDs))
+	args := make([]interface{}, len(folderIDs))
+	for i, id := range folderIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := `SELECT id, name, mime_type, size, encrypted_size, folder_id, owner_id, blob_path, iv, version,
+	        is_starred, is_trashed, trashed_at, created_at, updated_at, accessed_at
+	 FROM files WHERE folder_id IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := r.reader.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -311,10 +386,215 @@ func (r *FileRepo) PurgeOldTrashed(ctx context.Context, days int) ([]domain.File
 	return files, nil
 }
 
+func (r *FileRepo) PurgeAllTrashed(ctx context.Context) ([]domain.File, error) {
+	rows, err := r.reader.QueryContext(ctx,
+		`SELECT id, blob_path, owner_id, encrypted_size FROM files WHERE is_trashed = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []domain.File
+	for rows.Next() {
+		var f domain.File
+		if err := rows.Scan(&f.ID, &f.BlobPath, &f.OwnerID, &f.EncryptedSize); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+
+	if len(files) > 0 {
+		_, err = r.writer.ExecContext(ctx, "DELETE FROM files WHERE is_trashed = 1")
+		if err != nil {
+			return nil, err
+		}
+	}
+	return files, nil
+}
+
+func (r *FileRepo) PurgeAllTrashedForOwner(ctx context.Context, ownerID string) ([]domain.File, error) {
+	rows, err := r.reader.QueryContext(ctx,
+		`SELECT id, blob_path, owner_id, encrypted_size FROM files WHERE is_trashed = 1 AND owner_id = ?`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []domain.File
+	for rows.Next() {
+		var f domain.File
+		if err := rows.Scan(&f.ID, &f.BlobPath, &f.OwnerID, &f.EncryptedSize); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+
+	if len(files) > 0 {
+		_, err = r.writer.ExecContext(ctx,
+			"DELETE FROM files WHERE is_trashed = 1 AND owner_id = ?", ownerID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return files, nil
+}
+
+func (r *FileRepo) ListDuplicateGroups(ctx context.Context) ([]domain.DuplicateGroup, error) {
+	rows, err := r.reader.QueryContext(ctx, `
+		SELECT owner_id, name, encrypted_size, COUNT(*) AS cnt
+		FROM files
+		WHERE is_trashed = 0
+		GROUP BY owner_id, name, encrypted_size
+		HAVING cnt > 1
+		ORDER BY cnt DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []domain.DuplicateGroup
+	for rows.Next() {
+		var g domain.DuplicateGroup
+		if err := rows.Scan(&g.OwnerID, &g.Name, &g.EncryptedSize, &g.Count); err != nil {
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	return groups, rows.Err()
+}
+
+func (r *FileRepo) ListDuplicateFilesToRemove(ctx context.Context) ([]domain.File, error) {
+	rows, err := r.reader.QueryContext(ctx, `
+		SELECT id, name, encrypted_size, owner_id, blob_path FROM (
+			SELECT id, name, encrypted_size, owner_id, blob_path,
+			       ROW_NUMBER() OVER (PARTITION BY owner_id, name, encrypted_size ORDER BY updated_at DESC) AS rn
+			FROM files
+			WHERE is_trashed = 0
+		) WHERE rn > 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []domain.File
+	for rows.Next() {
+		var f domain.File
+		if err := rows.Scan(&f.ID, &f.Name, &f.EncryptedSize, &f.OwnerID, &f.BlobPath); err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return files, rows.Err()
+}
+
+func (r *FileRepo) ListAllBlobPaths(ctx context.Context) ([]string, error) {
+	rows, err := r.reader.QueryContext(ctx, `
+		SELECT blob_path FROM files
+		UNION ALL
+		SELECT blob_path FROM file_versions`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths, rows.Err()
+}
+
+// ListBlobPathsByOwner returns blob paths for a user's files and their versions
+// (call before deleting the user so disk blobs can be removed).
+func (r *FileRepo) ListBlobPathsByOwner(ctx context.Context, ownerID string) ([]string, error) {
+	rows, err := r.reader.QueryContext(ctx, `
+		SELECT blob_path FROM files WHERE owner_id = ?
+		UNION ALL
+		SELECT fv.blob_path FROM file_versions fv
+		INNER JOIN files f ON f.id = fv.file_id
+		WHERE f.owner_id = ?`, ownerID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var paths []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths, rows.Err()
+}
+
 func (r *FileRepo) CountByOwner(ctx context.Context, ownerID string) (int, error) {
 	var count int
 	err := r.reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM files WHERE owner_id = ?", ownerID).Scan(&count)
 	return count, err
+}
+
+// SumEncryptedSizeByOwner returns the total encrypted bytes stored by a user
+// across their non-trashed files (trashed files do not count toward usage).
+func (r *FileRepo) SumEncryptedSizeByOwner(ctx context.Context, ownerID string) (int64, error) {
+	var total int64
+	err := r.reader.QueryRowContext(ctx,
+		"SELECT COALESCE(SUM(encrypted_size), 0) FROM files WHERE owner_id = ? AND is_trashed = 0", ownerID).Scan(&total)
+	return total, err
+}
+
+// SumAllEncryptedSize returns total encrypted bytes for all non-trashed files.
+func (r *FileRepo) SumAllEncryptedSize(ctx context.Context) (int64, error) {
+	var total int64
+	err := r.reader.QueryRowContext(ctx,
+		"SELECT COALESCE(SUM(encrypted_size), 0) FROM files WHERE is_trashed = 0").Scan(&total)
+	return total, err
+}
+
+// ListFileMetaByOwner returns lightweight metadata for a user's non-trashed
+// files, used to compute the storage breakdown. The set matches
+// SumEncryptedSizeByOwner so the category totals add up to used_bytes.
+func (r *FileRepo) ListFileMetaByOwner(ctx context.Context, ownerID string) ([]domain.FileMeta, error) {
+	rows, err := r.reader.QueryContext(ctx,
+		"SELECT mime_type, name, encrypted_size FROM files WHERE owner_id = ? AND is_trashed = 0", ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanFileMetaRows(rows)
+}
+
+// ListFileMetaAll returns lightweight metadata for all non-trashed files
+// (admin storage breakdown across the whole instance).
+func (r *FileRepo) ListFileMetaAll(ctx context.Context) ([]domain.FileMeta, error) {
+	rows, err := r.reader.QueryContext(ctx,
+		"SELECT mime_type, name, encrypted_size FROM files WHERE is_trashed = 0")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanFileMetaRows(rows)
+}
+
+func scanFileMetaRows(rows *sql.Rows) ([]domain.FileMeta, error) {
+	var metas []domain.FileMeta
+	for rows.Next() {
+		var m domain.FileMeta
+		if err := rows.Scan(&m.MimeType, &m.Name, &m.EncryptedSize); err != nil {
+			return nil, err
+		}
+		metas = append(metas, m)
+	}
+	return metas, rows.Err()
 }
 
 // --- Versioning ---
@@ -364,44 +644,6 @@ func (r *FileRepo) GetVersion(ctx context.Context, fileID string, version int) (
 		return nil, nil
 	}
 	return v, err
-}
-
-// DeleteByFolderIDs deletes all files in the given folder IDs and returns their blob paths for storage cleanup.
-func (r *FileRepo) DeleteByFolderIDs(ctx context.Context, folderIDs []string) ([]string, error) {
-	if len(folderIDs) == 0 {
-		return nil, nil
-	}
-	placeholders := strings.Repeat("?,", len(folderIDs))
-	placeholders = placeholders[:len(placeholders)-1]
-
-	args := make([]any, len(folderIDs))
-	for i, id := range folderIDs {
-		args[i] = id
-	}
-
-	rows, err := r.reader.QueryContext(ctx,
-		"SELECT blob_path FROM files WHERE folder_id IN ("+placeholders+")", args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var blobPaths []string
-	for rows.Next() {
-		var p string
-		if err := rows.Scan(&p); err != nil {
-			return nil, err
-		}
-		blobPaths = append(blobPaths, p)
-	}
-	rows.Close()
-
-	_, err = r.writer.ExecContext(ctx,
-		"DELETE FROM files WHERE folder_id IN ("+placeholders+")", args...)
-	if err != nil {
-		return nil, err
-	}
-	return blobPaths, nil
 }
 
 func (r *FileRepo) DeleteOldVersions(ctx context.Context, fileID string, keepCount int) ([]domain.FileVersion, error) {

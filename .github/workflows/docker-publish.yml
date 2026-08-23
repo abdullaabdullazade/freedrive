@@ -28,14 +28,14 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -43,9 +43,9 @@ jobs:
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request' && env.DOCKERHUB_TOKEN != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
-          username: metalninjasabdulla
+          username: ${{ github.repository_owner }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Prepare image names
@@ -54,7 +54,7 @@ jobs:
           set -euo pipefail
           IMAGES="ghcr.io/${GITHUB_REPOSITORY}"
           if [ -n "${DOCKERHUB_TOKEN}" ]; then
-            IMAGES="${IMAGES}"$'\n'"metalninjasabdulla/${{ github.event.repository.name }}"
+            IMAGES="${IMAGES}"$'\n'"${GITHUB_REPOSITORY_OWNER}/${{ github.event.repository.name }}"
           fi
           {
             echo "images<<EOF"
@@ -64,7 +64,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.images.outputs.images }}
           tags: |
@@ -74,7 +74,7 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -82,5 +82,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max

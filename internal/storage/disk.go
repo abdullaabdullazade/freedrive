@@ -113,3 +113,49 @@ func (ds *DiskStorage) TotalDiskUsage() (int64, error) {
 	})
 	return total, err
 }
+
+// Import moves an existing absolute file into blob storage (no extra copy when rename works).
+func (ds *DiskStorage) Import(userID, absSrcPath string) (string, int64, error) {
+	info, err := os.Stat(absSrcPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("stat import source: %w", err)
+	}
+	userDir := filepath.Join(ds.baseDir, userID)
+	if err := os.MkdirAll(userDir, 0755); err != nil {
+		return "", 0, fmt.Errorf("create user dir: %w", err)
+	}
+	blobName := uuid.New().String() + ".enc"
+	blobPath := filepath.Join(userID, blobName)
+	fullPath := filepath.Join(ds.baseDir, blobPath)
+	if err := os.Rename(absSrcPath, fullPath); err != nil {
+		// Cross-device rename fallback: copy then remove.
+		in, err := os.Open(absSrcPath)
+		if err != nil {
+			return "", 0, fmt.Errorf("open import source: %w", err)
+		}
+		out, err := os.Create(fullPath)
+		if err != nil {
+			in.Close()
+			return "", 0, fmt.Errorf("create blob file: %w", err)
+		}
+		written, copyErr := io.Copy(out, in)
+		in.Close()
+		closeErr := out.Close()
+		if copyErr != nil {
+			os.Remove(fullPath)
+			return "", 0, fmt.Errorf("copy import: %w", copyErr)
+		}
+		if closeErr != nil {
+			os.Remove(fullPath)
+			return "", 0, closeErr
+		}
+		_ = os.Remove(absSrcPath)
+		return blobPath, written, nil
+	}
+	return blobPath, info.Size(), nil
+}
+
+// UploadsDir returns the absolute staging directory for resumable uploads.
+func UploadsDir(dataDir string) string {
+	return filepath.Join(dataDir, "uploads")
+}

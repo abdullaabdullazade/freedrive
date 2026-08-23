@@ -3,7 +3,7 @@ name: Build And Release Binaries
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]*"
   workflow_dispatch:
     inputs:
       tag:
@@ -31,10 +31,15 @@ jobs:
       - name: Resolve release tag
         id: vars
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ inputs.tag }}"
           else
             TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${TAG}" >&2
+            exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
@@ -53,13 +58,14 @@ jobs:
           sha256sum freedrive-linux-amd64 freedrive-windows-amd64.exe > checksums.txt
 
       - name: Create or update GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: FreeDrive ${{ steps.vars.outputs.tag }}
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.vars.outputs.tag, '-') }}
+          fail_on_unmatched_files: true
           files: |
             dist/freedrive-linux-amd64
             dist/freedrive-windows-amd64.exe

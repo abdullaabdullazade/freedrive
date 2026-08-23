@@ -1,0 +1,59 @@
+name: Desktop CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
+  pull_request:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: desktop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxdo-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck and build frontend
+        run: npm run build
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Run Rust tests
+        run: cargo test
+        working-directory: desktop/src-tauri

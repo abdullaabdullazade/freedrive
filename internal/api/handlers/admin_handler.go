@@ -1,14 +1,11 @@
 package handlers
 
 import (
-	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
+	"log"
 	"net/http"
-	"net/smtp"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,10 +14,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abdullaabdullazade/freedrive/internal/adminsettings"
 	"github.com/abdullaabdullazade/freedrive/internal/api/middleware"
 	"github.com/abdullaabdullazade/freedrive/internal/domain"
+	"github.com/abdullaabdullazade/freedrive/internal/email"
 	"github.com/abdullaabdullazade/freedrive/internal/repository"
 	"github.com/abdullaabdullazade/freedrive/internal/service"
+	"github.com/abdullaabdullazade/freedrive/internal/storage"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -70,19 +70,42 @@ func saveSettings() {
 
 // AdminHandler handles admin endpoints.
 type AdminHandler struct {
-	userRepo     repository.UserRepository
-	fileRepo     repository.FileRepository
-	activityRepo repository.ActivityRepository
-	authService  *service.AuthService
+	userRepo             repository.UserRepository
+	fileRepo             repository.FileRepository
+	folderRepo           repository.FolderRepository
+	activityRepo         repository.ActivityRepository
+	authService          *service.AuthService
+	passwordResetService *service.PasswordResetService
+	diskStorage          *storage.DiskStorage
+	dataDir              string
 }
 
 // NewAdminHandler creates a new admin handler.
-func NewAdminHandler(userRepo repository.UserRepository, fileRepo repository.FileRepository, activityRepo repository.ActivityRepository, authService *service.AuthService) *AdminHandler {
+func NewAdminHandler(
+	userRepo repository.UserRepository,
+	fileRepo repository.FileRepository,
+	folderRepo repository.FolderRepository,
+	activityRepo repository.ActivityRepository,
+	authService *service.AuthService,
+	passwordResetService *service.PasswordResetService,
+	diskStorage *storage.DiskStorage,
+	dataDir string,
+) *AdminHandler {
+	if dataDir != "" {
+		adminSettingsMu.Lock()
+		settingsFile = filepath.Join(dataDir, "settings.json")
+		adminSettingsMu.Unlock()
+		loadSettings()
+	}
 	return &AdminHandler{
-		userRepo:     userRepo,
-		fileRepo:     fileRepo,
-		activityRepo: activityRepo,
-		authService:  authService,
+		userRepo:             userRepo,
+		fileRepo:             fileRepo,
+		folderRepo:           folderRepo,
+		activityRepo:         activityRepo,
+		authService:          authService,
+		passwordResetService: passwordResetService,
+		diskStorage:          diskStorage,
+		dataDir:              dataDir,
 	}
 }
 
@@ -135,15 +158,35 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Role       *string `json:"role"`
-		QuotaBytes *int64  `json:"quota_bytes"`
-		Username   *string `json:"username"`
+		Role              *string `json:"role"`
+		QuotaBytes        *int64  `json:"quota_bytes"`
+		Username          *string `json:"username"`
+		Email             *string `json:"email"`
+		Suspended         *bool   `json:"suspended"`
+		Email2FAEnabled   *bool   `json:"email_2fa_enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	if req.Email != nil {
+		email := strings.TrimSpace(*req.Email)
+		if email == "" || !strings.Contains(email, "@") {
+			writeError(w, "invalid email address", http.StatusBadRequest)
+			return
+		}
+		existing, err := h.userRepo.GetByEmail(r.Context(), email)
+		if err != nil {
+			writeError(w, "failed to validate email", http.StatusInternalServerError)
+			return
+		}
+		if existing != nil && existing.ID != userID {
+			writeError(w, "email already in use", http.StatusConflict)
+			return
+		}
+		user.Email = email
+	}
 	if req.Role != nil {
 		user.Role = domain.Role(*req.Role)
 	}
@@ -153,6 +196,19 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	if req.Username != nil {
 		user.Username = *req.Username
 	}
+	if req.Suspended != nil {
+		user.Suspended = *req.Suspended
+		if user.Suspended {
+			_ = h.authService.RevokeAllUserSessions(r.Context(), user.ID)
+		}
+	}
+	if req.Email2FAEnabled != nil {
+		if !*req.Email2FAEnabled && adminsettings.Require2FA() && !user.TotpEnabled {
+			writeError(w, "cannot disable two-factor authentication while it is required globally", http.StatusBadRequest)
+			return
+		}
+		user.Email2FAEnabled = *req.Email2FAEnabled
+	}
 
 	if err := h.userRepo.Update(r.Context(), user); err != nil {
 		writeError(w, "failed to update user", http.StatusInternalServerError)
@@ -160,6 +216,91 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, user)
+}
+
+// Send2FAReminder handles POST /api/v1/admin/users/send-2fa-reminder
+func (h *AdminHandler) Send2FAReminder(w http.ResponseWriter, r *http.Request) {
+	if !adminsettings.SMTPConfigured() {
+		writeError(w, "SMTP is not configured", http.StatusBadRequest)
+		return
+	}
+	if adminsettings.Require2FA() {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"sent":    0,
+			"message": "two-factor authentication is already required for everyone",
+		})
+		return
+	}
+
+	users, err := h.userRepo.List(r.Context())
+	if err != nil {
+		writeError(w, "failed to list users", http.StatusInternalServerError)
+		return
+	}
+
+	sent := 0
+	for _, user := range users {
+		if user.Suspended || service.HasConfigured2FA(&user) || strings.TrimSpace(user.Email) == "" {
+			continue
+		}
+		subject := "Enable two-factor authentication on FreeDrive"
+		body := fmt.Sprintf(
+			"Hello %s,\n\nYour FreeDrive administrator recommends enabling two-factor authentication for your account (authenticator app or email codes).\n\nSign in to FreeDrive, open Security from your profile menu, and set up an authenticator app or turn on email two-factor authentication.\n",
+			chooseReminderName(user.Username, user.Email),
+		)
+		if err := email.SendFromSettings(user.Email, subject, body); err != nil {
+			continue
+		}
+		sent++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"sent": sent,
+	})
+}
+
+func chooseReminderName(username, email string) string {
+	if strings.TrimSpace(username) != "" {
+		return username
+	}
+	return email
+}
+
+// RevokeUserSessions handles POST /api/v1/admin/users/{id}/revoke-sessions
+func (h *AdminHandler) RevokeUserSessions(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "id")
+	if userID == "" {
+		writeError(w, "user id required", http.StatusBadRequest)
+		return
+	}
+	if err := h.authService.RevokeAllUserSessions(r.Context(), userID); err != nil {
+		writeError(w, "failed to revoke sessions", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// RevokeAllSessions handles POST /api/v1/admin/sessions/revoke-all
+func (h *AdminHandler) RevokeAllSessions(w http.ResponseWriter, r *http.Request) {
+	if err := h.authService.RevokeAllSessions(r.Context()); err != nil {
+		writeError(w, "failed to revoke sessions", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// DeleteInvite handles DELETE /api/v1/admin/invites/{id}
+func (h *AdminHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) {
+	inviteID := chi.URLParam(r, "id")
+	if inviteID == "" {
+		writeError(w, "invite id required", http.StatusBadRequest)
+		return
+	}
+	if err := h.userRepo.DeleteInvite(r.Context(), inviteID); err != nil {
+		writeError(w, "failed to delete invite", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // DeleteUser handles DELETE /api/v1/admin/users/{id}
@@ -172,9 +313,34 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.userRepo.Delete(r.Context(), userID); err != nil {
-		writeError(w, "failed to delete user", http.StatusInternalServerError)
+	target, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, "failed to load user", http.StatusInternalServerError)
 		return
+	}
+	if target == nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	var blobPaths []string
+	if h.fileRepo != nil {
+		blobPaths, err = h.fileRepo.ListBlobPathsByOwner(r.Context(), userID)
+		if err != nil {
+			writeError(w, "failed to list user files", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := h.userRepo.Delete(r.Context(), userID); err != nil {
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.diskStorage != nil {
+		for _, p := range blobPaths {
+			_ = h.diskStorage.Delete(p)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "user deleted"})
@@ -234,9 +400,11 @@ func (h *AdminHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 
 	// Generate random invite code
 	code := generateRandomString(8)
+	inviteEmail := strings.ToLower(strings.TrimSpace(req.Email))
 	invite := &domain.InviteLink{
 		Code:       code,
 		CreatedBy:  userID,
+		Email:      inviteEmail,
 		Role:       domain.Role(req.Role),
 		QuotaBytes: req.QuotaBytes,
 		MaxUses:    req.MaxUses,
@@ -247,7 +415,7 @@ func (h *AdminHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	recipient := strings.TrimSpace(req.Email)
+	recipient := inviteEmail
 	adminSettingsMu.RLock()
 	emailCfg, _ := adminSettings["email"].(map[string]interface{})
 	generalCfg, _ := adminSettings["general"].(map[string]interface{})
@@ -281,6 +449,9 @@ func (h *AdminHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 
 	siteURL = siteBaseURL(siteURL, r)
 	inviteURL := fmt.Sprintf("%s?invite=%s", siteURL, url.QueryEscape(invite.Code))
+	if inviteEmail != "" {
+		inviteURL = fmt.Sprintf("%s&email=%s", inviteURL, url.QueryEscape(inviteEmail))
+	}
 
 	emailSent := false
 	emailError := ""
@@ -293,20 +464,22 @@ func (h *AdminHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 			message := strings.TrimSpace(req.Message)
 
 			body := fmt.Sprintf(
-				"Hello %s,\n\nYou've been invited to join FreeDrive.\n\nInvite link:\n%s\n\nRole: %s\nQuota: %.1f GB\n",
+				"Hello %s,\n\nYou've been invited to join FreeDrive.\n\nInvite link:\n%s\n\nSign in email (required): %s\nRole: %s\nQuota: %.1f GB\n",
 				displayName,
 				inviteURL,
+				inviteEmail,
 				strings.ToUpper(string(invite.Role)),
 				float64(invite.QuotaBytes)/(1024*1024*1024),
 			)
 			if message != "" {
 				body += fmt.Sprintf("\nMessage from admin:\n%s\n", message)
 			}
-			body += "\nIf the link does not open automatically, copy and paste it into your browser.\n"
+			body += "\nUse the email address above when creating your account and when signing in.\nIf the link does not open automatically, copy and paste it into your browser.\n"
 
 			emailSent = true // Assume success for fast response
 			go func() {
-				if err := sendSMTPEmail(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, recipient, subject, body, useTLS); err != nil {
+				cfg := smtpConfig(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, useTLS)
+				if err := email.Send(cfg, recipient, subject, body); err != nil {
 					fmt.Fprintf(os.Stderr, "failed to send invite email to %s: %v\n", recipient, err)
 				}
 			}()
@@ -317,6 +490,7 @@ func (h *AdminHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		"id":          invite.ID,
 		"code":        invite.Code,
 		"created_by":  invite.CreatedBy,
+		"email":       invite.Email,
 		"role":        invite.Role,
 		"quota_bytes": invite.QuotaBytes,
 		"max_uses":    invite.MaxUses,
@@ -396,6 +570,10 @@ func (h *AdminHandler) ResendInvite(w http.ResponseWriter, r *http.Request) {
 	siteURL = siteBaseURL(siteURL, r)
 
 	inviteURL := fmt.Sprintf("%s?invite=%s", siteURL, url.QueryEscape(code))
+	recipientEmail := strings.ToLower(recipient)
+	if recipientEmail != "" {
+		inviteURL = fmt.Sprintf("%s&email=%s", inviteURL, url.QueryEscape(recipientEmail))
+	}
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
 		role = "user"
@@ -406,19 +584,21 @@ func (h *AdminHandler) ResendInvite(w http.ResponseWriter, r *http.Request) {
 	}
 	subject := "FreeDrive Invite Link (Resent)"
 	body := fmt.Sprintf(
-		"Hello %s,\n\nYour FreeDrive invite link has been resent.\n\nInvite link:\n%s\n\nRole: %s\nQuota: %.1f GB\n",
+		"Hello %s,\n\nYour FreeDrive invite link has been resent.\n\nInvite link:\n%s\n\nSign in email (required): %s\nRole: %s\nQuota: %.1f GB\n",
 		chooseDisplayName("", recipient),
 		inviteURL,
+		recipientEmail,
 		strings.ToUpper(role),
 		float64(quota)/(1024*1024*1024),
 	)
 	if strings.TrimSpace(req.Message) != "" {
 		body += fmt.Sprintf("\nMessage from admin:\n%s\n", strings.TrimSpace(req.Message))
 	}
-	body += "\nIf the link does not open automatically, copy and paste it into your browser.\n"
+	body += "\nUse the email address above when creating your account and when signing in.\nIf the link does not open automatically, copy and paste it into your browser.\n"
 
 	go func() {
-		if err := sendSMTPEmail(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, recipient, subject, body, useTLS); err != nil {
+		cfg := smtpConfig(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, useTLS)
+		if err := email.Send(cfg, recipient, subject, body); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to resend invite email to %s: %v\n", recipient, err)
 		}
 	}()
@@ -436,13 +616,14 @@ func (h *AdminHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"invites": invites})
 }
 
-// Activity handles GET /api/v1/admin/activity
+// Activity handles GET /api/v1/admin/activity (authentication events only).
 func (h *AdminHandler) Activity(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
 
-	logs, total, err := h.activityRepo.ListAll(r.Context(), page, pageSize)
+	logs, total, err := h.activityRepo.ListAllAuth(r.Context(), page, pageSize)
 	if err != nil {
+		log.Printf("activity list error (ListAllAuth): %v", err)
 		writeError(w, "failed to list activity", http.StatusInternalServerError)
 		return
 	}
@@ -466,6 +647,7 @@ func (h *AdminHandler) MyActivity(w http.ResponseWriter, r *http.Request) {
 
 	logs, total, err := h.activityRepo.List(r.Context(), userID, page, pageSize)
 	if err != nil {
+		log.Printf("activity list error (List user=%s): %v", userID, err)
 		writeError(w, "failed to list activity", http.StatusInternalServerError)
 		return
 	}
@@ -501,46 +683,23 @@ func (h *AdminHandler) SaveSettings(w http.ResponseWriter, r *http.Request) {
 
 // RunBackupNow handles POST /api/v1/admin/backup/run
 func (h *AdminHandler) RunBackupNow(w http.ResponseWriter, r *http.Request) {
-	adminSettingsMu.RLock()
-	backupCfg, _ := adminSettings["backup"].(map[string]interface{})
-	location := strings.TrimSpace(asString(backupCfg["location"]))
-	if location == "" {
-		location = "/var/lib/freedrive/backups"
-	}
-	snapshot := map[string]interface{}{}
-	for k, v := range adminSettings {
-		snapshot[k] = v
-	}
-	adminSettingsMu.RUnlock()
-
-	if err := os.MkdirAll(location, 0755); err != nil {
-		writeError(w, "failed to create backup directory: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	now := time.Now()
-	fileName := fmt.Sprintf("freedrive-backup-%s.json", now.Format("20060102-150405"))
-	fullPath := filepath.Join(location, fileName)
-	payload := map[string]interface{}{
-		"created_at": now.UTC().Format(time.RFC3339),
-		"kind":       "settings_snapshot",
-		"settings":   snapshot,
-	}
-	bytes, err := json.MarshalIndent(payload, "", "  ")
+	fullPath, err := adminsettings.RunSettingsBackup()
 	if err != nil {
-		writeError(w, "failed to create backup payload", http.StatusInternalServerError)
+		writeError(w, "failed to create backup: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := os.WriteFile(fullPath, bytes, fs.FileMode(0644)); err != nil {
-		writeError(w, "failed to write backup file: "+err.Error(), http.StatusInternalServerError)
+
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		writeError(w, "backup created but could not be read", http.StatusInternalServerError)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status":   "success",
-		"at":       now.UTC().Format(time.RFC3339),
-		"size":     formatBytes(int64(len(bytes))),
-		"filename": fileName,
+		"at":       time.Now().UTC().Format(time.RFC3339),
+		"size":     formatBytes(info.Size()),
+		"filename": filepath.Base(fullPath),
 		"path":     fullPath,
 	})
 }
@@ -578,7 +737,11 @@ func (h *AdminHandler) SendPasswordReset(w http.ResponseWriter, r *http.Request)
 
 	siteURL = siteBaseURL(siteURL, r)
 
-	token := createPasswordResetToken(user.Email)
+	token, err := h.passwordResetService.CreateResetLink(r.Context(), user.Email)
+	if err != nil {
+		writeError(w, "failed to create reset token", http.StatusInternalServerError)
+		return
+	}
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s", siteURL, token, url.QueryEscape(user.Email))
 	subject := "FreeDrive Password Reset"
 	body := fmt.Sprintf(
@@ -588,7 +751,8 @@ func (h *AdminHandler) SendPasswordReset(w http.ResponseWriter, r *http.Request)
 	)
 
 	go func() {
-		if err := sendSMTPEmail(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, user.Email, subject, body, useTLS); err != nil {
+		cfg := smtpConfig(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, useTLS)
+		if err := email.Send(cfg, user.Email, subject, body); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send reset email to %s: %v\n", user.Email, err)
 		}
 	}()
@@ -619,17 +783,12 @@ func (h *AdminHandler) TestEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := sendSMTPEmail(
-		req.SMTPServer,
-		req.SMTPPort,
-		req.SMTPUser,
-		req.SMTPPass,
-		req.FromAddress,
-		req.FromName,
+	cfg := smtpConfig(req.SMTPServer, req.SMTPPort, req.SMTPUser, req.SMTPPass, req.FromAddress, req.FromName, req.TLS)
+	if err := email.Send(
+		cfg,
 		req.ToAddress,
 		"FreeDrive Test Email",
 		"This is a test email sent from your FreeDrive Admin Panel.\nIf you received this, your SMTP configuration is correct!\n",
-		req.TLS,
 	); err != nil {
 		writeError(w, "failed to send email: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -638,122 +797,16 @@ func (h *AdminHandler) TestEmail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Email sent successfully"})
 }
 
-func sendSMTPEmail(smtpServer string, smtpPort int, smtpUser, smtpPass, fromAddress, fromName, toAddress, subject, body string, useTLS bool) error {
-	if smtpPort == 443 || strings.HasPrefix(smtpServer, "https://") || strings.HasPrefix(smtpServer, "http://") || strings.Contains(smtpServer, "api.mailersend.com") || strings.Contains(smtpServer, "api.zeptomail.") {
-		return sendHTTPEmail(smtpServer, smtpPass, fromAddress, fromName, toAddress, subject, body)
+func smtpConfig(server string, port int, user, pass, fromAddr, fromName string, useTLS bool) adminsettings.SMTPConfig {
+	return adminsettings.SMTPConfig{
+		Server:      server,
+		Port:        port,
+		User:        user,
+		Pass:        pass,
+		FromAddress: fromAddr,
+		FromName:    fromName,
+		TLS:         useTLS,
 	}
-
-	fromHeader := fromAddress
-	if strings.TrimSpace(fromName) != "" {
-		fromHeader = fmt.Sprintf("%s <%s>", fromName, fromAddress)
-	}
-
-	msg := []byte(
-		"Subject: " + subject + "\r\n" +
-			"From: " + fromHeader + "\r\n" +
-			"To: " + toAddress + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: text/plain; charset=\"utf-8\"\r\n" +
-			"\r\n" +
-			body,
-	)
-
-	addr := fmt.Sprintf("%s:%d", smtpServer, smtpPort)
-	var auth smtp.Auth
-	if smtpUser != "" || smtpPass != "" {
-		auth = smtp.PlainAuth("", smtpUser, smtpPass, smtpServer)
-	}
-
-	// Implicit TLS (typically port 465)
-	if useTLS && smtpPort == 465 {
-		tlsconfig := &tls.Config{
-			InsecureSkipVerify: true,
-			ServerName:         smtpServer,
-		}
-		conn, errConn := tls.Dial("tcp", addr, tlsconfig)
-		if errConn != nil {
-			return fmt.Errorf("failed to connect via TLS: %w", errConn)
-		}
-		client, errClient := smtp.NewClient(conn, smtpServer)
-		if errClient != nil {
-			return fmt.Errorf("failed to create SMTP client: %w", errClient)
-		}
-		defer client.Close()
-
-		if auth != nil {
-			if err := client.Auth(auth); err != nil {
-				return fmt.Errorf("smtp auth failed: %w", err)
-			}
-		}
-		if err := client.Mail(fromAddress); err != nil {
-			return fmt.Errorf("smtp mail failed: %w", err)
-		}
-		if err := client.Rcpt(toAddress); err != nil {
-			return fmt.Errorf("smtp rcpt failed: %w", err)
-		}
-		writer, errWriter := client.Data()
-		if errWriter != nil {
-			return fmt.Errorf("smtp data failed: %w", errWriter)
-		}
-		if _, err := writer.Write(msg); err != nil {
-			return fmt.Errorf("failed to write email body: %w", err)
-		}
-		if err := writer.Close(); err != nil {
-			return fmt.Errorf("failed to close email body writer: %w", err)
-		}
-		_ = client.Quit()
-		return nil
-	}
-
-	// Explicit SMTP flow (supports STARTTLS, commonly port 587).
-	client, err := smtp.Dial(addr)
-	if err != nil {
-		return fmt.Errorf("failed to dial SMTP server: %w", err)
-	}
-	defer client.Close()
-
-	if useTLS {
-		if ok, _ := client.Extension("STARTTLS"); ok {
-			tlsConfig := &tls.Config{
-				InsecureSkipVerify: true,
-				ServerName:         smtpServer,
-			}
-			if err := client.StartTLS(tlsConfig); err != nil {
-				return fmt.Errorf("starttls failed: %w", err)
-			}
-		} else {
-			return fmt.Errorf("smtp server does not support STARTTLS")
-		}
-	}
-
-	if auth != nil {
-		if ok, _ := client.Extension("AUTH"); ok {
-			if err := client.Auth(auth); err != nil {
-				return fmt.Errorf("smtp auth failed: %w", err)
-			}
-		} else if smtpUser != "" || smtpPass != "" {
-			return fmt.Errorf("smtp auth is required but not supported by server")
-		}
-	}
-
-	if err := client.Mail(fromAddress); err != nil {
-		return fmt.Errorf("smtp mail failed: %w", err)
-	}
-	if err := client.Rcpt(toAddress); err != nil {
-		return fmt.Errorf("smtp rcpt failed: %w", err)
-	}
-	writer, errWriter := client.Data()
-	if errWriter != nil {
-		return fmt.Errorf("smtp data failed: %w", errWriter)
-	}
-	if _, err := writer.Write(msg); err != nil {
-		return fmt.Errorf("failed to write email body: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("failed to close email body writer: %w", err)
-	}
-	_ = client.Quit()
-	return nil
 }
 
 func asString(v interface{}) string {
@@ -830,95 +883,4 @@ func formatBytes(n int64) string {
 	}
 	gb := mb / 1024
 	return fmt.Sprintf("%.2f GB", gb)
-}
-
-func sendHTTPEmail(apiUrl, apiToken, fromAddress, fromName, toAddress, subject, body string) error {
-	if !strings.HasPrefix(apiUrl, "http") {
-		apiUrl = "https://" + apiUrl
-	}
-
-	var payload []byte
-	var err error
-
-	// Auto-detect Provider
-	isZepto := false
-	if strings.Contains(apiUrl, "mailersend") {
-		if !strings.Contains(apiUrl, "/v1/email") {
-			apiUrl = strings.TrimRight(apiUrl, "/") + "/v1/email"
-		}
-		
-		reqBody := map[string]interface{}{
-			"from":    map[string]string{"email": fromAddress, "name": fromName},
-			"to":      []map[string]string{{"email": toAddress}},
-			"subject": subject,
-			"text":    body,
-		}
-		payload, err = json.Marshal(reqBody)
-	} else if strings.Contains(apiUrl, "zeptomail") {
-		isZepto = true
-		if !strings.Contains(apiUrl, "/v1.1/email") {
-			apiUrl = strings.TrimRight(apiUrl, "/") + "/v1.1/email"
-		}
-
-		reqBody := map[string]interface{}{
-			"from": map[string]string{"address": fromAddress, "name": fromName},
-			"to": []map[string]interface{}{
-				{
-					"email_address": map[string]string{"address": toAddress, "name": toAddress},
-				},
-			},
-			"subject":  subject,
-			"textbody": body,
-		}
-		payload, err = json.Marshal(reqBody)
-	} else {
-		// Generic JSON payload
-		reqBody := map[string]string{
-			"from_email": fromAddress,
-			"from_name":  fromName,
-			"to_email":   toAddress,
-			"subject":    subject,
-			"body":       body,
-		}
-		payload, err = json.Marshal(reqBody)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest("POST", apiUrl, bytes.NewBuffer(payload))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if apiToken != "" {
-		if isZepto {
-			if !strings.HasPrefix(apiToken, "Zoho-enczapikey ") {
-				apiToken = "Zoho-enczapikey " + apiToken
-			}
-			req.Header.Set("Authorization", apiToken)
-		} else {
-			if !strings.HasPrefix(apiToken, "Bearer ") {
-				apiToken = "Bearer " + apiToken
-			}
-			req.Header.Set("Authorization", apiToken)
-		}
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("HTTP request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	return nil
 }

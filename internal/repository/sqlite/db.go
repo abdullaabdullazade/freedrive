@@ -39,7 +39,7 @@ func New(dataDir string) (*DB, error) {
 		writer.Close()
 		return nil, fmt.Errorf("open reader db: %w", err)
 	}
-	reader.SetMaxOpenConns(4)
+	reader.SetMaxOpenConns(10)
 
 	db := &DB{
 		Writer: writer,

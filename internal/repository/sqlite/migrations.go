@@ -23,6 +23,22 @@ func runMigrations(db *sql.DB) error {
 	}{
 		{1, migrationV1},
 		{2, migrationV2},
+		{3, migrationV3},
+		{4, migrationV4},
+		{5, migrationV5},
+		{6, migrationV6},
+		{7, migrationV7},
+		{8, migrationV8},
+		{9, migrationV9},
+		{10, migrationV10},
+		{11, migrationV11},
+		{12, migrationV12},
+		{13, migrationV13},
+		{14, migrationV14},
+		{15, migrationV15},
+		{16, migrationV16},
+		{17, migrationV17},
+		{18, migrationV18},
 	}
 
 	for _, m := range migrations {
@@ -215,4 +231,253 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
 
 const migrationV2 = `
 ALTER TABLE invite_links ADD COLUMN quota_bytes INTEGER NOT NULL DEFAULT 10737418240;
+`
+
+const migrationV3 = `
+CREATE TABLE IF NOT EXISTS computers (
+    id             TEXT PRIMARY KEY,
+    owner_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name           TEXT NOT NULL,
+    hostname       TEXT NOT NULL DEFAULT '',
+    root_folder_id TEXT NOT NULL UNIQUE REFERENCES folders(id) ON DELETE CASCADE,
+    last_seen_at   DATETIME,
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_computers_owner ON computers(owner_id);
+`
+
+const migrationV4 = `
+ALTER TABLE folders ADD COLUMN is_trashed BOOLEAN NOT NULL DEFAULT 0;
+ALTER TABLE folders ADD COLUMN trashed_at DATETIME;
+CREATE INDEX IF NOT EXISTS idx_folders_trashed ON folders(is_trashed, trashed_at);
+`
+
+const migrationV5 = `
+CREATE TABLE IF NOT EXISTS file_approvals (
+    id           TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    file_id      TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    requested_by TEXT NOT NULL REFERENCES users(id),
+    approver_id  TEXT NOT NULL REFERENCES users(id),
+    status       TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_file_approvals_approver ON file_approvals(approver_id, status);
+CREATE INDEX IF NOT EXISTS idx_file_approvals_requester ON file_approvals(requested_by, status);
+ALTER TABLE comments ADD COLUMN assigned_to TEXT REFERENCES users(id);
+`
+
+const migrationV6 = `
+ALTER TABLE invite_links ADD COLUMN email TEXT NOT NULL DEFAULT '';
+`
+
+const migrationV7 = `
+ALTER TABLE users ADD COLUMN suspended INTEGER NOT NULL DEFAULT 0;
+`
+
+const migrationV8 = `
+CREATE TABLE IF NOT EXISTS email_change_tokens (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    new_email   TEXT NOT NULL,
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  DATETIME NOT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_email_change_user ON email_change_tokens(user_id);
+`
+
+const migrationV9 = `
+ALTER TABLE users ADD COLUMN email_2fa_enabled INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS email_2fa_challenges (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   TEXT NOT NULL,
+    expires_at  DATETIME NOT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_email_2fa_user ON email_2fa_challenges(user_id);
+`
+
+const migrationV10 = `
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email       TEXT NOT NULL,
+    token_hash  TEXT NOT NULL UNIQUE,
+    expires_at  DATETIME NOT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id);
+`
+
+const migrationV11 = `
+CREATE TABLE IF NOT EXISTS user_crypto (
+    user_id              TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    key_salt             BLOB NOT NULL,
+    wrapped_uek          TEXT NOT NULL,
+    wrapped_uek_recovery TEXT,
+    version              INTEGER NOT NULL DEFAULT 1,
+    updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS file_encryption_keys (
+    file_id          TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    owner_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    wrapped_file_key TEXT NOT NULL,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_file_enc_keys_owner_updated ON file_encryption_keys(owner_id, updated_at);
+`
+
+const migrationV12 = `
+CREATE TABLE IF NOT EXISTS sync_changes (
+    seq               INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id           TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    computer_root_id  TEXT NOT NULL,
+    entity_type       TEXT NOT NULL CHECK(entity_type IN ('file','folder')),
+    entity_id         TEXT NOT NULL,
+    parent_id         TEXT,
+    operation         TEXT NOT NULL,
+    name              TEXT NOT NULL DEFAULT '',
+    version           INTEGER NOT NULL DEFAULT 0,
+    occurred_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payload           TEXT NOT NULL DEFAULT '{}',
+    is_tombstone      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sync_changes_feed ON sync_changes(user_id, computer_root_id, seq);
+
+CREATE TABLE IF NOT EXISTS client_mutations (
+    client_mutation_id TEXT PRIMARY KEY,
+    user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_client_mutations_user ON client_mutations(user_id);
+`
+
+const migrationV13 = `
+CREATE TABLE IF NOT EXISTS sessions (
+    id                  TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token_hash  TEXT NOT NULL UNIQUE,
+    device_name         TEXT NOT NULL DEFAULT '',
+    device_type         TEXT NOT NULL DEFAULT 'web' CHECK(device_type IN ('web','desktop')),
+    user_agent          TEXT NOT NULL DEFAULT '',
+    ip_address          TEXT NOT NULL DEFAULT '',
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at          DATETIME NOT NULL,
+    revoked_at          DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+`
+
+const migrationV14 = `
+ALTER TABLE sessions ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON sessions(user_id, device_id);
+`
+
+const migrationV15 = `
+CREATE TABLE IF NOT EXISTS upload_sessions (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL,
+    file_id         TEXT,
+    name            TEXT NOT NULL,
+    mime_type       TEXT NOT NULL DEFAULT 'application/octet-stream',
+    iv              TEXT NOT NULL DEFAULT '',
+    original_size   INTEGER NOT NULL DEFAULT 0,
+    encrypted_size  INTEGER NOT NULL DEFAULT 0,
+    folder_id       TEXT,
+    temp_path       TEXT NOT NULL,
+    received_bytes  INTEGER NOT NULL DEFAULT 0,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at      DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_upload_sessions_user ON upload_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at);
+`
+
+const migrationV16 = `
+ALTER TABLE users ADD COLUMN totp_secret TEXT;
+ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN totp_enrolled_at DATETIME;
+
+ALTER TABLE email_2fa_challenges ADD COLUMN method TEXT NOT NULL DEFAULT 'email';
+
+CREATE TABLE IF NOT EXISTS totp_backup_codes (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash   TEXT NOT NULL,
+    used_at     DATETIME,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_totp_backup_user ON totp_backup_codes(user_id);
+`
+
+const migrationV17 = `
+CREATE TABLE IF NOT EXISTS login_approvals (
+    id                   TEXT PRIMARY KEY,
+    user_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    challenge_token      TEXT NOT NULL UNIQUE,
+    pending_device_id    TEXT NOT NULL DEFAULT '',
+    pending_device_name  TEXT NOT NULL DEFAULT '',
+    pending_device_type  TEXT NOT NULL DEFAULT 'web',
+    ip_address           TEXT NOT NULL DEFAULT '',
+    user_agent           TEXT NOT NULL DEFAULT '',
+    status               TEXT NOT NULL DEFAULT 'pending',
+    expires_at           DATETIME NOT NULL,
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at          DATETIME,
+    access_token         TEXT NOT NULL DEFAULT '',
+    refresh_token        TEXT NOT NULL DEFAULT '',
+    token_expires_in     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_login_approvals_user ON login_approvals(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_login_approvals_expires ON login_approvals(expires_at);
+
+CREATE TABLE IF NOT EXISTS push_tokens (
+    id               TEXT PRIMARY KEY,
+    user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id        TEXT NOT NULL DEFAULT '',
+    expo_push_token  TEXT NOT NULL,
+    platform         TEXT NOT NULL DEFAULT 'android',
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, device_id)
+);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS sessions_v17 (
+    id                  TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+    user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    refresh_token_hash  TEXT NOT NULL UNIQUE,
+    device_name         TEXT NOT NULL DEFAULT '',
+    device_type         TEXT NOT NULL DEFAULT 'web',
+    user_agent          TEXT NOT NULL DEFAULT '',
+    ip_address          TEXT NOT NULL DEFAULT '',
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at          DATETIME NOT NULL,
+    revoked_at          DATETIME,
+    device_id           TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO sessions_v17 (
+    id, user_id, refresh_token_hash, device_name, device_type, user_agent, ip_address,
+    created_at, last_seen_at, expires_at, revoked_at, device_id
+)
+SELECT id, user_id, refresh_token_hash, device_name, device_type, user_agent, ip_address,
+       created_at, last_seen_at, expires_at, revoked_at, device_id
+FROM sessions;
+DROP TABLE sessions;
+ALTER TABLE sessions_v17 RENAME TO sessions;
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_device ON sessions(user_id, device_id);
+`
+
+const migrationV18 = `
+ALTER TABLE users ADD COLUMN login_approval_enabled INTEGER NOT NULL DEFAULT 0;
 `

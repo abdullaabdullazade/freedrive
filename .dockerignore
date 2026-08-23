@@ -1,5 +1,10 @@
 .git
 .github
+**/node_modules
+**/target
+desktop/dist
+mobile/dist
+.expo
 data
 cmd/freedrive/data
 bin

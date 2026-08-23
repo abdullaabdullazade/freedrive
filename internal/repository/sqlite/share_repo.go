@@ -117,6 +117,30 @@ func (r *ShareRepo) DeleteUserShare(ctx context.Context, id string) error {
 	return err
 }
 
+func (r *ShareRepo) UpdateUserShare(ctx context.Context, share *domain.UserShare) error {
+	_, err := r.writer.ExecContext(ctx,
+		`UPDATE user_shares SET permission = ? WHERE id = ?`,
+		share.Permission, share.ID,
+	)
+	return err
+}
+
+func (r *ShareRepo) GetUserShareByID(ctx context.Context, id string) (*domain.UserShare, error) {
+	row := r.reader.QueryRowContext(ctx,
+		`SELECT id, file_id, folder_id, shared_by, shared_with, permission, created_at
+		 FROM user_shares WHERE id = ?`, id,
+	)
+	var s domain.UserShare
+	err := row.Scan(&s.ID, &s.FileID, &s.FolderID, &s.SharedBy, &s.SharedWith, &s.Permission, &s.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 func (r *ShareRepo) ListSharedByUser(ctx context.Context, userID string) ([]domain.UserShare, error) {
 	rows, err := r.reader.QueryContext(ctx,
 		`SELECT id, file_id, folder_id, shared_by, shared_with, permission, created_at
