@@ -259,6 +259,7 @@ export function HomeScreen({ navigation }: Props) {
         onClose={() => setProfileOpen(false)}
         onSettings={() => navigation.navigate("Settings")}
         onStorage={() => navigation.navigate("Storage")}
+        onAdmin={() => navigation.navigate("Admin")}
         onLegal={(document) => navigation.navigate("Legal", { document })}
       />
       <ItemActionsSheet

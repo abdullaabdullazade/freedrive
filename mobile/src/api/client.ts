@@ -10,6 +10,8 @@ import {
 } from "../auth/storage";
 import type {
   ActivityLog,
+  AdminStats,
+  AdminStorageBucket,
   AuthSession,
   Computer,
   CryptoAccount,
@@ -536,6 +538,37 @@ export const api = {
       "GET",
       "/me/email-change/status",
     ),
+
+  adminStats: () => request<AdminStats>("GET", "/admin/stats"),
+
+  adminUsers: async () => {
+    const data = await request<{ users?: User[] | null }>("GET", "/admin/users");
+    return data.users ?? [];
+  },
+
+  adminUpdateUser: (
+    id: string,
+    body: { suspended?: boolean; role?: string; quota_bytes?: number },
+  ) => request<User>("PATCH", `/admin/users/${id}`, body),
+
+  adminRevokeUserSessions: (id: string) =>
+    request("POST", `/admin/users/${id}/revoke-sessions`),
+
+  adminActivity: async (pageSize = 25) => {
+    const data = await request<{ activities?: ActivityLog[] | null; total?: number }>(
+      "GET",
+      `/admin/activity?page_size=${pageSize}`,
+    );
+    return data.activities ?? [];
+  },
+
+  adminStorageBreakdown: async () => {
+    const data = await request<{ breakdown?: Record<string, AdminStorageBucket> }>(
+      "GET",
+      "/admin/storage/breakdown",
+    );
+    return data.breakdown ?? {};
+  },
 
   folderRoot: async (opts?: { page_size?: number; page_token?: string }) => {
     const q = new URLSearchParams();

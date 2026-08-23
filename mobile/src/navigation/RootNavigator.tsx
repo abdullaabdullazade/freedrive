@@ -14,6 +14,7 @@ import { HelpScreen } from "../screens/HelpScreen";
 import { LegalScreen } from "../screens/LegalScreen";
 import { RecentScreen } from "../screens/RecentScreen";
 import { ActivityScreen } from "../screens/ActivityScreen";
+import { AdminScreen } from "../screens/AdminScreen";
 import { ApprovalsScreen } from "../screens/ApprovalsScreen";
 import { OfflineScreen } from "../screens/OfflineScreen";
 import { StorageScreen } from "../screens/StorageScreen";
@@ -188,6 +189,7 @@ export function RootNavigator() {
             <Stack.Screen name="Sessions" component={SessionsScreen} options={{ headerShown: true }} />
             <Stack.Screen name="Help" component={HelpScreen} options={{ headerShown: true }} />
             <Stack.Screen name="Legal" component={LegalScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Admin" component={AdminScreen} options={{ headerShown: true }} />
             <Stack.Screen
               name="Trash"
               component={TrashScreen}

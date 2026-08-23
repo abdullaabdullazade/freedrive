@@ -21,6 +21,7 @@ interface ProfileMenuProps {
   onClose: () => void;
   onSettings: () => void;
   onStorage: () => void;
+  onAdmin: () => void;
   onLegal: (document: "privacy" | "terms") => void;
 }
 
@@ -32,7 +33,7 @@ function displayName(user: User | null): string {
   return at > 0 ? email.slice(0, at) : email || "User";
 }
 
-export function ProfileMenu({ visible, onClose, onSettings, onStorage, onLegal }: ProfileMenuProps) {
+export function ProfileMenu({ visible, onClose, onSettings, onStorage, onAdmin, onLegal }: ProfileMenuProps) {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { width } = useWindowDimensions();
@@ -143,6 +144,7 @@ export function ProfileMenu({ visible, onClose, onSettings, onStorage, onLegal }
               <Text style={styles.email} numberOfLines={1}>
                 {user?.email}
               </Text>
+              {user?.role === "admin" ? <Text style={styles.roleBadge}>Administrator</Text> : null}
             </View>
           </View>
 
@@ -150,14 +152,20 @@ export function ProfileMenu({ visible, onClose, onSettings, onStorage, onLegal }
             <Pressable style={styles.actionBtn} onPress={() => openNative(onSettings)}>
               <Text style={styles.actionBtnText}>Manage account</Text>
             </Pressable>
-            <Pressable style={styles.actionBtn} onPress={onSignOut}>
-              <Text style={styles.actionBtnText}>Sign out</Text>
+            <Pressable style={styles.signOutBtn} onPress={onSignOut}>
+              <Text style={styles.signOutText}>Sign out</Text>
             </Pressable>
           </View>
 
+          {user?.role === "admin" ? (
+            <Pressable style={styles.adminBtn} onPress={() => openNative(onAdmin)}>
+              <Text style={styles.adminBtnText}>Open admin panel</Text>
+            </Pressable>
+          ) : null}
+
           {storage && total > 0 ? (
             <View style={styles.storage}>
-              <View style={styles.storageRow}>
+              <View style={styles.storageHeader}>
                 {storageWarning ? (
                   <View style={styles.warnBadge}>
                     <Text style={styles.warnText}>!</Text>
@@ -166,15 +174,17 @@ export function ProfileMenu({ visible, onClose, onSettings, onStorage, onLegal }
                 <Text style={styles.storageLabel}>
                   {formatBytes(used)} of {formatBytes(total)} used
                 </Text>
-                <Pressable onPress={() => openNative(onStorage)} hitSlop={6}>
-                  <Text style={styles.storageLink}>Manage storage</Text>
-                </Pressable>
+                <Text style={styles.storagePercent}>{usedPct ?? 0}%</Text>
               </View>
               <View style={styles.barTrack}>
                 <View
                   style={[styles.barFill, { width: `${Math.min(100, usedPct ?? 0)}%` }]}
                 />
               </View>
+              <Pressable style={styles.storageAction} onPress={() => openNative(onStorage)}>
+                <Text style={styles.storageLink}>Manage storage</Text>
+                <Text style={styles.storageArrow}>›</Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -254,9 +264,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   actions: {
-    marginBottom: 20,
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
   },
   actionBtn: {
+    flex: 1,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 999,
@@ -270,10 +283,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
+  signOutBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signOutText: { color: "#F28B82", fontSize: 13, fontWeight: "600" },
+  adminBtn: {
+    borderRadius: 12,
+    backgroundColor: "#0B3A5B",
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  adminBtnText: { color: "#A8C7FA", fontSize: 14, fontWeight: "700" },
+  roleBadge: {
+    alignSelf: "flex-start",
+    marginTop: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#0B3A5B",
+    color: "#A8C7FA",
+    fontSize: 11,
+    fontWeight: "700",
+  },
   storage: {
     marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#28292A",
   },
-  storageRow: {
+  storageHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -295,13 +338,16 @@ const styles = StyleSheet.create({
   storageLabel: {
     color: "#9AA0A6",
     fontSize: 13,
-    flexShrink: 1,
+    flex: 1,
   },
+  storagePercent: { color: "#E3E3E3", fontSize: 12, fontWeight: "600" },
   storageLink: {
-    marginLeft: "auto",
     color: "#A8C7FA",
     fontSize: 13,
+    fontWeight: "600",
   },
+  storageAction: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 10 },
+  storageArrow: { color: "#A8C7FA", fontSize: 20, lineHeight: 20 },
   barTrack: {
     height: 4,
     borderRadius: 999,

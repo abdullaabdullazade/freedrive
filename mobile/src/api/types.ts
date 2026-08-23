@@ -43,6 +43,18 @@ export interface TOTPConfirmation {
   backup_codes: string[];
 }
 
+export interface AdminStats {
+  total_users: number;
+  total_used: number;
+  total_quota: number;
+  users: User[];
+}
+
+export interface AdminStorageBucket {
+  size: number;
+  count: number;
+}
+
 /** Authoritative quota/usage from GET /me/storage (reconciled from files). */
 export interface StorageInfo {
   used_bytes: number;

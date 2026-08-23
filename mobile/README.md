@@ -22,6 +22,7 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **Branding** — same FreeDrive logo as desktop (`scripts/generate-assets.mjs`); SVG icons aligned with desktop `NavIcons`
 - **User avatar** — photo from `avatar_url` on `GET /api/v1/me`, or initials fallback
 - **Profile menu** — avatar, account settings, sign out, native storage management, privacy notice, and terms without leaving the app
+- **Native admin panel** — admin-only workspace totals, storage breakdown, user suspension/reactivation, session revocation, and authentication activity without opening the web app
 - **Native account settings** — change display name/avatar, email 2FA, mobile sign-in approvals, authenticator setup/disable with backup codes, email-change confirmation, and signed-in device/session revocation
 - **Native support pages** — in-app Help and feedback, Privacy policy, and Terms of service; feedback diagnostics can be copied without passwords or encryption keys
 - **Devices** — appears as `Mobile (…)` and keeps a stable installation ID, so re-login updates the same entry in the account Devices list instead of creating a duplicate
@@ -42,7 +43,7 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **Download** — native HTTP stream + MediaStore save via `FreeDriveDownloads` (progress shows MB/total for large files); stream decrypt + copy from decrypted path; ongoing download notification then tappable “Download complete”; Android 13+ asks for notification permission
 - **Status notifications** — no persistent “app is running” icon (not appropriate for a Drive client); status-bar presence only for downloads and while a video is playing (media session / native controls)
 
-Server administration stays in the web admin panel. Platform-specific office-suite co-editing and PDF annotation are not implemented; FreeDrive can still decrypt, preview, download, or hand those files to an installed native app.
+Platform-specific office-suite co-editing and PDF annotation are not implemented; FreeDrive can still decrypt, preview, download, or hand those files to an installed native app.
 
 ## Requirements
 

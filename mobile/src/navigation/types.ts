@@ -37,6 +37,7 @@ export type RootStackParamList = {
   Sessions: undefined;
   Help: undefined;
   Legal: { document: "privacy" | "terms" };
+  Admin: undefined;
   Trash: undefined;
   FilePreview: {
     title: string;
