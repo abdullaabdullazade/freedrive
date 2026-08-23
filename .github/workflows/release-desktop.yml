@@ -3,11 +3,12 @@ name: Desktop Release
 on:
   push:
     tags:
+      - "v[0-9]*"
       - "desktop-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (example: desktop-v0.1.0)"
+        description: "Release tag (example: v1.1.0)"
         required: true
         type: string
 
@@ -62,23 +63,45 @@ jobs:
         id: vars
         shell: bash
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ inputs.tag }}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
+          VERSION="${TAG#desktop-v}"
+          VERSION="${VERSION#v}"
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${TAG}" >&2
+            exit 1
+          fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         working-directory: desktop
         run: npm ci
 
+      - name: Apply tag version to desktop build
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          tmp="$(mktemp)"
+          jq --arg version "${RELEASE_VERSION}" '.version = $version' \
+            desktop/src-tauri/tauri.conf.json > "${tmp}"
+          mv "${tmp}" desktop/src-tauri/tauri.conf.json
+
       - name: Configure signed updater
+        id: signing
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${TAURI_SIGNING_PRIVATE_KEY}"
-          test -n "${TAURI_UPDATER_PUBLIC_KEY}"
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY}" ] || [ -z "${TAURI_UPDATER_PUBLIC_KEY}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Tauri signing secrets are absent; publishing unsigned installers without updater metadata."
+            exit 0
+          fi
           jq -n --arg pubkey "${TAURI_UPDATER_PUBLIC_KEY}" '{
             bundle: {createUpdaterArtifacts: true},
             plugins: {updater: {
@@ -86,16 +109,32 @@ jobs:
               endpoints: ["https://github.com/abdullaabdullazade/freedrive/releases/latest/download/latest.json"]
             }}
           }' > desktop/src-tauri/updater.release.conf.json
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Build and publish signed desktop release
+        if: steps.signing.outputs.enabled == 'true'
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: desktop
           tagName: ${{ steps.vars.outputs.tag }}
-          releaseName: FreeDrive Desktop ${{ steps.vars.outputs.tag }}
-          releaseBody: "Signed FreeDrive Desktop installer and updater metadata."
+          releaseName: FreeDrive ${{ steps.vars.outputs.tag }}
+          releaseBody: "FreeDrive server, mobile, and desktop release assets."
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(steps.vars.outputs.version, '-') }}
           args: ${{ matrix.args }} --config src-tauri/updater.release.conf.json
+
+      - name: Build and publish unsigned desktop release
+        if: steps.signing.outputs.enabled != 'true'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: ${{ steps.vars.outputs.tag }}
+          releaseName: FreeDrive ${{ steps.vars.outputs.tag }}
+          releaseBody: "FreeDrive server, mobile, and desktop release assets."
+          releaseDraft: false
+          prerelease: ${{ contains(steps.vars.outputs.version, '-') }}
+          args: ${{ matrix.args }}

@@ -5,10 +5,12 @@ on:
     paths:
       - "desktop/**"
       - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
   pull_request:
     paths:
       - "desktop/**"
       - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
   workflow_dispatch:
 
 defaults:

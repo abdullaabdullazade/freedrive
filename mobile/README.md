@@ -109,3 +109,15 @@ powershell -File mobile\scripts\build-apk.ps1 -Clean
 Or after syncing to `C:\fdm`: `npx expo prebuild --platform android`, then `gradlew assembleRelease`.
 
 APK output for install: `mobile\dist\FreeDrive-1.0.0.apk` (debug-signed unless you configure a release keystore).
+
+## CI and releases
+
+Pull requests and mobile changes run TypeScript, Expo Doctor, dependency audit,
+Android bundle export, native prebuild, and a complete release APK build in
+`Mobile CI`. A `vX.Y.Z` tag runs `Mobile Release` and attaches the versioned APK
+plus its SHA-256 checksum to the same GitHub Release used by the server and
+desktop workflows.
+
+The repository currently produces a sideloadable APK with Expo's generated
+debug keystore. Configure a persistent Android release keystore before Play
+Store distribution so upgrades keep the same signing identity.

@@ -87,6 +87,6 @@ On Windows 10 1809+ the desktop app registers a **Cloud Files** sync root at `%U
 
 ## Versioning
 
-- Server releases: git tags `v*`
-- Desktop releases: git tags `desktop-v*`
-- API compatibility is maintained manually; document breaking changes in release notes for both components.
+- Unified server/mobile/desktop releases: git tags `vX.Y.Z`
+- Legacy desktop-only releases: git tags `desktop-vX.Y.Z`
+- API compatibility is maintained manually; document breaking changes in the shared release notes.

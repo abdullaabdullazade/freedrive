@@ -242,3 +242,15 @@ App state uses **`%APPDATA%\FreeDrive`**, not `%APPDATA%\com.freedrive.desktop` 
 ## License
 
 MIT — same as the FreeDrive server project.
+
+## CI and releases
+
+Desktop changes run frontend typechecking/builds, frontend tests, and Rust tests
+in `Desktop CI`. A `vX.Y.Z` tag builds Windows NSIS, Linux AppImage/DEB, and
+macOS app/DMG packages and uploads them to the same GitHub Release as the server
+and mobile artifacts. Legacy `desktop-vX.Y.Z` tags remain supported.
+
+When `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and
+`TAURI_UPDATER_PUBLIC_KEY` repository secrets are configured, release builds
+also publish signed updater metadata. Without them, CI still publishes unsigned
+installers and clearly reports that state in the workflow log.

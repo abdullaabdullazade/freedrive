@@ -1,0 +1,131 @@
+name: Mobile Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (example: v1.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-release-${{ github.ref_name }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build-mobile:
+    runs-on: ubuntu-latest
+    env:
+      CI: "1"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve release version
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: ${TAG}" >&2
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          BASE_VERSION="${VERSION%%-*}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "${BASE_VERSION}"
+          if (( 10#${MAJOR} > 2100 || 10#${MINOR} > 999 || 10#${PATCH} > 999 )); then
+            echo "Release version is too large for an Android versionCode: ${VERSION}" >&2
+            exit 1
+          fi
+          VERSION_CODE=$((10#${MAJOR} * 1000000 + 10#${MINOR} * 1000 + 10#${PATCH}))
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: mobile
+
+      - name: Apply tag version to Android build
+        env:
+          RELEASE_VERSION: ${{ steps.vars.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ steps.vars.outputs.version_code }}
+        run: |
+          tmp="$(mktemp)"
+          jq --arg version "${RELEASE_VERSION}" \
+            --argjson version_code "${RELEASE_VERSION_CODE}" \
+            '.expo.version = $version | .expo.android.versionCode = $version_code' \
+            mobile/app.json > "${tmp}"
+          mv "${tmp}" mobile/app.json
+
+      - name: Validate mobile release
+        run: |
+          npm run typecheck
+          npx expo-doctor
+          npm audit --omit=dev
+        working-directory: mobile
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+        working-directory: mobile
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon
+        working-directory: mobile/android
+
+      - name: Prepare release assets
+        env:
+          RELEASE_TAG: ${{ steps.vars.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          name="FreeDrive-Mobile-${RELEASE_TAG}-android.apk"
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "release-assets/${name}"
+          cd release-assets
+          sha256sum "${name}" > "${name}.sha256"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freedrive-mobile-${{ steps.vars.outputs.tag }}
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: FreeDrive ${{ steps.vars.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.vars.outputs.version, '-') }}
+          fail_on_unmatched_files: true
+          files: release-assets/*
