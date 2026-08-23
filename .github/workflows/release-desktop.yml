@@ -59,6 +59,27 @@ jobs:
             patchelf \
             libfuse2
 
+      # Tauri's bundled linuxdeploy is too old to exclude host graphics-stack
+      # libraries. Bundling Ubuntu's libwayland-client ahead of a newer Mesa
+      # causes WebKit to abort with EGL_BAD_PARAMETER and leaves a frozen window.
+      - name: Install compatible linuxdeploy
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        env:
+          LINUXDEPLOY_SHA256: 421ca71d5c69ea97c6309276232990d43df1dcece0edfaa26bbf926ff96ed12e
+        run: |
+          set -euo pipefail
+          tools_dir="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+          tool_path="${tools_dir}/linuxdeploy-x86_64.AppImage"
+          mkdir -p "${tools_dir}"
+          curl -L --fail --show-error --retry 3 \
+            -H "Accept: application/octet-stream" \
+            -o "${tool_path}" \
+            "https://api.github.com/repos/linuxdeploy/linuxdeploy/releases/assets/497463883"
+          echo "${LINUXDEPLOY_SHA256}  ${tool_path}" | sha256sum --check --strict
+          chmod +x "${tool_path}"
+          "${tool_path}" --appimage-extract-and-run --version
+
       - name: Resolve release tag
         id: vars
         shell: bash
@@ -116,6 +137,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: ${{ matrix.platform == 'ubuntu-22.04' && 'libwayland-client.so*' || '' }}
         with:
           projectPath: desktop
           tagName: ${{ steps.vars.outputs.tag }}
@@ -130,6 +152,7 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: ${{ matrix.platform == 'ubuntu-22.04' && 'libwayland-client.so*' || '' }}
         with:
           projectPath: desktop
           tagName: ${{ steps.vars.outputs.tag }}
@@ -138,3 +161,25 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(steps.vars.outputs.version, '-') }}
           args: ${{ matrix.args }}
+
+      - name: Verify AppImage uses the host Wayland client
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          appimage="$(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -print -quit)"
+          if [ -z "${appimage}" ]; then
+            echo "AppImage was not produced" >&2
+            exit 1
+          fi
+          audit_dir="$(mktemp -d)"
+          cp "${appimage}" "${audit_dir}/FreeDrive.AppImage"
+          chmod +x "${audit_dir}/FreeDrive.AppImage"
+          (
+            cd "${audit_dir}"
+            ./FreeDrive.AppImage --appimage-extract >/dev/null
+            if find squashfs-root/usr/lib -maxdepth 1 -name 'libwayland-client.so*' -print -quit | grep -q .; then
+              echo "AppImage still bundles libwayland-client" >&2
+              exit 1
+            fi
+          )
