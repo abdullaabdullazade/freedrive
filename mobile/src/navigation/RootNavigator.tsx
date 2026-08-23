@@ -8,6 +8,10 @@ import { useAuth } from "../auth/AuthContext";
 import { FilePreviewScreen } from "../screens/FilePreviewScreen";
 import { LoginApprovalScreen } from "../screens/LoginApprovalScreen";
 import { LoginScreen } from "../screens/LoginScreen";
+import { SettingsScreen } from "../screens/SettingsScreen";
+import { SessionsScreen } from "../screens/SessionsScreen";
+import { HelpScreen } from "../screens/HelpScreen";
+import { LegalScreen } from "../screens/LegalScreen";
 import { RecentScreen } from "../screens/RecentScreen";
 import { ActivityScreen } from "../screens/ActivityScreen";
 import { ApprovalsScreen } from "../screens/ApprovalsScreen";
@@ -180,6 +184,10 @@ export function RootNavigator() {
             <Stack.Screen name="Storage" component={StorageScreen} options={{ headerShown: true }} />
             <Stack.Screen name="Offline" component={OfflineScreen} options={{ headerShown: true }} />
             <Stack.Screen name="Approvals" component={ApprovalsScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Sessions" component={SessionsScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Help" component={HelpScreen} options={{ headerShown: true }} />
+            <Stack.Screen name="Legal" component={LegalScreen} options={{ headerShown: true }} />
             <Stack.Screen
               name="Trash"
               component={TrashScreen}

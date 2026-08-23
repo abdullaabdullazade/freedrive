@@ -17,13 +17,20 @@ import { formatBytes } from "../utils/format";
 import { Icon, type IconName } from "./Icon";
 import { Logo } from "./Logo";
 
-export type DrawerRoute = "Recent" | "Activity" | "Storage" | "Offline" | "Approvals" | "Trash";
+export type DrawerRoute =
+  | "Recent"
+  | "Activity"
+  | "Storage"
+  | "Offline"
+  | "Approvals"
+  | "Trash"
+  | "Settings"
+  | "Help";
 
 interface AppDrawerProps {
   visible: boolean;
   onClose: () => void;
   onNavigate: (route: DrawerRoute) => void;
-  onSettings?: () => void;
 }
 
 function DrawerItem({
@@ -46,7 +53,7 @@ function DrawerItem({
   );
 }
 
-export function AppDrawer({ visible, onClose, onNavigate, onSettings }: AppDrawerProps) {
+export function AppDrawer({ visible, onClose, onNavigate }: AppDrawerProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(320, width * 0.78);
@@ -154,12 +161,9 @@ export function AppDrawer({ visible, onClose, onNavigate, onSettings }: AppDrawe
           <DrawerItem
             icon="settings"
             label="Settings"
-            onPress={() => {
-              onClose();
-              onSettings?.();
-            }}
+            onPress={() => go("Settings")}
           />
-          <DrawerItem icon="help" label="Help and feedback" onPress={onClose} />
+          <DrawerItem icon="help" label="Help and feedback" onPress={() => go("Help")} />
 
           <View style={styles.divider} />
           <Pressable style={styles.storage} onPress={() => go("Storage")}>

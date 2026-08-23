@@ -21,7 +21,9 @@ Part of the **FreeDrive monorepo** (`mobile/`). The server lives in the repo roo
 - **Search** — search files by name from the top bar
 - **Branding** — same FreeDrive logo as desktop (`scripts/generate-assets.mjs`); SVG icons aligned with desktop `NavIcons`
 - **User avatar** — photo from `avatar_url` on `GET /api/v1/me`, or initials fallback
-- **Profile menu** — avatar, Sign out, storage bar (`{used} of {total} used`) from `/me/storage`, Manage storage link to the web UI
+- **Profile menu** — avatar, account settings, sign out, native storage management, privacy notice, and terms without leaving the app
+- **Native account settings** — change display name/avatar, email 2FA, mobile sign-in approvals, authenticator setup/disable with backup codes, email-change confirmation, and signed-in device/session revocation
+- **Native support pages** — in-app Help and feedback, Privacy policy, and Terms of service; feedback diagnostics can be copied without passwords or encryption keys
 - **Devices** — appears as `Mobile (…)` and keeps a stable installation ID, so re-login updates the same entry in the account Devices list instead of creating a duplicate
 - **File actions** — sharing, access management, public links, downloading, offline copies, starring, comments, version history/restore, approval requests, rename, move, information, and **Move to bin**
 - **Bin management** — restore individual files/folders, permanently delete them, or empty the entire bin after confirmation

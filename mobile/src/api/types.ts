@@ -16,10 +16,31 @@ export interface User {
   email_2fa_enabled: boolean;
   totp_enabled?: boolean;
   totp_enrolled_at?: string;
+  login_approval_enabled?: boolean;
   two_factor_required?: boolean;
   created_at: string;
   updated_at: string;
   last_login_at?: string;
+}
+
+export interface AuthSession {
+  id: string;
+  device_name: string;
+  device_type: string;
+  ip_address: string;
+  created_at: string;
+  last_seen_at: string;
+  current: boolean;
+}
+
+export interface TOTPSetup {
+  secret: string;
+  otpauth_url: string;
+  qr: string;
+}
+
+export interface TOTPConfirmation {
+  backup_codes: string[];
 }
 
 /** Authoritative quota/usage from GET /me/storage (reconciled from files). */

@@ -10,6 +10,7 @@ import {
 } from "../auth/storage";
 import type {
   ActivityLog,
+  AuthSession,
   Computer,
   CryptoAccount,
   EncryptionKeyEntry,
@@ -31,6 +32,8 @@ import type {
   SortKey,
   StorageInfo,
   TokenPair,
+  TOTPConfirmation,
+  TOTPSetup,
   User,
   UserShare,
 } from "./types";
@@ -496,6 +499,43 @@ export const api = {
 
   me: () => request<User>("GET", "/me"),
   myStorage: () => request<StorageInfo>("GET", "/me/storage"),
+
+  updateMe: (body: {
+    username?: string;
+    avatar_url?: string;
+    email_2fa_enabled?: boolean;
+    login_approval_enabled?: boolean;
+  }) => request<User>("PATCH", "/me", body),
+
+  listSessions: async () => {
+    const data = await request<{ sessions?: AuthSession[] | null }>("GET", "/auth/sessions");
+    return data.sessions ?? [];
+  },
+
+  revokeSession: (id: string) => request("DELETE", `/auth/sessions/${id}`),
+
+  revokeOtherSessions: () => request("POST", "/auth/sessions/revoke-others"),
+
+  setupTOTP: () => request<TOTPSetup>("POST", "/me/totp/setup"),
+
+  confirmTOTP: (code: string) =>
+    request<TOTPConfirmation>("POST", "/me/totp/confirm", { code }),
+
+  disableTOTP: (code: string, password: string) =>
+    request<User>("POST", "/me/totp/disable", { code, password }),
+
+  requestEmailChange: (newEmail: string, password: string) =>
+    request<{ status: string; new_email_masked: string; expires_at: string }>(
+      "POST",
+      "/me/email-change/request",
+      { new_email: newEmail, password },
+    ),
+
+  emailChangeStatus: () =>
+    request<{ pending: boolean; new_email_masked?: string; expires_at?: string }>(
+      "GET",
+      "/me/email-change/status",
+    ),
 
   folderRoot: async (opts?: { page_size?: number; page_token?: string }) => {
     const q = new URLSearchParams();

@@ -33,6 +33,10 @@ export type RootStackParamList = {
   Storage: undefined;
   Offline: undefined;
   Approvals: undefined;
+  Settings: undefined;
+  Sessions: undefined;
+  Help: undefined;
+  Legal: { document: "privacy" | "terms" };
   Trash: undefined;
   FilePreview: {
     title: string;

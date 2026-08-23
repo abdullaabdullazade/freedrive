@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
-  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -20,6 +19,9 @@ import { UserAvatar } from "./UserAvatar";
 interface ProfileMenuProps {
   visible: boolean;
   onClose: () => void;
+  onSettings: () => void;
+  onStorage: () => void;
+  onLegal: (document: "privacy" | "terms") => void;
 }
 
 function displayName(user: User | null): string {
@@ -30,9 +32,9 @@ function displayName(user: User | null): string {
   return at > 0 ? email.slice(0, at) : email || "User";
 }
 
-export function ProfileMenu({ visible, onClose }: ProfileMenuProps) {
+export function ProfileMenu({ visible, onClose, onSettings, onStorage, onLegal }: ProfileMenuProps) {
   const insets = useSafeAreaInsets();
-  const { user, serverUrl, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(340, width * 0.85);
 
@@ -86,11 +88,9 @@ export function ProfileMenu({ visible, onClose }: ProfileMenuProps) {
   const total = storage?.total_bytes ?? 0;
   const usedPct = total > 0 ? Math.round((used / total) * 100) : null;
   const storageWarning = usedPct !== null && usedPct >= 80;
-  const baseUrl = serverUrl?.replace(/\/$/, "") || "";
-
-  const openUrl = (path = "/") => {
-    if (!baseUrl) return;
-    Linking.openURL(`${baseUrl}${path}`).catch(console.error);
+  const openNative = (action: () => void) => {
+    onClose();
+    action();
   };
 
   const onSignOut = () => {
@@ -147,6 +147,9 @@ export function ProfileMenu({ visible, onClose }: ProfileMenuProps) {
           </View>
 
           <View style={styles.actions}>
+            <Pressable style={styles.actionBtn} onPress={() => openNative(onSettings)}>
+              <Text style={styles.actionBtnText}>Manage account</Text>
+            </Pressable>
             <Pressable style={styles.actionBtn} onPress={onSignOut}>
               <Text style={styles.actionBtnText}>Sign out</Text>
             </Pressable>
@@ -163,7 +166,7 @@ export function ProfileMenu({ visible, onClose }: ProfileMenuProps) {
                 <Text style={styles.storageLabel}>
                   {formatBytes(used)} of {formatBytes(total)} used
                 </Text>
-                <Pressable onPress={() => openUrl("/#/storage")} hitSlop={6}>
+                <Pressable onPress={() => openNative(onStorage)} hitSlop={6}>
                   <Text style={styles.storageLink}>Manage storage</Text>
                 </Pressable>
               </View>
@@ -176,11 +179,11 @@ export function ProfileMenu({ visible, onClose }: ProfileMenuProps) {
           ) : null}
 
           <View style={styles.footer}>
-            <Pressable onPress={() => openUrl("/")}>
+            <Pressable onPress={() => openNative(() => onLegal("privacy"))}>
               <Text style={styles.footerLink}>Privacy Policy</Text>
             </Pressable>
             <Text style={styles.footerDot}>·</Text>
-            <Pressable onPress={() => openUrl("/")}>
+            <Pressable onPress={() => openNative(() => onLegal("terms"))}>
               <Text style={styles.footerLink}>Terms of Service</Text>
             </Pressable>
           </View>

@@ -67,9 +67,14 @@ function MainTabsChrome() {
             visible={drawerOpen}
             onClose={() => setDrawerOpen(false)}
             onNavigate={(route) => navigation.navigate(route)}
-            onSettings={() => setProfileOpen(true)}
           />
-          <ProfileMenu visible={profileOpen} onClose={() => setProfileOpen(false)} />
+          <ProfileMenu
+            visible={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            onSettings={() => navigation.navigate("Settings")}
+            onStorage={() => navigation.navigate("Storage")}
+            onLegal={(document) => navigation.navigate("Legal", { document })}
+          />
         </>
       ) : null}
       <View style={{ flex: 1 }}>

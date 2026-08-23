@@ -27,6 +27,12 @@ function resolveProjectId(): string | undefined {
 
 export async function registerForPushNotifications(): Promise<string | null> {
   try {
+    // Android remote push requires a Firebase google-services.json. Keep local
+    // notifications available, but do not repeatedly attempt FCM registration
+    // in self-hosted/dev builds that intentionally omit Firebase credentials.
+    if (Platform.OS === "android" && !Constants.expoConfig?.android?.googleServicesFile) {
+      return null;
+    }
     if (!Device.isDevice && Platform.OS === "ios") {
       return null;
     }
@@ -37,7 +43,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
       finalStatus = status;
     }
     if (finalStatus !== "granted") {
-      console.warn("push registration: notification permission not granted");
       return null;
     }
     const projectId = resolveProjectId();

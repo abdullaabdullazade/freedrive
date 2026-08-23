@@ -8,11 +8,6 @@
     "userInterfaceStyle": "dark",
     "scheme": "freedrive",
     "backgroundColor": "#121212",
-    "extra": {
-      "eas": {
-        "projectId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-      }
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.freedrive.mobile"
@@ -71,7 +66,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": false,
+          "photosPermission": "Allow FreeDrive to choose a profile photo.",
           "cameraPermission": "Allow FreeDrive to take a photo for encrypted upload.",
           "microphonePermission": false
         }
