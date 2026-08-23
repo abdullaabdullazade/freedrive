@@ -2,6 +2,7 @@ name: Desktop CI
 
 on:
   push:
+    branches: [main, master]
     paths:
       - "desktop/**"
       - ".github/workflows/ci-desktop.yml"
