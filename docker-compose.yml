@@ -15,4 +15,4 @@ services:
       FREEDRIVE_MAX_UPLOAD_MB: "${FREEDRIVE_MAX_UPLOAD_MB:-10240}"
       FREEDRIVE_TRUSTED_PROXIES: "${FREEDRIVE_TRUSTED_PROXIES:-}"
     volumes:
-      - "${FREEDRIVE_DATA_PATH:-./data}:/app/data"
+      - "${FREEDRIVE_DATA_PATH:-./data}:/app/data:Z"

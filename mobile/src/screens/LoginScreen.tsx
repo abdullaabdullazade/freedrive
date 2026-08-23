@@ -22,7 +22,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
 export function LoginScreen({ navigation }: Props) {
   const { login, serverUrl } = useAuth();
-  const [url, setUrl] = useState(serverUrl || "http://");
+  const [url, setUrl] = useState(serverUrl || "http://localhost:8080");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
