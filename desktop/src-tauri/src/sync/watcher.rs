@@ -9,7 +9,7 @@ use std::time::Duration;
 pub struct WatcherHandle {
     _debouncer: notify_debouncer_full::Debouncer<
         notify::RecommendedWatcher,
-        notify_debouncer_full::NoCache,
+        notify_debouncer_full::RecommendedCache,
     >,
 }
 

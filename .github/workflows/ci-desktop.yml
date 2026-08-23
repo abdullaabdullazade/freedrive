@@ -57,3 +57,20 @@ jobs:
       - name: Run Rust tests
         run: cargo test
         working-directory: desktop/src-tauri
+
+  cross-platform-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, macos-14]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check Rust backend
+        run: cargo check --locked
+        working-directory: desktop/src-tauri
