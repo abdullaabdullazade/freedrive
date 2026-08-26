@@ -27,28 +27,54 @@
                         <span>FreeDrive</span>
                     </div>
                     <h1>Sign in</h1>
-                    <p class="tagline">to continue to FreeDrive</p>
+                    <p class="tagline">Use your FreeDrive Account</p>
+                    <button type="button" class="auth-account-chip hidden" id="login-account-chip" aria-label="Choose another account">
+                        <span class="material-icons-outlined" aria-hidden="true">account_circle</span>
+                        <span id="login-account-email"></span>
+                        <span class="material-icons-outlined auth-chip-arrow" aria-hidden="true">arrow_drop_down</span>
+                    </button>
                 </div>
             </section>
             <section class="auth-action-panel">
-            <div class="auth-tabs">
-                <button class="auth-tab active" data-tab="login" id="login-tab">Sign in</button>
-                <button class="auth-tab" data-tab="register" id="register-tab">Create account</button>
-            </div>
             <form id="login-form" class="auth-form">
-                <div class="form-group"><input type="email" id="login-email" placeholder="Email" required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
-                <div class="form-group"><input type="password" id="login-password" placeholder="Password" required autocomplete="current-password"></div>
-                <div class="auth-error" id="login-error" role="alert" aria-live="polite"></div>
-                <button type="submit" class="btn btn-primary btn-full" id="login-btn"><span>Sign in</span><div class="btn-loader hidden"></div></button>
-                <button type="button" class="auth-link-btn" id="forgot-password-btn">Forgot password?</button>
+                <div class="auth-step" id="login-email-step">
+                    <div class="form-group auth-field">
+                        <input type="email" id="login-email" placeholder=" " required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false">
+                        <label for="login-email">Email</label>
+                    </div>
+                    <button type="button" class="auth-inline-link" id="forgot-email-btn">Forgot email?</button>
+                    <p class="auth-help-copy">Not your computer? Use a private browsing window to sign in securely.</p>
+                    <div class="auth-error" id="login-error" role="alert" aria-live="polite"></div>
+                    <div class="auth-form-actions">
+                        <button type="button" class="auth-text-button" id="login-create-account-btn">Create account</button>
+                        <button type="submit" class="btn btn-primary" id="login-next-btn"><span>Next</span></button>
+                    </div>
+                </div>
+                <div class="auth-step hidden" id="login-password-step">
+                    <div class="form-group auth-field">
+                        <input type="password" id="login-password" placeholder=" " required autocomplete="current-password">
+                        <label for="login-password">Enter your password</label>
+                    </div>
+                    <label class="auth-show-password"><input type="checkbox" id="login-show-password"> <span>Show password</span></label>
+                    <button type="button" class="auth-inline-link" id="forgot-password-btn">Forgot password?</button>
+                    <div class="auth-error" id="login-password-error" role="alert" aria-live="polite"></div>
+                    <div class="auth-form-actions">
+                        <button type="button" class="auth-text-button" id="login-back-btn">Back</button>
+                        <button type="submit" class="btn btn-primary" id="login-btn"><span>Sign in</span><div class="btn-loader hidden"></div></button>
+                    </div>
+                </div>
             </form>
             <form id="register-form" class="auth-form hidden">
-                <div class="form-group"><input type="text" id="reg-username" placeholder="Username" required></div>
-                <div class="form-group"><input type="email" id="reg-email" placeholder="Email" required autocapitalize="none" autocorrect="off" spellcheck="false"></div>
-                <div class="form-group"><input type="password" id="reg-password" placeholder="Password (min 6 chars)" required minlength="6"></div>
-                <div class="form-group"><input type="text" id="reg-invite" placeholder="Invite code (optional)"></div>
+                <div class="form-group auth-field"><input type="text" id="reg-username" placeholder=" " required autocomplete="name"><label for="reg-username">Your name</label></div>
+                <div class="form-group auth-field"><input type="email" id="reg-email" placeholder=" " required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"><label for="reg-email">Email</label></div>
+                <div class="form-group auth-field"><input type="password" id="reg-password" placeholder=" " required minlength="6" autocomplete="new-password"><label for="reg-password">Password</label></div>
+                <p class="auth-field-hint">Use 6 or more characters.</p>
+                <div class="form-group auth-field"><input type="text" id="reg-invite" placeholder=" " autocomplete="off"><label for="reg-invite">Invite code (optional)</label></div>
                 <div class="auth-error" id="register-error" role="alert" aria-live="polite"></div>
-                <button type="submit" class="btn btn-primary btn-full" id="register-btn"><span>Create account</span><div class="btn-loader hidden"></div></button>
+                <div class="auth-form-actions">
+                    <button type="button" class="auth-text-button" id="register-signin-btn">Sign in instead</button>
+                    <button type="submit" class="btn btn-primary" id="register-btn"><span>Create account</span><div class="btn-loader hidden"></div></button>
+                </div>
             </form>
             <form id="reset-form" class="auth-form hidden">
                 <div class="form-group"><input type="email" id="reset-email" placeholder="Email" required autocapitalize="none" autocorrect="off" spellcheck="false"></div>

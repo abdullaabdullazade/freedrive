@@ -6,6 +6,80 @@ const Auth = (() => {
     let pendingLoginPassword = '';
     let approvalPollTimer = null;
 
+    function setAuthHeading(title, subtitle) {
+        const titleEl = document.querySelector('.auth-logo h1');
+        const subtitleEl = document.querySelector('.auth-logo .tagline');
+        if (titleEl) titleEl.textContent = title;
+        if (subtitleEl) subtitleEl.textContent = subtitle;
+    }
+
+    function setLoginStep(step = 'email') {
+        const isPassword = step === 'password';
+        const emailStep = document.getElementById('login-email-step');
+        const passwordStep = document.getElementById('login-password-step');
+        const emailInput = document.getElementById('login-email');
+        const passwordInput = document.getElementById('login-password');
+        const accountEmail = document.getElementById('login-account-email');
+        const accountChip = document.getElementById('login-account-chip');
+
+        emailStep?.classList.toggle('hidden', isPassword);
+        passwordStep?.classList.toggle('hidden', !isPassword);
+        if (emailInput) emailInput.disabled = isPassword;
+        if (passwordInput) passwordInput.disabled = !isPassword;
+        accountChip?.classList.toggle('hidden', !isPassword);
+        clearFormError('login-error');
+        clearFormError('login-password-error');
+
+        if (isPassword) {
+            const email = String(emailInput?.value || '').trim().toLowerCase();
+            if (accountEmail) accountEmail.textContent = email;
+            setAuthHeading('Welcome', '');
+            window.setTimeout(() => passwordInput?.focus(), 40);
+        } else {
+            setAuthHeading('Sign in', 'Use your FreeDrive Account');
+            if (passwordInput) passwordInput.value = '';
+            const showPassword = document.getElementById('login-show-password');
+            if (showPassword) showPassword.checked = false;
+            if (passwordInput) passwordInput.type = 'password';
+            window.setTimeout(() => emailInput?.focus(), 40);
+        }
+    }
+
+    function switchAuthMode(mode = 'login', loginStep = 'email') {
+        const isRegister = mode === 'register';
+        stopApprovalPoll();
+        document.getElementById('login-form')?.classList.toggle('hidden', isRegister);
+        document.getElementById('register-form')?.classList.toggle('hidden', !isRegister);
+        document.getElementById('reset-form')?.classList.add('hidden');
+        document.getElementById('confirm-email-form')?.classList.add('hidden');
+        document.getElementById('twofa-form')?.classList.add('hidden');
+        document.getElementById('login-approval-form')?.classList.add('hidden');
+        document.querySelector('.auth-container')?.classList.toggle('auth-register-mode', isRegister);
+        if (isRegister) document.getElementById('login-account-chip')?.classList.add('hidden');
+        clearFormError('login-error');
+        clearFormError('login-password-error');
+        clearFormError('register-error');
+
+        if (isRegister) {
+            setAuthHeading('Create your FreeDrive Account', 'One account for every FreeDrive device');
+            window.setTimeout(() => document.getElementById('reg-username')?.focus(), 40);
+        } else {
+            setLoginStep(loginStep);
+        }
+    }
+
+    function advanceLoginStep() {
+        const emailInput = document.getElementById('login-email');
+        const email = String(emailInput?.value || '').trim().toLowerCase();
+        if (emailInput) emailInput.value = email;
+        if (!email || !emailInput?.checkValidity()) {
+            emailInput?.reportValidity();
+            return false;
+        }
+        setLoginStep('password');
+        return true;
+    }
+
     function friendlyAuthError(err) {
         const raw = String(err?.message || err || '').trim();
         const lower = raw.toLowerCase();
@@ -44,6 +118,7 @@ const Auth = (() => {
         document.getElementById('confirm-email-form')?.classList.add('hidden');
         document.getElementById('login-approval-form')?.classList.add('hidden');
         document.querySelector('.auth-tabs')?.classList.add('hidden');
+        document.getElementById('login-account-chip')?.classList.add('hidden');
 
         const form = document.getElementById('twofa-form');
         form?.classList.remove('hidden');
@@ -95,13 +170,10 @@ const Auth = (() => {
         document.getElementById('reset-form')?.classList.add('hidden');
         document.getElementById('confirm-email-form')?.classList.add('hidden');
         document.getElementById('login-form')?.classList.remove('hidden');
-        document.querySelector('.auth-tabs')?.classList.remove('hidden');
-
-        const titleEl = document.querySelector('.auth-logo h1');
-        const subtitleEl = document.querySelector('.auth-logo .tagline');
-        if (titleEl) titleEl.textContent = 'Sign in';
-        if (subtitleEl) subtitleEl.textContent = 'to continue to FreeDrive';
+        document.querySelector('.auth-container')?.classList.remove('auth-register-mode');
+        setLoginStep(document.getElementById('login-email')?.value ? 'password' : 'email');
         clearFormError('login-error');
+        clearFormError('login-password-error');
         clearFormError('twofa-error');
         clearFormError('login-approval-error');
     }
@@ -121,6 +193,7 @@ const Auth = (() => {
         document.getElementById('confirm-email-form')?.classList.add('hidden');
         document.getElementById('twofa-form')?.classList.add('hidden');
         document.querySelector('.auth-tabs')?.classList.add('hidden');
+        document.getElementById('login-account-chip')?.classList.add('hidden');
         document.getElementById('login-approval-form')?.classList.remove('hidden');
 
         const titleEl = document.querySelector('.auth-logo h1');
@@ -242,21 +315,17 @@ const Auth = (() => {
     }
 
     function init() {
-        // Tab switching
-        document.querySelectorAll('.auth-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-
-                const tabName = tab.dataset.tab;
-                stopApprovalPoll();
-                document.getElementById('login-form').classList.toggle('hidden', tabName !== 'login');
-                document.getElementById('register-form').classList.toggle('hidden', tabName !== 'register');
-                document.getElementById('login-approval-form')?.classList.add('hidden');
-                document.getElementById('twofa-form')?.classList.add('hidden');
-                clearFormError('login-error');
-                clearFormError('register-error');
-            });
+        setLoginStep('email');
+        document.getElementById('login-create-account-btn')?.addEventListener('click', () => switchAuthMode('register'));
+        document.getElementById('register-signin-btn')?.addEventListener('click', () => switchAuthMode('login'));
+        document.getElementById('login-back-btn')?.addEventListener('click', () => setLoginStep('email'));
+        document.getElementById('login-account-chip')?.addEventListener('click', () => setLoginStep('email'));
+        document.getElementById('login-show-password')?.addEventListener('change', (event) => {
+            const passwordInput = document.getElementById('login-password');
+            if (passwordInput) passwordInput.type = event.target.checked ? 'text' : 'password';
+        });
+        document.getElementById('forgot-email-btn')?.addEventListener('click', () => {
+            Components.toast('Contact your FreeDrive administrator to recover your account email.', 'info');
         });
 
         document.getElementById('forgot-password-btn')?.addEventListener('click', (e) => {
@@ -332,7 +401,7 @@ const Auth = (() => {
         const inviteCodeParam = queryParams.get('invite');
         const inviteEmailParam = String(queryParams.get('email') || '').trim().toLowerCase();
         if (inviteCodeParam) {
-            document.querySelector('.auth-tab[data-tab="register"]')?.click();
+            switchAuthMode('register');
             const regInput = document.getElementById('reg-invite');
             if (regInput) regInput.value = inviteCodeParam;
             const emailInput = document.getElementById('reg-email');
@@ -475,10 +544,15 @@ const Auth = (() => {
         // Login form
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (!document.getElementById('login-email-step')?.classList.contains('hidden')) {
+                advanceLoginStep();
+                return;
+            }
             const email = String(document.getElementById('login-email').value || '').trim().toLowerCase();
             const password = document.getElementById('login-password').value;
             const btn = document.getElementById('login-btn');
             clearFormError('login-error');
+            clearFormError('login-password-error');
 
             try {
                 btn.disabled = true;
@@ -499,12 +573,12 @@ const Auth = (() => {
                 await completeLogin(data, password);
             } catch (err) {
                 const msg = friendlyAuthError(err);
-                setFormError('login-error', msg);
+                setFormError('login-password-error', msg);
                 Components.toast(msg, 'error');
             } finally {
                 btn.disabled = false;
                 btn.querySelector('.btn-loader').classList.add('hidden');
-                btn.querySelector('span').textContent = 'Sign In';
+                btn.querySelector('span').textContent = 'Sign in';
             }
         });
 
