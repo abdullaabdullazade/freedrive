@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640" role="img" aria-labelledby="title desc">
+  <title id="title">FreeDrive Star History</title>
+  <desc id="desc">Star History style chart for abdullaabdullazade/freedrive showing 15 GitHub stars from May 2 to May 3, 2026.</desc>
+  <defs>
+    <filter id="rough" x="-3%" y="-3%" width="106%" height="106%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="2" seed="8" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <clipPath id="avatarClip">
+      <circle cx="438" cy="70" r="13"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1000" height="640" fill="#ffffff"/>
+
+  <g font-family="'Comic Sans MS', 'Comic Neue', 'Trebuchet MS', cursive" fill="#111111">
+    <image width="26" height="26" x="425" y="57" clip-path="url(#avatarClip)" href="https://avatars.githubusercontent.com/u/124480067"/>
+    <circle cx="438" cy="70" r="13" fill="none" stroke="#d1d5db"/>
+    <text x="462" y="78" font-size="28" font-weight="700">Star History</text>
+  </g>
+
+  <g transform="translate(110 115)" font-family="'Comic Sans MS', 'Comic Neue', 'Trebuchet MS', cursive">
+    <path d="M0 402 C2 320 -3 240 0 162 C2 102 1 45 3 0" fill="none" stroke="#111111" stroke-width="4" stroke-linecap="round" filter="url(#rough)"/>
+    <path d="M0 402 C110 399 220 404 330 401 C455 399 580 402 700 400 C740 401 780 401 820 400" fill="none" stroke="#111111" stroke-width="4" stroke-linecap="round" filter="url(#rough)"/>
+
+    <g fill="#111111" font-size="18">
+      <text x="-12" y="406" text-anchor="end"></text>
+      <text x="-12" y="338" text-anchor="end">2</text>
+      <text x="-12" y="270" text-anchor="end">4</text>
+      <text x="-12" y="202" text-anchor="end">6</text>
+      <text x="-12" y="134" text-anchor="end">8</text>
+      <text x="-12" y="66" text-anchor="end">10</text>
+      <text x="-12" y="-2" text-anchor="end">14</text>
+    </g>
+
+    <g fill="#111111" font-size="20">
+      <text x="180" y="430" text-anchor="middle">06 PM</text>
+      <text x="420" y="430" text-anchor="middle">May 03</text>
+      <text x="650" y="430" text-anchor="middle">06 AM</text>
+      <text x="790" y="430" text-anchor="middle">12 PM</text>
+      <text x="410" y="458" text-anchor="middle">Date</text>
+      <text x="-55" y="215" text-anchor="middle" transform="rotate(-90 -55 215)">GitHub Stars</text>
+    </g>
+
+    <g filter="url(#rough)">
+      <rect x="18" y="10" width="315" height="42" rx="5" fill="#ffffff" stroke="#111111" stroke-width="3"/>
+      <rect x="32" y="27" width="9" height="9" rx="2" fill="#e94125"/>
+      <text x="50" y="37" font-size="17" fill="#111111">abdullaabdullazade/freedrive</text>
+    </g>
+
+    <path
+      d="M0 400
+         C35 398 80 396 125 392
+         C165 388 210 382 255 372
+         C275 368 288 356 302 326
+         C316 296 328 270 342 250
+         C350 238 356 214 370 178
+         C378 154 390 124 405 102
+         C414 88 424 83 432 78
+         C438 74 444 63 448 48
+         C451 38 454 31 458 14
+         C466 4 480 -6 500 -14
+         C525 -24 555 -31 590 -36
+         C635 -43 665 -41 700 -44
+         C742 -48 765 -58 800 -70
+         C820 -76 838 -82 846 -91
+         C851 -96 848 -112 854 -120
+         C860 -124 874 -118 886 -120"
+      fill="none"
+      stroke="#e94125"
+      stroke-width="4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      filter="url(#rough)"/>
+
+    <g fill="#e94125">
+      <circle cx="0" cy="400" r="5"/>
+      <circle cx="255" cy="372" r="5"/>
+      <circle cx="342" cy="250" r="5"/>
+      <circle cx="405" cy="102" r="5"/>
+      <circle cx="432" cy="78" r="5"/>
+      <circle cx="448" cy="48" r="5"/>
+      <circle cx="458" cy="14" r="5"/>
+      <circle cx="590" cy="-36" r="5"/>
+      <circle cx="800" cy="-70" r="5"/>
+      <circle cx="846" cy="-91" r="5"/>
+      <circle cx="854" cy="-120" r="5"/>
+      <circle cx="886" cy="-120" r="5"/>
+    </g>
+
+    <g transform="translate(690 440)" font-family="'Comic Sans MS', 'Comic Neue', 'Trebuchet MS', cursive">
+      <path d="M20 0 L25 13 L38 8 L28 18 L37 30 L22 24 L11 34 L13 20 L0 14 L15 11 Z" fill="none" stroke="#19c829" stroke-width="3" stroke-linejoin="round"/>
+      <text x="48" y="27" font-size="20" fill="#777777">star-history.com</text>
+    </g>
+  </g>
+</svg>
