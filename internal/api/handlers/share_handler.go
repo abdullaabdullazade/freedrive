@@ -238,7 +238,7 @@ func (h *ShareHandler) PublicLinkDownload(w http.ResponseWriter, r *http.Request
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	w.Header().Set("Content-Disposition", attachmentDisposition(file.Name))
 	w.Header().Set("Content-Length", strconv.FormatInt(file.EncryptedSize, 10))
 	w.Header().Set("X-File-IV", file.IV)
 	w.Header().Set("X-File-Mime", file.MimeType)

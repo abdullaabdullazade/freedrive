@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/quotedprintable"
 	"net/http"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -23,26 +26,36 @@ func SendFromSettings(toAddress, subject, body string) error {
 	return Send(cfg, toAddress, subject, body)
 }
 
+// buildMessage assembles a plain-text message. Subject and sender name are
+// RFC 2047 encoded so non-ASCII text (for example Chinese) survives transport.
+func buildMessage(fromAddress, fromName, toAddress, subject, body string) []byte {
+	fromHeader := fromAddress
+	if strings.TrimSpace(fromName) != "" {
+		fromHeader = (&mail.Address{Name: fromName, Address: fromAddress}).String()
+	}
+	var encoded bytes.Buffer
+	qp := quotedprintable.NewWriter(&encoded)
+	_, _ = qp.Write([]byte(body))
+	_ = qp.Close()
+	return []byte(
+		"Subject: " + mime.QEncoding.Encode("utf-8", subject) + "\r\n" +
+			"From: " + fromHeader + "\r\n" +
+			"To: " + toAddress + "\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/plain; charset=\"utf-8\"\r\n" +
+			"Content-Transfer-Encoding: quoted-printable\r\n" +
+			"\r\n" +
+			encoded.String(),
+	)
+}
+
 // Send delivers a plain-text email using the given SMTP configuration.
 func Send(cfg adminsettings.SMTPConfig, toAddress, subject, body string) error {
 	if cfg.Port == 443 || strings.HasPrefix(cfg.Server, "https://") || strings.HasPrefix(cfg.Server, "http://") || strings.Contains(cfg.Server, "api.mailersend.com") || strings.Contains(cfg.Server, "api.zeptomail.") {
 		return sendHTTP(cfg.Server, cfg.Pass, cfg.FromAddress, cfg.FromName, toAddress, subject, body)
 	}
 
-	fromHeader := cfg.FromAddress
-	if strings.TrimSpace(cfg.FromName) != "" {
-		fromHeader = fmt.Sprintf("%s <%s>", cfg.FromName, cfg.FromAddress)
-	}
-
-	msg := []byte(
-		"Subject: " + subject + "\r\n" +
-			"From: " + fromHeader + "\r\n" +
-			"To: " + toAddress + "\r\n" +
-			"MIME-Version: 1.0\r\n" +
-			"Content-Type: text/plain; charset=\"utf-8\"\r\n" +
-			"\r\n" +
-			body,
-	)
+	msg := buildMessage(cfg.FromAddress, cfg.FromName, toAddress, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server, cfg.Port)
 	var auth smtp.Auth

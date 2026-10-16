@@ -125,10 +125,17 @@ const AdminPanel = (() => {
         return Components.escapeHtml(value || '');
     }
 
-    function formatPurgeTrashResult(res, prefix = 'Purged') {
+    // English keeps the original codes; other UI languages name every option in that language.
+    const LANGUAGE_OPTION_NAMES = { en: 'English', 'zh-CN': 'Simplified Chinese', az: 'Azerbaijani', tr: 'Turkish', de: 'German' };
+    function languageOptionLabel(code) {
+        if (I18n.language === 'en') return I18n.languages[code] || code.toUpperCase();
+        return code === 'zh-CN' ? I18n.languages[code] : I18n.t(LANGUAGE_OPTION_NAMES[code] || code);
+    }
+
+    function formatPurgeTrashResult(res, prefix = I18n.t("Purged")) {
         const files = res?.removed_files || 0;
         const folders = res?.removed_folders || 0;
-        return `${prefix} ${files} file(s) and ${folders} folder(s)`;
+        return I18n.t("{0} {1} file(s) and {2} folder(s)", { 0: prefix, 1: files, 2: folders });
     }
 
     function initials(name) {
@@ -177,24 +184,24 @@ const AdminPanel = (() => {
         return new Promise((resolve) => {
             Components.showModal(
                 title,
-                `<div class="gd-input-group"><label>Storage quota</label><select id="quota-select" class="gd-input">${quotaOptionsHtml(currentGb)}</select></div>`,
+                `<div class="gd-input-group"><label>${I18n.t("Storage quota")}</label><select id="quota-select" class="gd-input">${quotaOptionsHtml(currentGb)}</select></div>`,
                 [
-                    { text: 'Cancel', action: () => resolve(null) },
-                    { text: 'OK', class: 'btn-primary', action: () => resolve(asNumber(document.getElementById('quota-select')?.value, null)) },
+                    { text: I18n.t("Cancel"), action: () => resolve(null) },
+                    { text: I18n.t('OK'), class: 'btn-primary', action: () => resolve(asNumber(document.getElementById('quota-select')?.value, null)) },
                 ]
             );
         });
     }
 
     function getCurrentUser() {
-        return API.getUser() || { id: '', username: 'Admin', email: '', role: 'user' };
+        return API.getUser() || { id: '', username: I18n.t("Admin"), email: '', role: 'user' };
     }
 
     function roleLabel(role) {
         const r = String(role || 'user').toLowerCase();
-        if (r === 'admin') return 'Admin';
-        if (r === 'guest') return 'Guest';
-        return 'User';
+        if (r === 'admin') return I18n.t("Admin");
+        if (r === 'guest') return I18n.t("Guest");
+        return I18n.t("User");
     }
 
     function roleClass(role) {
@@ -255,13 +262,13 @@ const AdminPanel = (() => {
 
         return `
             <div class="admin-table-pager">
-                <div class="admin-table-count">Showing ${meta.total ? meta.start + 1 : 0}–${meta.end} of ${meta.total} results</div>
+                <div class="admin-table-count">${I18n.t("Showing {0}–{1} of {2} results", { 0: meta.total ? meta.start + 1 : 0, 1: meta.end, 2: meta.total })}</div>
                 <div class="admin-table-controls">
                     <button class="admin-page-nav" data-admin-action="${prefix}-prev" ${meta.page <= 1 ? 'disabled' : ''}>‹</button>
                     ${pageButtons.join('')}
                     <button class="admin-page-nav" data-admin-action="${prefix}-next" ${meta.page >= meta.pages ? 'disabled' : ''}>›</button>
                     <select data-admin-action="${prefix}-per-page">
-                        ${[25, 50, 100].map((n) => `<option value="${n}" ${meta.perPage === n ? 'selected' : ''}>${n} / page</option>`).join('')}
+                        ${[25, 50, 100].map((n) => `<option value="${n}" ${meta.perPage === n ? 'selected' : ''}>${I18n.t("{2} / page", { 2: n })}</option>`).join('')}
                     </select>
                 </div>
             </div>
@@ -323,7 +330,7 @@ const AdminPanel = (() => {
         });
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `Settings save failed (${res.status})`);
+            throw new Error(data.error || I18n.t("Settings save failed ({0})", { 0: res.status }));
         }
     }
 
@@ -333,7 +340,7 @@ const AdminPanel = (() => {
         await saveSettingsToServer(state.settings);
         state.settingsSavedUntil = Date.now() + 3000;
         if (!silent) {
-            Components.toast('Settings saved', 'success', { duration: 3000 });
+            Components.toast(I18n.t("Settings saved"), 'success', { duration: 3000 });
         }
     }
 
@@ -381,7 +388,7 @@ const AdminPanel = (() => {
         return 'dashboard';
     }
 
-    function renderNoData(message = 'No data available') {
+    function renderNoData(message = I18n.t("No data available")) {
         return `<div class="admin-no-data"><span class="admin-no-data-icon">ℹ</span><span>${esc(message)}</span></div>`;
     }
 
@@ -565,7 +572,7 @@ const AdminPanel = (() => {
             const gb = cumulativeBytes / (1024 ** 3);
             result.push({
                 date: t,
-                label: t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                label: t.toLocaleDateString(I18n.language, { month: 'short', day: 'numeric' }),
                 value: Number(gb.toFixed(1)),
             });
         }
@@ -588,10 +595,10 @@ const AdminPanel = (() => {
 
         const buckets = estimateFileTypeBuckets() || {};
         const breakdown = [
-            { label: 'Images', ...(buckets.Images || {size:0, count:0, color:'#1967D2'}) },
-            { label: 'Videos', ...(buckets.Videos || {size:0, count:0, color:'#188038'}) },
-            { label: 'Documents', ...(buckets.Documents || {size:0, count:0, color:'#E37400'}) },
-            { label: 'Other', ...(buckets.Other || {size:0, count:0, color:'#5F6368'}) },
+            { label: I18n.t("Images"), ...(buckets.Images || {size:0, count:0, color:'#1967D2'}) },
+            { label: I18n.t("Videos"), ...(buckets.Videos || {size:0, count:0, color:'#188038'}) },
+            { label: I18n.t("Documents"), ...(buckets.Documents || {size:0, count:0, color:'#E37400'}) },
+            { label: I18n.t("Other"), ...(buckets.Other || {size:0, count:0, color:'#5F6368'}) },
         ];
         const pieTotal = breakdown.reduce((sum, b) => sum + b.size, 0) || 1;
         const nonZeroBreakdown = breakdown.filter((b) => b.size > 0);
@@ -617,7 +624,7 @@ const AdminPanel = (() => {
         const linePath = linePoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${(p.x||0).toFixed(2)} ${(p.y||0).toFixed(2)}`).join(' ');
 
         let angle = 0;
-        const donutStops = (nonZeroBreakdown.length ? nonZeroBreakdown : [{ label: 'Empty', size: 1, color: '#DADCE0' }]).map((b) => {
+        const donutStops = (nonZeroBreakdown.length ? nonZeroBreakdown : [{ label: I18n.t("Empty"), size: 1, color: '#DADCE0' }]).map((b) => {
             const span = (b.size / pieTotal) * 360;
             const start = angle;
             angle += span;
@@ -629,7 +636,7 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero">
-                    <p class="gd-storage-hero-subtitle">Summary of your FreeDrive workspace.</p>
+                    <p class="gd-storage-hero-subtitle">${I18n.t("Summary of your FreeDrive workspace.")}</p>
                 </div>
 
                 <div class="gd-overview-grid">
@@ -638,9 +645,9 @@ const AdminPanel = (() => {
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5s-3 1.34-3 3 1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.98 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
                         </div>
                         <div class="gd-metric-content">
-                            <span class="gd-metric-label">Total Users</span>
+                            <span class="gd-metric-label">${I18n.t("Total Users")}</span>
                             <span class="gd-metric-value">${totalUsers}</span>
-                            <span class="gd-metric-sub">+${usersToday} today</span>
+                            <span class="gd-metric-sub">${I18n.t("+{1} today", { 1: usersToday })}</span>
                         </div>
                     </div>
                     <div class="gd-card gd-overview-card">
@@ -648,7 +655,7 @@ const AdminPanel = (() => {
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
                         </div>
                         <div class="gd-metric-content">
-                            <span class="gd-metric-label">Storage Used</span>
+                            <span class="gd-metric-label">${I18n.t("Storage Used")}</span>
                             <span class="gd-metric-value">${Components.formatSize(totalUsed)}</span>
                             <div class="gd-mini-bar" style="margin-top:4px;"><div class="gd-mini-fill" style="width: ${Math.min(100, storagePct)}%; background:${storagePct > 80 ? '#D93025' : '#188038'};"></div></div>
                         </div>
@@ -658,9 +665,9 @@ const AdminPanel = (() => {
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>
                         </div>
                         <div class="gd-metric-content">
-                            <span class="gd-metric-label">Files</span>
-                            <span class="gd-metric-value">${totalFiles.toLocaleString('en-US')}</span>
-                            <span class="gd-metric-sub">+${filesToday} today</span>
+                            <span class="gd-metric-label">${I18n.t("Files")}</span>
+                            <span class="gd-metric-value">${totalFiles.toLocaleString(I18n.language)}</span>
+                            <span class="gd-metric-sub">${I18n.t("+{6} today", { 6: filesToday })}</span>
                         </div>
                     </div>
                     <div class="gd-card gd-overview-card">
@@ -668,9 +675,9 @@ const AdminPanel = (() => {
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M13 2.05v2.02A8.001 8.001 0 0 1 20 12h2c0-5-3.66-9.15-8.45-9.95zM11 2.05C6.22 2.86 2.56 7 2.56 12S6.22 21.14 11 21.95v-2.02A8.001 8.001 0 0 1 4.56 12 8.001 8.001 0 0 1 11 4.07V2.05zM12 8v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
                         </div>
                         <div class="gd-metric-content">
-                            <span class="gd-metric-label">Bandwidth</span>
+                            <span class="gd-metric-label">${I18n.t("Bandwidth")}</span>
                             <span class="gd-metric-value">—</span>
-                            <span class="gd-metric-sub">Not tracked yet</span>
+                            <span class="gd-metric-sub">${I18n.t("Not tracked yet")}</span>
                         </div>
                     </div>
                 </div>
@@ -679,7 +686,7 @@ const AdminPanel = (() => {
                     <div class="gd-card" style="flex: 2; min-width: 400px;">
                         <div class="gd-card-header">
                             <div class="gd-card-title-area">
-                                <h3>Storage usage over time</h3>
+                                <h3>${I18n.t("Storage usage over time")}</h3>
                             </div>
                         </div>
                         <div class="admin-chart-wrap" style="height: 250px; overflow: hidden; position: relative;">
@@ -700,20 +707,20 @@ const AdminPanel = (() => {
                     <div class="gd-card" style="flex: 1; min-width: 300px;">
                         <div class="gd-card-header">
                             <div class="gd-card-title-area">
-                                <h3>Recent Activity</h3>
+                                <h3>${I18n.t("Recent Activity")}</h3>
                             </div>
-                            <a href="/admin/activity" class="gd-btn-outline" style="font-size:12px; padding: 4px 10px; text-decoration:none;">View all</a>
+                            <a href="/admin/activity" class="gd-btn-outline" style="font-size:12px; padding: 4px 10px; text-decoration:none;">${I18n.t("View all")}</a>
                         </div>
                         <div class="gd-recent-activity">
                             ${recent.map((a) => `
                                 <div class="gd-activity-item">
                                     <span class="gd-avatar" style="width:32px; height:32px; font-size:12px; background-color: hsl(${((a.username || '').length * 137) % 360}, 60%, 50%)">${esc(initials(a.username || 'U'))}</span>
                                     <div class="gd-activity-info">
-                                        <div class="gd-activity-text"><strong>${esc(a.username || 'User')}</strong> ${esc(String(a.action || 'did').toLowerCase())} <strong>${esc(a.target_name || 'item')}</strong></div>
+                                        <div class="gd-activity-text"><strong>${esc(a.username || I18n.t("User"))}</strong> ${esc(I18n.label(String(a.action || 'did').toLowerCase()))} <strong>${esc(a.target_name || I18n.t("item"))}</strong></div>
                                         <span class="gd-activity-time">${Components.formatDate(a.created_at)}</span>
                                     </div>
                                 </div>
-                            `).join('') || '<div class="gd-empty-table">No recent activity</div>'}
+                            `).join('') || `<div class="gd-empty-table">${I18n.t("No recent activity")}</div>`}
                         </div>
                     </div>
                 </div>
@@ -744,7 +751,7 @@ const AdminPanel = (() => {
             return true;
         });
 
-        list.sort((a, b) => String(a.username || a.email).localeCompare(String(b.username || b.email)));
+        list.sort((a, b) => String(a.username || a.email).localeCompare(String(b.username || b.email), I18n.collation));
 
         const pageMeta = paginate(list, state.usersPage, state.usersPerPage);
         state.usersPage = pageMeta.page;
@@ -754,34 +761,34 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <p class="gd-storage-hero-subtitle">Add, suspend, or change user roles and permissions.</p>
+                    <p class="gd-storage-hero-subtitle">${I18n.t("Add, suspend, or change user roles and permissions.")}</p>
                 </div>
 
                 <div class="gd-users-controls">
                     <div class="gd-search-bar" style="max-width: 500px;">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="#5F6368"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-                        <input id="admin-users-search" type="text" value="${esc(state.usersSearch)}" placeholder="Search users by name or email">
+                        <input id="admin-users-search" type="text" value="${esc(state.usersSearch)}" placeholder="${I18n.t("Search users by name or email")}">
                     </div>
                     
                     <div class="gd-filter-chips" id="admin-users-filter-pills">
-                        ${['all', 'active', 'suspended', 'admin'].map((f) => `<button class="gd-filter-chip ${state.usersFilter === f ? 'active' : ''}" data-admin-action="users-filter" data-filter="${f}">${f[0].toUpperCase()}${f.slice(1)}</button>`).join('')}
+                        ${['all', 'active', 'suspended', 'admin'].map((f) => `<button class="gd-filter-chip ${state.usersFilter === f ? 'active' : ''}" data-admin-action="users-filter" data-filter="${f}">${I18n.label(f, f[0].toUpperCase() + f.slice(1))}</button>`).join('')}
                     </div>
                     
                     <div style="flex:1"></div>
                     
                     <button class="gd-btn-primary" data-admin-action="open-invite-modal">
                         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" style="margin-right:8px;"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-                        Add new user
+                        ${I18n.t("Add new user")}
                     </button>
                 </div>
 
                 ${selectedCount ? `
                     <div class="gd-bulk-actions">
-                        <span style="font-size:14px; font-weight:500;">${selectedCount} selected</span>
+                        <span style="font-size:14px; font-weight:500;">${I18n.t("{0} selected", { 0: selectedCount })}</span>
                         <div style="display:flex; gap: 8px;">
-                            <button class="gd-btn-outline" data-admin-action="bulk-suspend">Suspend</button>
-                            <button class="gd-btn-outline" data-admin-action="bulk-role">Role</button>
-                            <button class="gd-btn-outline" style="color:#D93025; border-color:#FCE8E6;" data-admin-action="bulk-delete">Delete</button>
+                            <button class="gd-btn-outline" data-admin-action="bulk-suspend">${I18n.t("Suspend")}</button>
+                            <button class="gd-btn-outline" data-admin-action="bulk-role">${I18n.t("Role")}</button>
+                            <button class="gd-btn-outline" style="color:#D93025; border-color:#FCE8E6;" data-admin-action="bulk-delete">${I18n.t("Delete")}</button>
                         </div>
                     </div>
                 ` : ''}
@@ -792,11 +799,11 @@ const AdminPanel = (() => {
                             <thead>
                                 <tr>
                                     <th style="width: 48px; text-align:center;"><input class="gd-checkbox" type="checkbox" data-admin-action="toggle-all-users" ${pageMeta.rows.length && pageMeta.rows.every((u) => state.userSelection.has(u.id)) ? 'checked' : ''}></th>
-                                    <th>User</th>
-                                    <th>Role</th>
-                                    <th>Storage</th>
-                                    <th>Last Active</th>
-                                    <th>Status</th>
+                                    <th>${I18n.t("User")}</th>
+                                    <th>${I18n.t("Role")}</th>
+                                    <th>${I18n.t("Storage")}</th>
+                                    <th>${I18n.t("Last Active")}</th>
+                                    <th>${I18n.t("Status")}</th>
                                     <th style="width:48px;"></th>
                                 </tr>
                             </thead>
@@ -814,7 +821,7 @@ const AdminPanel = (() => {
                                                 <div class="gd-user-cell toggle-drawer-clickable" data-admin-action="open-user-drawer" data-user-id="${u.id}" style="cursor:pointer;">
                                                     <span class="gd-avatar" style="background-color: hsl(${((u.email || '').length * 137) % 360}, 60%, 50%)">${esc(initials(u.username || u.email))}</span>
                                                     <div class="gd-user-info">
-                                                        <span class="gd-user-name">${esc(u.username || 'Unnamed')}</span>
+                                                        <span class="gd-user-name">${esc(u.username || I18n.t("Unnamed"))}</span>
                                                         <span class="gd-user-email">${esc(u.email || '')}</span>
                                                     </div>
                                                 </div>
@@ -827,24 +834,24 @@ const AdminPanel = (() => {
                                                 </div>
                                             </td>
                                             <td style="color:#5F6368;">${Components.formatDate(state.userMeta[u.id]?.last_active || u.updated_at || u.created_at)}</td>
-                                            <td><span class="gd-status-badge gd-status-${status}">${esc(status[0].toUpperCase() + status.slice(1))}</span></td>
+                                            <td><span class="gd-status-badge gd-status-${status}">${esc(I18n.label(status, status[0].toUpperCase() + status.slice(1)))}</span></td>
                                             <td style="position:relative;">
                                                 <button class="gd-icon-btn" data-admin-action="toggle-user-menu" data-user-id="${u.id}">
                                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
                                                 </button>
                                                 <div class="gd-popup-menu ${menuOpen ? '' : 'hidden'}" id="user-menu-${u.id}">
-                                                    <button data-admin-action="open-user-drawer" data-user-id="${u.id}">Edit user</button>
-                                                    <button data-admin-action="change-role" data-user-id="${u.id}">Change role</button>
-                                                    <button data-admin-action="reset-password" data-user-id="${u.id}">Reset password</button>
-                                                    <button data-admin-action="adjust-quota" data-user-id="${u.id}">Adjust quota</button>
-                                                    <button data-admin-action="toggle-suspend" data-user-id="${u.id}">${status === 'suspended' ? 'Unsuspend' : 'Suspend'}</button>
+                                                    <button data-admin-action="open-user-drawer" data-user-id="${u.id}">${I18n.t("Edit user")}</button>
+                                                    <button data-admin-action="change-role" data-user-id="${u.id}">${I18n.t("Change role")}</button>
+                                                    <button data-admin-action="reset-password" data-user-id="${u.id}">${I18n.t("Reset password")}</button>
+                                                    <button data-admin-action="adjust-quota" data-user-id="${u.id}">${I18n.t("Adjust quota")}</button>
+                                                    <button data-admin-action="toggle-suspend" data-user-id="${u.id}">${status === 'suspended' ? I18n.t("Unsuspend") : I18n.t("Suspend")}</button>
                                                     <div class="gd-menu-divider"></div>
-                                                    <button class="danger" data-admin-action="delete-user" data-user-id="${u.id}" style="color:#D93025 !important;">Delete user</button>
+                                                    <button class="danger" data-admin-action="delete-user" data-user-id="${u.id}" style="color:#D93025 !important;">${I18n.t("Delete user")}</button>
                                                 </div>
                                             </td>
                                         </tr>
                                     `;
-                                }).join('') || '<tr><td colspan="7" class="gd-empty-table">No users found</td></tr>'}
+                                }).join('') || `<tr><td colspan="7" class="gd-empty-table">${I18n.t("No users found")}</td></tr>`}
                             </tbody>
                         </table>
                     </div>
@@ -871,8 +878,8 @@ const AdminPanel = (() => {
         const global2FA = Boolean(state.settings?.security?.require_2fa);
         const email2faDisabled = global2FA && !totpEnabled ? 'disabled' : '';
         const email2faHint = global2FA && !totpEnabled
-            ? 'Required for all users (enable authenticator to turn email off)'
-            : (global2FA ? 'Optional when authenticator is enabled' : 'Require email code at sign-in');
+            ? I18n.t("Required for all users (enable authenticator to turn email off)")
+            : (global2FA ? I18n.t("Optional when authenticator is enabled") : I18n.t("Require email code at sign-in"));
         const breakdown = estimateFileTypeBuckets(state.drawerBreakdown);
         const bItems = Object.entries(breakdown).slice(0, 4);
         const recent = (state.activities || [])
@@ -882,61 +889,61 @@ const AdminPanel = (() => {
 
         return `
             <div class="gd-drawer-header">
-                <h3>User details</h3>
+                <h3>${I18n.t("User details")}</h3>
                 <button class="gd-icon-btn" data-admin-action="close-user-drawer"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
             </div>
             <div class="gd-drawer-content">
                 <div class="gd-drawer-profile">
                     <div class="gd-avatar gd-avatar-xl" style="background-color: hsl(${((u.email || '').length * 137) % 360}, 60%, 50%)">${esc(initials(u.username || u.email))}</div>
                     <div class="gd-profile-info">
-                        <h2>${esc(u.username || 'Unnamed')}</h2>
+                        <h2>${esc(u.username || I18n.t("Unnamed"))}</h2>
                         <span class="gd-email">${esc(u.email || '')}</span>
                     </div>
                 </div>
 
                 <div class="gd-drawer-tags">
                     <span class="gd-role-badge gd-role-${String(u.role).toLowerCase()}">${roleLabel(u.role)}</span>
-                    <span class="gd-status-badge gd-status-${status}">${esc(status[0].toUpperCase() + status.slice(1))}</span>
+                    <span class="gd-status-badge gd-status-${status}">${esc(I18n.label(status, status[0].toUpperCase() + status.slice(1)))}</span>
                 </div>
 
                 <div class="gd-divider"></div>
 
                 <div class="gd-drawer-section">
-                    <h4>Settings</h4>
+                    <h4>${I18n.t("Settings")}</h4>
                     <form class="gd-drawer-form" id="drawer-edit-form">
                         <div class="gd-input-group">
-                            <label>Name</label>
+                            <label>${I18n.t("Name")}</label>
                             <input type="text" class="gd-input" id="drawer-name" value="${esc(u.username || '')}">
                         </div>
                         <div class="gd-input-group">
-                            <label>Email address</label>
+                            <label>${I18n.t("Email address")}</label>
                             <input type="email" class="gd-input" id="drawer-email" value="${esc(u.email || '')}">
                         </div>
                         <div class="gd-input-group">
-                            <label>Role</label>
+                            <label>${I18n.t("Role")}</label>
                             <select class="gd-input" id="drawer-role">
-                                <option value="user" ${String(u.role || '').toLowerCase() === 'user' ? 'selected' : ''}>User</option>
-                                <option value="admin" ${String(u.role || '').toLowerCase() === 'admin' ? 'selected' : ''}>Admin</option>
-                                <option value="guest" ${String(u.role || '').toLowerCase() === 'guest' ? 'selected' : ''}>Guest</option>
+                                <option value="user" ${String(u.role || '').toLowerCase() === 'user' ? 'selected' : ''}>${I18n.t("User")}</option>
+                                <option value="admin" ${String(u.role || '').toLowerCase() === 'admin' ? 'selected' : ''}>${I18n.t("Admin")}</option>
+                                <option value="guest" ${String(u.role || '').toLowerCase() === 'guest' ? 'selected' : ''}>${I18n.t("Guest")}</option>
                             </select>
                         </div>
                         <div class="gd-input-group">
-                            <label>Storage quota</label>
+                            <label>${I18n.t("Storage quota")}</label>
                             <select class="gd-input" id="drawer-quota">${quotaOptionsHtml(Math.max(1, Math.round(asNumber(u.quota_bytes, 0) / (1024 ** 3))))}</select>
                         </div>
                         <div class="gd-input-group">
-                            <label>Authenticator app (TOTP)</label>
-                            <span style="font-size:13px;color:${totpEnabled ? '#137333' : '#5f6368'};">${totpEnabled ? 'Enabled' : 'Not enabled'} — users set this up in Security</span>
+                            <label>${I18n.t("Authenticator app (TOTP)")}</label>
+                            <span style="font-size:13px;color:${totpEnabled ? '#137333' : '#5f6368'};">${I18n.t("{15} — users set this up in Security", { 15: totpEnabled ? I18n.t("Enabled") : I18n.t("Not enabled") })}</span>
                         </div>
                         <div class="gd-input-group">
-                            <label>Email two-factor authentication</label>
+                            <label>${I18n.t("Email two-factor authentication")}</label>
                             <label class="live-toggle" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
                                 <input type="checkbox" id="drawer-2fa" ${twofaEnabled ? 'checked' : ''} ${email2faDisabled}>
                                 <span style="font-size:13px;color:#5f6368;">${email2faHint}</span>
                             </label>
                         </div>
                         <div style="display:flex; justify-content: flex-end;">
-                           <button type="button" class="gd-btn-primary" data-admin-action="save-inline-edit" data-user-id="${u.id}">Save changes</button>
+                           <button type="button" class="gd-btn-primary" data-admin-action="save-inline-edit" data-user-id="${u.id}">${I18n.t("Save changes")}</button>
                         </div>
                     </form>
                 </div>
@@ -944,13 +951,13 @@ const AdminPanel = (() => {
                 <div class="gd-divider"></div>
 
                 <div class="gd-drawer-section">
-                    <h4>Storage used</h4>
+                    <h4>${I18n.t("Storage used")}</h4>
                     <div class="gd-drawer-breakdown">
                         ${bItems.map(([label, item]) => `
                             <div class="gd-breakdown-row">
                                 <div class="gd-breakdown-left">
                                     <span class="gd-legend-dot" style="background-color: ${item.color}"></span>
-                                    <span>${label}</span>
+                                    <span>${esc(I18n.t(label))}</span>
                                 </div>
                                 <span class="gd-breakdown-size">${Components.formatSize(item.size)}</span>
                             </div>
@@ -961,17 +968,17 @@ const AdminPanel = (() => {
                 <div class="gd-divider"></div>
 
                 <div class="gd-drawer-section">
-                    <h4>Recent activity</h4>
+                    <h4>${I18n.t("Recent activity")}</h4>
                     <div class="gd-drawer-activity">
                         ${recent.map((a) => `
                             <div class="gd-drawer-activity-item">
                                 <div style="display:flex; justify-content:space-between;">
-                                    <span class="gd-activity-action">${esc(a.action)}</span>
+                                    <span class="gd-activity-action">${esc(I18n.label(a.action))}</span>
                                     <span class="gd-activity-time">${Components.formatDate(a.created_at)}</span>
                                 </div>
-                                <span class="gd-activity-target" title="${esc(a.target_name)}">${esc(a.target_name || 'item')}</span>
+                                <span class="gd-activity-target" title="${esc(a.target_name)}">${esc(a.target_name || I18n.t("item"))}</span>
                             </div>
-                        `).join('') || '<div class="gd-empty-text">No recent activity</div>'}
+                        `).join('') || `<div class="gd-empty-text">${I18n.t("No recent activity")}</div>`}
                     </div>
                 </div>
             </div>
@@ -996,7 +1003,7 @@ const AdminPanel = (() => {
         const sortedBuckets = Object.entries(buckets).sort((a, b) => b[1].size - a[1].size);
 
         if (!state.users.length && !state.files.length) {
-            return renderNoData('No data available');
+            return renderNoData(I18n.t("No data available"));
         }
 
         const usedPercentage = totalCapacity ? (used / totalCapacity) * 100 : 0;
@@ -1005,7 +1012,7 @@ const AdminPanel = (() => {
         const barSegments = sortedBuckets.map(([label, item], idx) => {
             const pct = typeTotal ? (item.size / typeTotal) * 100 : 0;
             const segmentHTML = `<div class="gd-storage-segment tooltip-host gd-anim-segment" style="width: ${pct.toFixed(4)}%; background-color: ${item.color}; left: ${accumulatedPercentage.toFixed(4)}%; animation-delay: ${idx * 0.15}s;">
-                 <span class="gd-tooltip">${esc(label)}: ${Components.formatSize(item.size)}</span>
+                 <span class="gd-tooltip">${esc(I18n.t(label))}: ${Components.formatSize(item.size)}</span>
             </div>`;
             accumulatedPercentage += pct;
             return segmentHTML;
@@ -1017,7 +1024,7 @@ const AdminPanel = (() => {
                     <div class="gd-meter-container">
                         <div class="gd-meter-header">
                             <span class="gd-meter-used">${Components.formatSize(used)}</span>
-                            <span class="gd-meter-total">of ${Components.formatSize(totalCapacity)} used</span>
+                            <span class="gd-meter-total">${I18n.t("of {1} used", { 1: Components.formatSize(totalCapacity) })}</span>
                         </div>
                         
                         <div class="gd-meter-track">
@@ -1032,7 +1039,7 @@ const AdminPanel = (() => {
                                     <div class="gd-legend-item">
                                         <div class="gd-legend-dot" style="background-color: ${item.color}"></div>
                                         <div class="gd-legend-text">
-                                            <span class="gd-legend-label">${esc(label)}</span>
+                                            <span class="gd-legend-label">${esc(I18n.t(label))}</span>
                                             <span class="gd-legend-size">${Components.formatSize(item.size)}</span>
                                         </div>
                                     </div>
@@ -1050,22 +1057,22 @@ const AdminPanel = (() => {
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M15 2H9c-1.1 0-2 .9-2 2v2H3v2h18V6h-4V4c0-1.1-.9-2-2-2zM9 4h6v2H9V4zm3 16c-3.3 0-6-2.7-6-6h2c0 2.2 1.8 4 4 4s4-1.8 4-4-1.8-4-4-4v2l-3-3 3-3v2c3.3 0 6 2.7 6 6s-2.7 6-6 6z"/></svg>
                             </div>
                             <div class="gd-card-title-area">
-                                <h3>Clean up space</h3>
-                                <p>Review large files, trash, and duplicates to free up storage.</p>
+                                <h3>${I18n.t("Clean up space")}</h3>
+                                <p>${I18n.t("Review large files, trash, and duplicates to free up storage.")}</p>
                             </div>
                         </div>
                         <div class="gd-cleanup-actions">
                             <div class="gd-cleanup-item">
-                                <span>Trashed items older than 30 days</span>
-                                <button class="gd-btn-outline" data-admin-action="cleanup-trash">Review</button>
+                                <span>${I18n.t("Trashed items older than 30 days")}</span>
+                                <button class="gd-btn-outline" data-admin-action="cleanup-trash">${I18n.t("Review")}</button>
                             </div>
                             <div class="gd-cleanup-item">
-                                <span>Duplicate files</span>
-                                <button class="gd-btn-outline" data-admin-action="cleanup-duplicates">Review</button>
+                                <span>${I18n.t("Duplicate files")}</span>
+                                <button class="gd-btn-outline" data-admin-action="cleanup-duplicates">${I18n.t("Review")}</button>
                             </div>
                             <div class="gd-cleanup-item">
-                                <span>Never opened (90+ days)</span>
-                                <button class="gd-btn-outline" disabled title="Not available yet">Notify</button>
+                                <span>${I18n.t("Never opened (90+ days)")}</span>
+                                <button class="gd-btn-outline" disabled title="${I18n.t("Not available yet")}">${I18n.t("Notify")}</button>
                             </div>
                         </div>
                     </div>
@@ -1077,17 +1084,17 @@ const AdminPanel = (() => {
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5s-3 1.34-3 3 1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.98 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
                             </div>
                             <div class="gd-card-title-area">
-                                <h3>Storage by user</h3>
-                                <p>See who is using the most space.</p>
+                                <h3>${I18n.t("Storage by user")}</h3>
+                                <p>${I18n.t("See who is using the most space.")}</p>
                             </div>
                         </div>
                         <div class="gd-table-container">
                             <table class="gd-clean-table">
                                 <thead>
                                     <tr>
-                                        <th>User</th>
-                                        <th>Storage used</th>
-                                        <th>Files</th>
+                                        <th>${I18n.t("User")}</th>
+                                        <th>${I18n.t("Storage used")}</th>
+                                        <th>${I18n.t("Files")}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1102,7 +1109,7 @@ const AdminPanel = (() => {
                                                     <div class="gd-user-cell">
                                                         <span class="gd-avatar" style="background-color: hsl(${((u.email || '').length * 137) % 360}, 60%, 50%)">${esc(initials(u.username || u.email))}</span>
                                                         <div class="gd-user-info">
-                                                            <span class="gd-user-name">${esc(u.username || 'Unnamed')}</span>
+                                                            <span class="gd-user-name">${esc(u.username || I18n.t("Unnamed"))}</span>
                                                             <span class="gd-user-email">${esc(u.email)}</span>
                                                         </div>
                                                     </div>
@@ -1113,10 +1120,10 @@ const AdminPanel = (() => {
                                                         <div class="gd-mini-bar"><div class="gd-mini-fill" style="width: ${Math.min(100, percent)}%"></div></div>
                                                     </div>
                                                 </td>
-                                                <td>${(meta.files_count || 0).toLocaleString('en-US')}</td>
+                                                <td>${(meta.files_count || 0).toLocaleString(I18n.language)}</td>
                                             </tr>
                                         `;
-                                    }).join('') || '<tr><td colspan="3" class="gd-empty-table">No users found</td></tr>'}
+                                    }).join('') || `<tr><td colspan="3" class="gd-empty-table">${I18n.t("No users found")}</td></tr>`}
                                 </tbody>
                             </table>
                         </div>
@@ -1132,17 +1139,17 @@ const AdminPanel = (() => {
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
                             </div>
                             <div class="gd-card-title-area">
-                                <h3>Large files</h3>
-                                <p>Files consuming the most space on your disk.</p>
+                                <h3>${I18n.t("Large files")}</h3>
+                                <p>${I18n.t("Files consuming the most space on your disk.")}</p>
                             </div>
                         </div>
                         <div class="gd-table-container">
                             <table class="gd-clean-table">
                                 <thead>
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Owner</th>
-                                        <th>Size</th>
+                                        <th>${I18n.t("Name")}</th>
+                                        <th>${I18n.t("Owner")}</th>
+                                        <th>${I18n.t("Size")}</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -1154,12 +1161,12 @@ const AdminPanel = (() => {
                                                     <span class="gd-file-icon" style="margin-right:8px; display:inline-flex; align-items:center;">${adminGetFileIcon(f.mime_type, f.name)}</span>
                                                     <span class="gd-file-name" title="${esc(f.name)}">${esc(f.name)}</span>
                                                 </td>
-                                                <td class="gd-sec-text">${esc(f.owner_name || 'Admin')}</td>
+                                                <td class="gd-sec-text">${esc(f.owner_name || I18n.t("Admin"))}</td>
                                                 <td>${Components.formatSize(f.size)}</td>
-                                                <td><button class="gd-icon-btn" data-admin-action="delete-large-file" data-file-id="${f.id}" title="Delete file"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button></td>
+                                                <td><button class="gd-icon-btn" data-admin-action="delete-large-file" data-file-id="${f.id}" title="${I18n.t("Delete file")}"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button></td>
                                             </tr>
                                         `;
-                                    }).join('') || '<tr><td colspan="4" class="gd-empty-table">No large files</td></tr>'}
+                                    }).join('') || `<tr><td colspan="4" class="gd-empty-table">${I18n.t("No large files")}</td></tr>`}
                                 </tbody>
                             </table>
                         </div>
@@ -1175,7 +1182,7 @@ const AdminPanel = (() => {
         return {
             ...item,
             ip: item.ip_address || item.ip || '',
-            device: item.device || 'Unknown device',
+            device: item.device ? I18n.device(item.device) : I18n.t("Unknown device"),
             status: action.includes('failed') ? 'failed' : 'success',
             user_agent: item.user_agent || '',
             session_id: item.session_id || item.id || '',
@@ -1237,52 +1244,51 @@ const AdminPanel = (() => {
         return `
             <div class="gd-storage-container" style="max-width: 1200px;">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <p class="gd-storage-hero-subtitle">Authentication and sign-in events across all users.</p>
+                    <p class="gd-storage-hero-subtitle">${I18n.t("Authentication and sign-in events across all users.")}</p>
                 </div>
 
                 <div class="gd-card" style="margin-bottom: 24px; padding: 16px 24px;">
                     <div class="gd-filter-grid">
                         <div class="gd-input-group">
-                            <label>Filter by user</label>
+                            <label>${I18n.t("Filter by user")}</label>
                             <select class="gd-input" id="admin-activity-users" multiple size="3">
                                 ${usersOpts}
                             </select>
                         </div>
                         <div class="gd-input-group">
-                            <label>Action type</label>
+                            <label>${I18n.t("Action type")}</label>
                             <select class="gd-input" id="admin-activity-action">
                                 ${[
-                                    ['all', 'All'],
-                                    ['login', 'Login'],
-                                    ['failed_login', 'Failed login'],
+                                    ['all', I18n.t("All")],
+                                    ['login', I18n.t("Login")],
+                                    ['failed_login', I18n.t("Failed login")],
                                 ].map(([value, label]) => `<option value="${value}" ${state.activityFilters.action === value ? 'selected' : ''}>${label}</option>`).join('')}
                             </select>
                         </div>
                         <div class="gd-input-group">
-                            <label>Date from</label>
+                            <label>${I18n.t("Date from")}</label>
                             <input class="gd-input" type="date" id="admin-activity-from" value="${esc(state.activityFilters.from)}">
                         </div>
                         <div class="gd-input-group">
-                            <label>Date to</label>
+                            <label>${I18n.t("Date to")}</label>
                             <input class="gd-input" type="date" id="admin-activity-to" value="${esc(state.activityFilters.to)}">
                         </div>
                     </div>
 
                     <div class="activity-filter-row">
                         <div class="activity-active-filters">
-                            ${state.activityFilters.action !== 'all' ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="action">${esc(state.activityFilters.action === 'failed_login' ? 'Failed login' : state.activityFilters.action)} ×</button>` : ''}
-                            ${state.activityFilters.from ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="from">From ${esc(state.activityFilters.from)} ×</button>` : ''}
-                            ${state.activityFilters.to ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="to">To ${esc(state.activityFilters.to)} ×</button>` : ''}
+                            ${state.activityFilters.action !== 'all' ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="action">${esc(state.activityFilters.action === 'failed_login' ? I18n.t("Failed login") : state.activityFilters.action)} ×</button>` : ''}
+                            ${state.activityFilters.from ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="from">${I18n.t("From {0} ×", { 0: esc(state.activityFilters.from) })}</button>` : ''}
+                            ${state.activityFilters.to ? `<button class="gd-filter-chip active" data-admin-action="clear-activity-filter" data-filter-key="to">${I18n.t("To {0} ×", { 0: esc(state.activityFilters.to) })}</button>` : ''}
                         </div>
                         <div class="activity-filter-actions">
                             <label class="activity-live-label">
                                 <input type="checkbox" data-admin-action="toggle-live" ${state.activityLive ? 'checked' : ''}>
-                                Live updates
-                                ${state.activityLive ? '<span class="activity-live-dot"></span>' : ''}
+                                ${I18n.t("Live updates {8}", { 8: state.activityLive ? '<span class="activity-live-dot"></span>' : '' })}
                             </label>
                             <div class="activity-divider"></div>
-                            <button class="gd-btn-outline" data-admin-action="apply-activity-filters">Apply filters</button>
-                            <button class="gd-icon-btn" data-admin-action="export-activity-csv" title="Download CSV">${svgCsv}</button>
+                            <button class="gd-btn-outline" data-admin-action="apply-activity-filters">${I18n.t("Apply filters")}</button>
+                            <button class="gd-icon-btn" data-admin-action="export-activity-csv" title="${I18n.t("Download CSV")}">${svgCsv}</button>
                         </div>
                     </div>
                 </div>
@@ -1290,7 +1296,7 @@ const AdminPanel = (() => {
                 <div class="gd-card" style="padding: 0;">
                     <div class="gd-table-container">
                         <table class="gd-clean-table activity-table">
-                            <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>IP Address</th><th>Device</th><th>Status</th></tr></thead>
+                            <thead><tr><th>${I18n.t("Time")}</th><th>${I18n.t("User")}</th><th>${I18n.t("Action")}</th><th>${I18n.t("Target")}</th><th>${I18n.t("IP Address")}</th><th>${I18n.t("Device")}</th><th>${I18n.t("Status")}</th></tr></thead>
                             <tbody>
                                 ${pageMeta.rows.map((a) => {
                                     const expanded = state.expandedActivity.has(a.id);
@@ -1299,29 +1305,29 @@ const AdminPanel = (() => {
                                     return `
                                         <tr class="expandable" data-admin-action="toggle-activity-row" data-activity-id="${a.id}" style="cursor:pointer;">
                                             <td class="activity-time-cell">${Components.formatAbsoluteDate(a.created_at)}</td>
-                                            <td>${esc(a.username || 'User')}</td>
-                                            <td><span class="activity-action-badge ${badgeCls}">${esc(a.action || 'action')}</span></td>
-                                            <td class="activity-target-cell" title="${esc(a.target_name || 'item')}">${esc(a.target_name || 'item')}</td>
+                                            <td>${esc(a.username || I18n.t("User"))}</td>
+                                            <td><span class="activity-action-badge ${badgeCls}">${esc(I18n.label(a.action || 'action'))}</span></td>
+                                            <td class="activity-target-cell" title="${esc(a.target_name || I18n.t("item"))}">${esc(a.target_name || I18n.t("item"))}</td>
                                             <td class="activity-time-cell">${esc(a.ip)}</td>
                                             <td>${esc(a.device)}</td>
                                             <td>
                                                 ${isFailed
-                                                    ? `<span class="activity-status-fail">${svgFail} Failed</span>`
-                                                    : `<span class="activity-status-ok">${svgOk} Success</span>`}
+                                                    ? `<span class="activity-status-fail">${I18n.t("{0} Failed", { 0: svgFail })}</span>`
+                                                    : `<span class="activity-status-ok">${I18n.t("{0} Success", { 0: svgOk })}</span>`}
                                             </td>
                                         </tr>
                                         <tr class="activity-detail-row ${expanded ? '' : 'hidden'}" id="activity-detail-${a.id}">
                                             <td colspan="7">
                                                 <div class="activity-detail-grid">
-                                                    <div><strong>User-Agent:</strong> ${esc(a.user_agent)}</div>
-                                                    <div><strong>Session ID:</strong> ${esc(a.session_id)}</div>
-                                                    <div><strong>File UUID:</strong> ${esc(a.file_uuid)}</div>
-                                                    <div><strong>Change type:</strong> ${esc(a.action)}</div>
+                                                    <div><strong>${I18n.t("User-Agent:")}</strong> ${esc(a.user_agent)}</div>
+                                                    <div><strong>${I18n.t("Session ID:")}</strong> ${esc(a.session_id)}</div>
+                                                    <div><strong>${I18n.t("File UUID:")}</strong> ${esc(a.file_uuid)}</div>
+                                                    <div><strong>${I18n.t("Change type:")}</strong> ${esc(I18n.label(a.action))}</div>
                                                 </div>
                                             </td>
                                         </tr>
                                     `;
-                                }).join('') || `<tr><td colspan="7" class="gd-empty-table">${renderNoData('No data available')}</td></tr>`}
+                                }).join('') || `<tr><td colspan="7" class="gd-empty-table">${renderNoData(I18n.t("No data available"))}</td></tr>`}
                             </tbody>
                         </table>
                     </div>
@@ -1341,7 +1347,7 @@ const AdminPanel = (() => {
             if (!grouped.has(key)) {
                 grouped.set(key, {
                     id: r.id || key,
-                    email_ip: `${r.username || 'user'} / ${r.ip || 'Unknown'}`,
+                    email_ip: `${r.username || 'user'} / ${r.ip || I18n.t("Unknown")}`,
                     attempts: 0,
                     last_attempt: r.created_at,
                     blocked: (state.settings.security.blocklist || []).some((x) => x.ip === (r.ip || '')),
@@ -1372,10 +1378,10 @@ const AdminPanel = (() => {
                 bySession.set(sessionKey, {
                     id: sessionKey,
                     user_id: a.user_id || '',
-                    user: a.username || 'User',
-                    device: a.device || 'Unknown device',
+                    user: a.username || I18n.t("User"),
+                    device: a.device ? I18n.device(a.device) : I18n.t("Unknown device"),
                     ip: a.ip || '',
-                    location: a.location || 'Unknown',
+                    location: a.location || I18n.t("Unknown"),
                     started: a.created_at,
                     last_active: a.created_at,
                     is_me: String(a.user_id || '') === String(me.id || ''),
@@ -1394,26 +1400,26 @@ const AdminPanel = (() => {
         const sessions = getActiveSessions();
         const sec = state.settingsDraft?.security || state.settings?.security || {};
         const require2FA = Boolean(sec.require_2fa);
-        const lastRotation = sec.last_key_rotation ? Components.formatDate(sec.last_key_rotation) : 'Never';
+        const lastRotation = sec.last_key_rotation ? Components.formatDate(sec.last_key_rotation) : I18n.t("Never");
 
         return `
             <div class="gd-storage-container">
                 <div class="gd-storage-hero" style="margin-bottom: 24px;">
-                    <p class="gd-storage-hero-subtitle">Monitor suspicious activity, sessions, and authentication policy.</p>
+                    <p class="gd-storage-hero-subtitle">${I18n.t("Monitor suspicious activity, sessions, and authentication policy.")}</p>
                 </div>
 
                 <div class="gd-card" style="padding:24px;margin-bottom:24px;">
-                    <h3 style="margin:0 0 8px;font-size:16px;">Two-factor authentication</h3>
-                    <p style="margin:0 0 16px;color:#5f6368;font-size:14px;">Require a second factor at sign-in for every user (authenticator app or email code).</p>
+                    <h3 style="margin:0 0 8px;font-size:16px;">${I18n.t("Two-factor authentication")}</h3>
+                    <p style="margin:0 0 16px;color:#5f6368;font-size:14px;">${I18n.t("Require a second factor at sign-in for every user (authenticator app or email code).")}</p>
                     <label class="live-toggle" style="display:inline-flex;align-items:center;gap:10px;cursor:pointer;">
                         <input type="checkbox" data-admin-action="toggle-require-2fa" ${require2FA ? 'checked' : ''}>
-                        <span style="font-weight:500;color:#3c4043;">Require 2FA for all users</span>
+                        <span style="font-weight:500;color:#3c4043;">${I18n.t("Require 2FA for all users")}</span>
                     </label>
                     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;">
-                        <button class="gd-btn-outline" data-admin-action="send-2fa-reminder">Remind users without 2FA</button>
-                        <button class="gd-btn-outline" data-admin-action="rotate-keys">Record key rotation</button>
+                        <button class="gd-btn-outline" data-admin-action="send-2fa-reminder">${I18n.t("Remind users without 2FA")}</button>
+                        <button class="gd-btn-outline" data-admin-action="rotate-keys">${I18n.t("Record key rotation")}</button>
                     </div>
-                    <p style="margin:12px 0 0;font-size:12px;color:#5f6368;">Last recorded key rotation: ${esc(lastRotation)}. Full encryption key rotation is not automated yet — this only updates the timestamp.</p>
+                    <p style="margin:12px 0 0;font-size:12px;color:#5f6368;">${I18n.t("Last recorded key rotation: {1}. Full encryption key rotation is not automated yet — this only updates the timestamp.", { 1: esc(lastRotation) })}</p>
                 </div>
 
                 <div class="gd-cards-layout">
@@ -1423,12 +1429,12 @@ const AdminPanel = (() => {
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
                             </div>
                             <div class="gd-card-title-area" style="flex:1;">
-                                <h3 style="margin:0; font-size:16px;">Suspicious logins</h3>
+                                <h3 style="margin:0; font-size:16px;">${I18n.t("Suspicious logins")}</h3>
                             </div>
                         </div>
                         <div class="gd-table-container">
                             <table class="gd-clean-table">
-                                <thead><tr><th style="padding-left:24px;">Target / IP</th><th>Attempts</th><th>Last attempt</th><th>Network block</th></tr></thead>
+                                <thead><tr><th style="padding-left:24px;">${I18n.t("Target / IP")}</th><th>${I18n.t("Attempts")}</th><th>${I18n.t("Last attempt")}</th><th>${I18n.t("Network block")}</th></tr></thead>
                                 <tbody>
                                     ${fails.map((f) => `
                                         <tr>
@@ -1442,7 +1448,7 @@ const AdminPanel = (() => {
                                                 </div>
                                             </td>
                                         </tr>
-                                    `).join('') || '<tr><td colspan="4" class="gd-empty-table" style="color:#188038; padding:32px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin: 0 auto 8px;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>No suspicious activity detected recently</td></tr>'}
+                                    `).join('') || `<tr><td colspan="4" class="gd-empty-table" style="color:#188038; padding:32px;"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" style="display:block; margin: 0 auto 8px;"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>${I18n.t("No suspicious activity detected recently")}</td></tr>`}
                                 </tbody>
                             </table>
                         </div>
@@ -1454,13 +1460,13 @@ const AdminPanel = (() => {
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
                             </div>
                             <div class="gd-card-title-area" style="flex:1;">
-                                <h3 style="margin:0; font-size:16px;">Active sessions</h3>
+                                <h3 style="margin:0; font-size:16px;">${I18n.t("Active sessions")}</h3>
                             </div>
-                            <button class="gd-btn-outline" data-admin-action="revoke-all-sessions">Revoke all</button>
+                            <button class="gd-btn-outline" data-admin-action="revoke-all-sessions">${I18n.t("Revoke all")}</button>
                         </div>
                         <div class="gd-table-container">
                             <table class="gd-clean-table">
-                                <thead><tr><th style="padding-left:24px;">User</th><th>Device</th><th>IP Address</th><th>Started</th><th>Last active</th><th></th></tr></thead>
+                                <thead><tr><th style="padding-left:24px;">${I18n.t("User")}</th><th>${I18n.t("Device")}</th><th>${I18n.t("IP Address")}</th><th>${I18n.t("Started")}</th><th>${I18n.t("Last active")}</th><th></th></tr></thead>
                                 <tbody>
                                     ${sessions.map((s) => `
                                         <tr>
@@ -1468,7 +1474,7 @@ const AdminPanel = (() => {
                                                 <div style="display:flex; align-items:center; gap:8px;">
                                                     <span class="gd-avatar" style="width:24px; height:24px; font-size:10px; background-color:hsl(${((s.user || '').length * 137) % 360},60%,50%)">${esc(initials(s.user))}</span>
                                                     ${esc(s.user)}
-                                                    ${s.is_me ? '<span style="font-size:10px; font-weight:600; padding:2px 6px; background:#CEEAD6; color:#188038; border-radius:10px;">This device</span>' : ''}
+                                                    ${s.is_me ? `<span style="font-size:10px; font-weight:600; padding:2px 6px; background:#CEEAD6; color:#188038; border-radius:10px;">${I18n.t("This device")}</span>` : ''}
                                                 </div>
                                             </td>
                                             <td>${esc(s.device)}</td>
@@ -1477,7 +1483,7 @@ const AdminPanel = (() => {
                                             <td style="color:#5F6368;">${Components.formatDate(s.last_active)}</td>
                                             <td></td>
                                         </tr>
-                                    `).join('') || '<tr><td colspan="6" class="gd-empty-table">No active sessions</td></tr>'}
+                                    `).join('') || `<tr><td colspan="6" class="gd-empty-table">${I18n.t("No active sessions")}</td></tr>`}
                                 </tbody>
                             </table>
                         </div>
@@ -1491,50 +1497,50 @@ const AdminPanel = (() => {
         const g = state.settingsDraft.general;
         return `
             <div style="margin-bottom: 24px;">
-                <h3 style="font-size: 18px; color: #202124; margin: 0 0 8px 0;">Workspace Identity</h3>
-                <p style="color: #5F6368; font-size: 14px; margin: 0;">Manage your FreeDrive site name, language, and core behavior.</p>
+                <h3 style="font-size: 18px; color: #202124; margin: 0 0 8px 0;">${I18n.t("Workspace Identity")}</h3>
+                <p style="color: #5F6368; font-size: 14px; margin: 0;">${I18n.t("Manage your FreeDrive site name, language, and core behavior.")}</p>
             </div>
             <div class="settings-grid">
                 <div class="admin-form-group">
-                    <label>Site name</label>
+                    <label>${I18n.t("Site name")}</label>
                     <input class="admin-input" data-setting="general.site_name" value="${esc(g.site_name)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Site URL</label>
+                    <label>${I18n.t("Site URL")}</label>
                     <input class="admin-input" data-setting="general.site_url" value="${esc(g.site_url)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Default language</label>
+                    <label>${I18n.t("Default language")}</label>
                     <select class="admin-input" data-setting="general.language">
-                        ${['en', 'az', 'tr', 'de'].map((x) => `<option value="${x}" ${g.language === x ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}
+                        ${['en', 'zh-CN', 'az', 'tr', 'de'].map((x) => `<option value="${x}" ${(I18n.normalize(g.language) || g.language || 'en') === x ? 'selected' : ''}>${languageOptionLabel(x)}</option>`).join('')}
                     </select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Default quota</label>
+                    <label>${I18n.t("Default quota")}</label>
                     <select class="admin-input" data-setting="general.default_quota_gb">${quotaOptionsHtml(g.default_quota_gb)}</select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Registration</label>
+                    <label>${I18n.t("Registration")}</label>
                     <select class="admin-input" data-setting="general.registration">
-                        ${['open', 'invite', 'closed'].map((x) => `<option value="${x}" ${g.registration === x ? 'selected' : ''}>${x === 'invite' ? 'Invite-only' : x[0].toUpperCase() + x.slice(1)}</option>`).join('')}
+                        ${['open', 'invite', 'closed'].map((x) => `<option value="${x}" ${g.registration === x ? 'selected' : ''}>${I18n.label(x, x === 'invite' ? 'Invite-only' : x[0].toUpperCase() + x.slice(1))}</option>`).join('')}
                     </select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Max file size</label>
+                    <label>${I18n.t("Max file size")}</label>
                     <select class="admin-input" data-setting="general.max_upload_mb">${maxUploadOptionsHtml(g.max_upload_mb)}</select>
                 </div>
             </div>
             <div class="types-chip-wrap">
-                <h4>Allowed file types</h4>
+                <h4>${I18n.t("Allowed file types")}</h4>
                 <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer;">
                     <input type="checkbox" data-setting="general.allowed_types_unlimited" ${g.allowed_types_unlimited ? 'checked' : ''} style="width:18px; height:18px;">
-                    <span>Without limits — accept all file types</span>
+                    <span>${I18n.t("Without limits — accept all file types")}</span>
                 </label>
                 <div class="chip-row" id="allowed-type-chip-row" style="${g.allowed_types_unlimited ? 'opacity:0.5; pointer-events:none;' : ''}">
                     ${g.allowed_types.map((t) => `<span class="admin-chip">.${esc(t)} <button data-admin-action="remove-type-chip" data-type="${esc(t)}">×</button></span>`).join('')}
                 </div>
                 <div class="chip-add-row" style="${g.allowed_types_unlimited ? 'opacity:0.5; pointer-events:none;' : ''}">
-                    <input class="admin-input filetype-input" id="new-type-chip" placeholder="Add file type... e.g. .webp" ${g.allowed_types_unlimited ? 'disabled' : ''}>
+                    <input class="admin-input filetype-input" id="new-type-chip" placeholder="${I18n.t("Add file type... e.g. .webp")}" ${g.allowed_types_unlimited ? 'disabled' : ''}>
                     <span class="enter-hint">↵</span>
                 </div>
             </div>
@@ -1545,32 +1551,32 @@ const AdminPanel = (() => {
         const e = state.settingsDraft.email;
         return `
             <div style="margin-bottom: 24px;">
-                <h3 style="font-size: 18px; color: #202124; margin: 0 0 8px 0;">Email Configuration</h3>
-                <p style="color: #5F6368; font-size: 14px; margin: 0;">Configure your SMTP server to allow FreeDrive to send invites and notifications.</p>
+                <h3 style="font-size: 18px; color: #202124; margin: 0 0 8px 0;">${I18n.t("Email Configuration")}</h3>
+                <p style="color: #5F6368; font-size: 14px; margin: 0;">${I18n.t("Configure your SMTP server to allow FreeDrive to send invites and notifications.")}</p>
             </div>
             <div class="settings-grid">
                 <div class="admin-form-group">
-                    <label>SMTP Server</label>
+                    <label>${I18n.t("SMTP Server")}</label>
                     <input class="admin-input" data-setting="email.smtp_server" placeholder="smtp.example.com" value="${esc(e.smtp_server)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Port</label>
+                    <label>${I18n.t("Port")}</label>
                     <input class="admin-input" type="number" placeholder="587" data-setting="email.smtp_port" value="${esc(e.smtp_port)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Username</label>
+                    <label>${I18n.t("Username")}</label>
                     <input class="admin-input" data-setting="email.smtp_user" placeholder="user@example.com" value="${esc(e.smtp_user)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Password</label>
+                    <label>${I18n.t("Password")}</label>
                     <input class="admin-input" type="password" data-setting="email.smtp_pass" placeholder="••••••••" value="${esc(e.smtp_pass)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>From Address</label>
+                    <label>${I18n.t("From Address")}</label>
                     <input class="admin-input" data-setting="email.from_address" placeholder="noreply@example.com" value="${esc(e.from_address)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>From Name</label>
+                    <label>${I18n.t("From Name")}</label>
                     <input class="admin-input" data-setting="email.from_name" placeholder="FreeDrive" value="${esc(e.from_name)}">
                 </div>
             </div>
@@ -1580,17 +1586,17 @@ const AdminPanel = (() => {
                     <div style="position: relative;">
                         <input type="checkbox" data-setting="email.tls" ${e.tls ? 'checked' : ''} style="width: 18px; height: 18px;">
                     </div>
-                    <span style="font-weight: 500; color: #3C4043;">Require TLS encryption (recommended)</span>
+                    <span style="font-weight: 500; color: #3C4043;">${I18n.t("Require TLS encryption (recommended)")}</span>
                 </label>
             </div>
 
             <div style="margin-top: 24px; background: #F8F9FA; border-radius: 8px; padding: 20px; border: 1px solid #E8EAED;">
-                <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #202124;">Test Configuration</h4>
+                <h4 style="margin: 0 0 12px 0; font-size: 14px; color: #202124;">${I18n.t("Test Configuration")}</h4>
                 <div class="chip-add-row" style="display: flex; gap: 12px;">
                     <input class="admin-input filetype-input" style="flex: 1; max-width: 300px; background: white;" id="test-email-input" placeholder="test@domain.com">
                     <button class="gd-btn-primary" data-admin-action="send-test-email">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 6px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                        Send Test Email
+                        ${I18n.t("Send Test Email")}
                     </button>
                 </div>
                 <div id="test-email-result" style="margin-top: 12px; font-size: 13px; display: none;"></div>
@@ -1603,26 +1609,26 @@ const AdminPanel = (() => {
         return `
             <div class="settings-grid">
                 <div class="admin-form-group">
-                    <label>Data directory</label>
+                    <label>${I18n.t("Data directory")}</label>
                     <input class="admin-input" data-setting="storage.data_directory" value="${esc(s.data_directory)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Total capacity limit (GB)</label>
+                    <label>${I18n.t("Total capacity limit (GB)")}</label>
                     <input class="admin-input" type="number" min="1" data-setting="storage.total_capacity_gb" value="${esc(s.total_capacity_gb)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Trash auto-empty</label>
+                    <label>${I18n.t("Trash auto-empty")}</label>
                     <select class="admin-input" data-setting="storage.trash_auto_empty">
-                        ${[['never', 'Never'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days']].map(([v, l]) => `<option value="${v}" ${String(s.trash_auto_empty) === v ? 'selected' : ''}>${l}</option>`).join('')}
+                        ${[['never', I18n.t("Never")], ['7', I18n.t("7 days")], ['30', I18n.t("30 days")], ['90', I18n.t("90 days")]].map(([v, l]) => `<option value="${v}" ${String(s.trash_auto_empty) === v ? 'selected' : ''}>${l}</option>`).join('')}
                     </select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Keep last versions</label>
+                    <label>${I18n.t("Keep last versions")}</label>
                     <input class="admin-input" type="number" min="1" data-setting="storage.keep_versions" value="${esc(s.keep_versions)}">
                 </div>
             </div>
             <label class="live-toggle">
-                <input type="checkbox" data-setting="storage.versioning" ${s.versioning ? 'checked' : ''}> Versioning enabled
+                <input type="checkbox" data-setting="storage.versioning" ${s.versioning ? 'checked' : ''}> ${I18n.t("Versioning enabled")}
             </label>
         `;
     }
@@ -1631,33 +1637,33 @@ const AdminPanel = (() => {
         const b = state.settingsDraft.backup;
         const backups = state.backups || [];
         return `
-            <p class="settings-hint" style="margin:0 0 12px; color:#5f6368; font-size:13px;">Settings backup — exports admin settings JSON only (not database or file blobs).</p>
+            <p class="settings-hint" style="margin:0 0 12px; color:#5f6368; font-size:13px;">${I18n.t("Settings backup — exports admin settings JSON only (not database or file blobs).")}</p>
             <div class="backup-top-row">
-                <button class="gd-btn-primary" data-admin-action="run-backup-now">Create settings backup</button>
+                <button class="gd-btn-primary" data-admin-action="run-backup-now">${I18n.t("Create settings backup")}</button>
                 <div class="backup-progress"><span id="backup-progress-fill"></span></div>
             </div>
             <div class="backup-form-grid">
                 <div class="admin-form-group backup-location-group">
-                    <label>Backup location</label>
+                    <label>${I18n.t("Backup location")}</label>
                     <input class="admin-input" data-setting="backup.location" value="${esc(b.location)}">
                 </div>
                 <div class="admin-form-group">
-                    <label>Schedule</label>
+                    <label>${I18n.t("Schedule")}</label>
                     <select class="admin-input" data-setting="backup.schedule">
-                        ${['daily', 'weekly', 'monthly'].map((x) => `<option value="${x}" ${b.schedule === x ? 'selected' : ''}>${x[0].toUpperCase() + x.slice(1)}</option>`).join('')}
+                        ${['daily', 'weekly', 'monthly'].map((x) => `<option value="${x}" ${b.schedule === x ? 'selected' : ''}>${I18n.label(x, x[0].toUpperCase() + x.slice(1))}</option>`).join('')}
                     </select>
                 </div>
                 <div class="admin-form-group">
-                    <label>Time</label>
+                    <label>${I18n.t("Time")}</label>
                     <input class="admin-input" type="time" data-setting="backup.time" value="${esc(b.time)}">
                 </div>
             </div>
             <label class="live-toggle">
-                <input type="checkbox" data-setting="backup.auto_backup" ${b.auto_backup ? 'checked' : ''}> Auto backup
+                <input type="checkbox" data-setting="backup.auto_backup" ${b.auto_backup ? 'checked' : ''}> ${I18n.t("Auto backup")}
             </label>
             <div class="admin-table-wrap">
                 <table class="admin-table">
-                    <thead><tr><th>Date</th><th>Size</th><th></th></tr></thead>
+                    <thead><tr><th>${I18n.t("Date")}</th><th>${I18n.t("Size")}</th><th></th></tr></thead>
                     <tbody>
                         ${backups.map((h) => `
                             <tr>
@@ -1665,13 +1671,13 @@ const AdminPanel = (() => {
                                 <td>${Components.formatSize(h.size)}</td>
                                 <td>
                                     <div class="backup-row-actions">
-                                        <button class="gd-btn-outline" data-admin-action="backup-download" data-backup-filename="${esc(h.filename)}">Download</button>
-                                        <button class="gd-btn-outline" data-admin-action="backup-restore" data-backup-filename="${esc(h.filename)}">Restore settings</button>
-                                        <button class="danger-outline-btn" data-admin-action="backup-delete" data-backup-filename="${esc(h.filename)}">Delete</button>
+                                        <button class="gd-btn-outline" data-admin-action="backup-download" data-backup-filename="${esc(h.filename)}">${I18n.t("Download")}</button>
+                                        <button class="gd-btn-outline" data-admin-action="backup-restore" data-backup-filename="${esc(h.filename)}">${I18n.t("Restore settings")}</button>
+                                        <button class="danger-outline-btn" data-admin-action="backup-delete" data-backup-filename="${esc(h.filename)}">${I18n.t("Delete")}</button>
                                     </div>
                                 </td>
                             </tr>
-                        `).join('') || '<tr><td colspan="3" class="admin-empty-row">No backups yet</td></tr>'}
+                        `).join('') || `<tr><td colspan="3" class="admin-empty-row">${I18n.t("No backups yet")}</td></tr>`}
                     </tbody>
                 </table>
             </div>
@@ -1682,13 +1688,13 @@ const AdminPanel = (() => {
     function renderDangerTab() {
         return `
             <div class="danger-zone">
-                <h4>Danger Zone</h4>
-                <p>These actions cannot be undone.</p>
+                <h4>${I18n.t("Danger Zone")}</h4>
+                <p>${I18n.t("These actions cannot be undone.")}</p>
                 <div class="danger-actions">
-                    <button class="danger-outline-btn" data-admin-action="danger-clear-trash">Clear all trash</button>
-                    <button class="danger-outline-btn" data-admin-action="danger-reset-sessions">Reset all user sessions</button>
-                    <input class="admin-input" id="danger-confirm-input" placeholder="Type WIPE to enable">
-                    <button class="danger-outline-btn" id="danger-wipe-btn" data-admin-action="danger-wipe-data" disabled>Wipe all data</button>
+                    <button class="danger-outline-btn" data-admin-action="danger-clear-trash">${I18n.t("Clear all trash")}</button>
+                    <button class="danger-outline-btn" data-admin-action="danger-reset-sessions">${I18n.t("Reset all user sessions")}</button>
+                    <input class="admin-input" id="danger-confirm-input" placeholder="${I18n.t("Type WIPE to enable")}">
+                    <button class="danger-outline-btn" id="danger-wipe-btn" data-admin-action="danger-wipe-data" disabled>${I18n.t("Wipe all data")}</button>
                 </div>
             </div>
         `;
@@ -1710,11 +1716,11 @@ const AdminPanel = (() => {
             : esc(initials(cu.username || cu.email || 'A'));
 
         const tabs = [
-            { id: 'general',    label: 'General',       icon: '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>' },
-            { id: 'email',      label: 'Email Server',  icon: '<path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>' },
-            { id: 'storage',    label: 'Storage & Data', icon: '<path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>' },
-            { id: 'backup',     label: 'Backup',         icon: '<path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/>' },
-            { id: 'danger',     label: 'Advanced',       icon: '<path d="M15.73 3H8.27L3 8.27v7.46L8.27 21h7.46L21 15.73V8.27L15.73 3zM12 17.3c-.72 0-1.3-.58-1.3-1.3 0-.72.58-1.3 1.3-1.3.72 0 1.3.58 1.3 1.3 0 .72-.58 1.3-1.3 1.3zm1-4.3h-2V7h2v6z"/>' },
+            { id: 'general',    label: I18n.t("General"),       icon: '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>' },
+            { id: 'email',      label: I18n.t("Email Server"),  icon: '<path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>' },
+            { id: 'storage',    label: I18n.t("Storage & Data"), icon: '<path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/>' },
+            { id: 'backup',     label: I18n.t("Backup"),         icon: '<path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/>' },
+            { id: 'danger',     label: I18n.t("Advanced"),       icon: '<path d="M15.73 3H8.27L3 8.27v7.46L8.27 21h7.46L21 15.73V8.27L15.73 3zM12 17.3c-.72 0-1.3-.58-1.3-1.3 0-.72.58-1.3 1.3-1.3.72 0 1.3.58 1.3 1.3 0 .72-.58 1.3-1.3 1.3zm1-4.3h-2V7h2v6z"/>' },
         ];
 
         const tabRenderers = {
@@ -1734,10 +1740,10 @@ const AdminPanel = (() => {
                 <div class="gd-card" style="margin-bottom: 24px; display: flex; align-items: center; gap: 20px; padding: 24px; background: linear-gradient(135deg, rgba(26,115,232,0.05), rgba(124,92,252,0.05)); border-radius: 12px; border: 1px solid rgba(26,115,232,0.1);">
                     <div class="gd-avatar" style="width: 80px; height: 80px; font-size: 32px; background: linear-gradient(135deg, #1A73E8, #7C5CFC); color: white; border: 4px solid white; box-shadow: 0 4px 12px rgba(26,115,232,0.2);">${avatarHtml}</div>
                     <div style="flex: 1;">
-                        <h2 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 600; color: #202124;">${esc(getCurrentUser().username || 'Administrator')}</h2>
+                        <h2 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 600; color: #202124;">${esc(getCurrentUser().username || I18n.t("Administrator"))}</h2>
                         <div style="display: flex; gap: 12px; color: #5F6368; font-size: 14px;">
                             <span style="display: flex; align-items: center; gap: 4px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>${esc(getCurrentUser().email || 'admin@freedrive.local')}</span>
-                            <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #188038;"></span> System Admin</span>
+                            <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #188038;"></span> ${I18n.t("System Admin")}</span>
                         </div>
                     </div>
                 </div>
@@ -1755,11 +1761,11 @@ const AdminPanel = (() => {
                     ${actTabHtml}
                     ${state.settingsTab !== 'danger' ? `
                     <div class="settings-action-bar">
-                        ${hasErrors ? '<span class="settings-status-error">Please fix the errors above.</span>' : ''}
-                        ${state.settingsDirty ? '<span class="settings-status-unsaved">Unsaved changes</span>' : ''}
-                        ${showSaved ? `<span class="settings-status-saved"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> Saved</span>` : ''}
-                        <button class="gd-btn-outline" data-admin-action="cancel-settings" ${!state.settingsDirty ? 'disabled' : ''}>Cancel</button>
-                        <button class="gd-btn-primary" data-admin-action="save-settings" ${!state.settingsDirty || hasErrors ? 'disabled' : ''}>Save changes</button>
+                        ${hasErrors ? `<span class="settings-status-error">${I18n.t("Please fix the errors above.")}</span>` : ''}
+                        ${state.settingsDirty ? `<span class="settings-status-unsaved">${I18n.t("Unsaved changes")}</span>` : ''}
+                        ${showSaved ? `<span class="settings-status-saved"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> ${I18n.t("Saved")}</span>` : ''}
+                        <button class="gd-btn-outline" data-admin-action="cancel-settings" ${!state.settingsDirty ? 'disabled' : ''}>${I18n.t("Cancel")}</button>
+                        <button class="gd-btn-primary" data-admin-action="save-settings" ${!state.settingsDirty || hasErrors ? 'disabled' : ''}>${I18n.t("Save changes")}</button>
                     </div>
                     ` : ''}
                 </div>
@@ -1815,12 +1821,12 @@ const AdminPanel = (() => {
 
     function sectionTitle(section) {
         switch (normalizeSection(section)) {
-            case 'users': return 'Manage Users';
-            case 'storage': return 'Storage';
-            case 'activity': return 'Activity log';
-            case 'security': return 'Security & access';
-            case 'settings': return 'Settings';
-            default: return 'Dashboard';
+            case 'users': return I18n.t("Manage Users");
+            case 'storage': return I18n.t("Storage");
+            case 'activity': return I18n.t("Activity log");
+            case 'security': return I18n.t("Security & access");
+            case 'settings': return I18n.t("Settings");
+            default: return I18n.t("Dashboard");
         }
     }
 
@@ -1851,7 +1857,7 @@ const AdminPanel = (() => {
     async function load(section = 'dashboard') {
         const me = getCurrentUser();
         if (String(me.role || '').toLowerCase() !== 'admin') {
-            Components.toast('Admin access required', 'error');
+            Components.toast(I18n.t("Admin access required"), 'error');
             history.pushState(null, '', '/files');
             window.dispatchEvent(new Event('popstate'));
             return;
@@ -1889,12 +1895,12 @@ const AdminPanel = (() => {
         const e = state.settingsDraft.email;
         const s = state.settingsDraft.storage;
 
-        if (!String(g.site_name || '').trim()) err.site_name = 'Site name is required';
-        if (!String(g.site_url || '').trim()) err.site_url = 'Site URL is required';
-        if (asNumber(g.default_quota_gb, 0) <= 0) err.default_quota_gb = 'Default quota must be greater than 0';
-        if (asNumber(g.max_upload_mb, 0) <= 0) err.max_upload_mb = 'Max upload size must be greater than 0';
-        if (e.smtp_port && (asNumber(e.smtp_port, 0) <= 0)) err.smtp_port = 'SMTP port is invalid';
-        if (asNumber(s.total_capacity_gb, 0) <= 0) err.total_capacity = 'Total capacity must be greater than 0';
+        if (!String(g.site_name || '').trim()) err.site_name = I18n.t("Site name is required");
+        if (!String(g.site_url || '').trim()) err.site_url = I18n.t("Site URL is required");
+        if (asNumber(g.default_quota_gb, 0) <= 0) err.default_quota_gb = I18n.t("Default quota must be greater than 0");
+        if (asNumber(g.max_upload_mb, 0) <= 0) err.max_upload_mb = I18n.t("Max upload size must be greater than 0");
+        if (e.smtp_port && (asNumber(e.smtp_port, 0) <= 0)) err.smtp_port = I18n.t("SMTP port is invalid");
+        if (asNumber(s.total_capacity_gb, 0) <= 0) err.total_capacity = I18n.t("Total capacity must be greater than 0");
 
         state.settingsErrors = err;
         return !Object.keys(err).length;
@@ -1925,28 +1931,28 @@ const AdminPanel = (() => {
         if (!user) return;
 
         if (action === 'change-role') {
-            const role = await Components.prompt('Change role', String(user.role || 'user'));
+            const role = await Components.prompt(I18n.t("Change role"), String(user.role || 'user'));
             if (!role) return;
             try {
                 await API.admin.updateUser(userId, { role: role.toLowerCase() });
-                Components.toast('Role updated', 'success');
+                Components.toast(I18n.t("Role updated"), 'success');
                 await load(state.section);
             } catch (err) {
-                Components.toast(err?.message || 'Failed to update role', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to update role"), 'error');
             }
             return;
         }
 
         if (action === 'adjust-quota') {
-            const gb = await promptQuota('Adjust quota', Math.max(1, Math.round(asNumber(user.quota_bytes, 0) / (1024 ** 3))));
+            const gb = await promptQuota(I18n.t("Adjust quota"), Math.max(1, Math.round(asNumber(user.quota_bytes, 0) / (1024 ** 3))));
             if (!gb) return;
             const quota = Math.max(1, asNumber(gb, 10));
             try {
                 await API.admin.updateUser(userId, { quota_bytes: Math.round(quota * (1024 ** 3)) });
-                Components.toast('Quota updated', 'success');
+                Components.toast(I18n.t("Quota updated"), 'success');
                 await load(state.section);
             } catch (err) {
-                Components.toast(err?.message || 'Failed to update quota', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to update quota"), 'error');
             }
             return;
         }
@@ -1955,10 +1961,10 @@ const AdminPanel = (() => {
             const suspended = !user.suspended;
             try {
                 await API.admin.updateUser(userId, { suspended });
-                Components.toast(suspended ? 'User suspended' : 'User unsuspended', 'success');
+                Components.toast(suspended ? I18n.t("User suspended") : I18n.t("User unsuspended"), 'success');
                 await load(state.section);
             } catch (err) {
-                Components.toast(err?.message || 'Failed to update user', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to update user"), 'error');
             }
             return;
         }
@@ -1968,15 +1974,15 @@ const AdminPanel = (() => {
                 Components.toast(err.message, 'error');
                 throw err;
             });
-            Components.toast(`Password reset link sent to ${user.email}`, 'success');
+            Components.toast(I18n.t("Password reset link sent to {0}", { 0: user.email }), 'success');
             return;
         }
 
         if (action === 'delete-user') {
             const ok = await Components.confirm(
-                'Delete user',
-                'This permanently deletes the account and all of their files, folders, and devices. This cannot be undone.',
-                'Delete',
+                I18n.t("Delete user"),
+                I18n.t("This permanently deletes the account and all of their files, folders, and devices. This cannot be undone."),
+                I18n.t("Delete"),
             );
             if (!ok) return;
             await API.admin.deleteUser(userId).catch((err) => {
@@ -1984,7 +1990,7 @@ const AdminPanel = (() => {
                 throw err;
             });
             state.userSelection.delete(userId);
-            Components.toast('User and all their files deleted', 'success');
+            Components.toast(I18n.t("User and all their files deleted"), 'success');
             await load(state.section);
             return;
         }
@@ -1995,48 +2001,48 @@ const AdminPanel = (() => {
         const body = `
             <div class="admin-modal-form admin-invite-modal">
                 <div class="invite-form-grid">
-                    <label class="modal-label" for="invite-email">E-mail</label>
+                    <label class="modal-label" for="invite-email">${I18n.t("E-mail")}</label>
                     <input id="invite-email" class="admin-input" type="email" placeholder="name@company.com">
 
-                    <label class="modal-label" for="invite-role">Role</label>
+                    <label class="modal-label" for="invite-role">${I18n.t("Role")}</label>
                     <select id="invite-role" class="admin-input">
-                        <option value="user">User</option>
-                        <option value="admin">Admin</option>
-                        <option value="guest">Guest</option>
+                        <option value="user">${I18n.t("User")}</option>
+                        <option value="admin">${I18n.t("Admin")}</option>
+                        <option value="guest">${I18n.t("Guest")}</option>
                     </select>
 
-                    <label class="modal-label" for="invite-quota">Quota</label>
+                    <label class="modal-label" for="invite-quota">${I18n.t("Quota")}</label>
                     <select id="invite-quota" class="admin-input">${quotaOptionsHtml(10)}</select>
 
-                    <label class="modal-label" for="invite-message">Welcome message (optional)</label>
-                    <textarea id="invite-message" class="admin-input invite-message-input" rows="3" placeholder="Welcome to FreeDrive..."></textarea>
+                    <label class="modal-label" for="invite-message">${I18n.t("Welcome message (optional)")}</label>
+                    <textarea id="invite-message" class="admin-input invite-message-input" rows="3" placeholder="${I18n.t("Welcome to FreeDrive...")}"></textarea>
                 </div>
 
                 <div class="panel-sep"></div>
 
-                <h4 class="invite-section-title">Pending invites</h4>
+                <h4 class="invite-section-title">${I18n.t("Pending invites")}</h4>
                 <div class="invite-list">
                     ${pending.map((p, idx) => `
                         <div class="invite-row">
                             <div class="invite-row-main">
                                 <span class="invite-row-email">${esc(p.email)}</span>
-                                <span class="invite-row-meta">${esc((p.role || 'user').toUpperCase())} • ${esc(String(p.quota || 10))} GB</span>
+                                <span class="invite-row-meta">${esc(I18n.label(p.role || 'user', (p.role || 'user').toUpperCase()))} • ${esc(String(p.quota || 10))} GB</span>
                             </div>
                             <div class="invite-row-actions">
-                                <button class="link-btn invite-action-btn" data-invite-action="copy" data-idx="${idx}">Copy Link</button>
-                                <button class="link-btn invite-action-btn" data-invite-action="resend" data-idx="${idx}">Resend</button>
-                                <button class="link-btn danger invite-action-btn" data-invite-action="cancel" data-idx="${idx}">Cancel</button>
+                                <button class="link-btn invite-action-btn" data-invite-action="copy" data-idx="${idx}">${I18n.t("Copy Link")}</button>
+                                <button class="link-btn invite-action-btn" data-invite-action="resend" data-idx="${idx}">${I18n.t("Resend")}</button>
+                                <button class="link-btn danger invite-action-btn" data-invite-action="cancel" data-idx="${idx}">${I18n.t("Cancel")}</button>
                             </div>
                         </div>
-                    `).join('') || '<p class="admin-muted invite-empty">No pending invites</p>'}
+                    `).join('') || `<p class="admin-muted invite-empty">${I18n.t("No pending invites")}</p>`}
                 </div>
             </div>
         `;
 
-        Components.showModal('Invite user', body, [
-            { text: 'Close' },
+        Components.showModal(I18n.t("Invite user"), body, [
+            { text: I18n.t("Close") },
             {
-                text: 'Generate Link',
+                text: I18n.t("Generate Link"),
                 class: 'btn-primary',
                 close: false,
                 action: async () => {
@@ -2045,14 +2051,14 @@ const AdminPanel = (() => {
                     const quota = Math.max(1, asNumber(document.getElementById('invite-quota')?.value, 10));
                     const message = String(document.getElementById('invite-message')?.value || '').trim();
                     if (!email || !email.includes('@')) {
-                        Components.toast('Valid e-mail is required', 'error');
+                        Components.toast(I18n.t("Valid e-mail is required"), 'error');
                         return;
                     }
                     const actionBtn = Array.from(document.querySelectorAll('.modal-footer .btn'))
-                        .find((b) => b.textContent === 'Generate Link');
+                        .find((b) => b.textContent === I18n.t('Generate Link'));
                     if (actionBtn) {
                         actionBtn.disabled = true;
-                        actionBtn.textContent = 'Generating...';
+                        actionBtn.textContent = I18n.t("Generating...");
                     }
                     try {
                         const eCfg = state.settingsDraft?.email || {};
@@ -2086,11 +2092,11 @@ const AdminPanel = (() => {
                         const emailSent = Boolean(invite?.email_sent);
                         const emailError = String(invite?.email_error || '').trim();
                         if (emailSent) {
-                            Components.toast(`Invite email sent to ${email}`, 'success');
+                            Components.toast(I18n.t("Invite email sent to {0}", { 0: email }), 'success');
                         } else if (emailError) {
-                            Components.toast(`Invite link created, but email was not sent: ${emailError}`, 'warning', { duration: 8000 });
+                            Components.toast(I18n.t("Invite link created, but email was not sent: {0}", { 0: emailError }), 'warning', { duration: 8000 });
                         } else {
-                            Components.toast('Invite link created', 'success');
+                            Components.toast(I18n.t("Invite link created"), 'success');
                         }
                         
                         const mdBody = document.querySelector('.modal-body');
@@ -2100,16 +2106,14 @@ const AdminPanel = (() => {
                                     <div class="invite-success-icon">
                                         <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
                                     </div>
-                                    <h3 class="invite-success-title">Invite Created!</h3>
-                                    <p class="invite-success-text">${
-                                        emailSent
-                                            ? `Invitation sent to <strong>${esc(email)}</strong>. You can also copy the direct invite link below.`
-                                            : `Invite link created for <strong>${esc(email)}</strong>, but the email was not sent.${emailError ? `<br><span class="admin-muted">${esc(emailError)}</span>` : ''}`
-                                    }</p>
+                                    <h3 class="invite-success-title">${I18n.t("Invite Created!")}</h3>
+                                    <p class="invite-success-text">${emailSent
+                                            ? I18n.t('Invitation sent to {0}. You can also copy the direct invite link below.', { 0: `<strong>${esc(email)}</strong>` })
+                                            : I18n.t('Invite link created for {0}, but the email was not sent.', { 0: `<strong>${esc(email)}</strong>` }) + (emailError ? `<br><span class="admin-muted">${esc(I18n.error(emailError))}</span>` : '')}</p>
                                     
                                     <div class="invite-link-box">
                                         <input type="text" readonly class="invite-link-field" value="${esc(link)}" id="invite-link-field">
-                                        <button class="btn btn-primary invite-copy-btn" id="copy-invite-link">Copy Link</button>
+                                        <button class="btn btn-primary invite-copy-btn" id="copy-invite-link">${I18n.t("Copy Link")}</button>
                                     </div>
                                 </div>
                             `;
@@ -2117,27 +2121,27 @@ const AdminPanel = (() => {
                             // Bind the copy button
                             document.getElementById('copy-invite-link').addEventListener('click', () => {
                                 Components.copyText(link).then(() => {
-                                    Components.toast('Link copied to clipboard!', 'success');
-                                    document.getElementById('copy-invite-link').textContent = 'Copied!';
-                                    setTimeout(() => document.getElementById('copy-invite-link').textContent = 'Copy Link', 2000);
+                                    Components.toast(I18n.t("Link copied to clipboard!"), 'success');
+                                    document.getElementById('copy-invite-link').textContent = I18n.t("Copied!");
+                                    setTimeout(() => document.getElementById('copy-invite-link').textContent = I18n.t("Copy Link"), 2000);
                                 }).catch(() => {
-                                    Components.toast('Copy failed. Select the link and copy it manually.', 'error');
+                                    Components.toast(I18n.t("Copy failed. Select the link and copy it manually."), 'error');
                                 });
                             });
                             
                             // Hide the original action buttons except close
                             const footerBtns = document.querySelectorAll('.modal-footer .btn');
                             footerBtns.forEach(b => {
-                                if (b.textContent === 'Generating...' || b.textContent === 'Generate Link') b.style.display = 'none';
-                                if (b.textContent === 'Close') { b.classList.add('btn-primary'); b.classList.remove('btn-secondary'); b.textContent = 'Done'; }
+                                if (b === actionBtn) b.style.display = 'none';
+                                if (b.textContent === I18n.t('Close')) { b.classList.add('btn-primary'); b.classList.remove('btn-secondary'); b.textContent = I18n.t("Done"); }
                             });
                         }
                     } catch (err) {
                         if (actionBtn) {
                             actionBtn.disabled = false;
-                            actionBtn.textContent = 'Generate Link';
+                            actionBtn.textContent = I18n.t("Generate Link");
                         }
-                        Components.toast(err.message || 'Failed to send invite', 'error');
+                        Components.toast(I18n.error(err.message) || I18n.t("Failed to send invite"), 'error');
                     }
                 },
             },
@@ -2157,11 +2161,11 @@ const AdminPanel = (() => {
                     if (inviteAction === 'copy') {
                         const link = `${window.location.origin}?invite=${encodeURIComponent(row.code || '')}`;
                         Components.copyText(link).then(() => {
-                            Components.toast('Invite link copied', 'success');
-                            btn.textContent = 'Copied!';
-                            setTimeout(() => { btn.textContent = 'Copy Link'; }, 1600);
+                            Components.toast(I18n.t("Invite link copied"), 'success');
+                            btn.textContent = I18n.t("Copied!");
+                            setTimeout(() => { btn.textContent = I18n.t("Copy Link"); }, 1600);
                         }).catch(() => {
-                            Components.toast('Copy failed. Open the invite and select the link manually.', 'error');
+                            Components.toast(I18n.t("Copy failed. Open the invite and select the link manually."), 'error');
                         });
                         return;
                     }
@@ -2181,22 +2185,22 @@ const AdminPanel = (() => {
                             from_name: eCfg.from_name || '',
                             tls: Boolean(eCfg.tls),
                         }).then(() => {
-                            Components.toast(`Invite resent to ${row.email}`, 'success');
+                            Components.toast(I18n.t("Invite resent to {0}", { 0: row.email }), 'success');
                         }).catch((err) => {
-                            Components.toast(err?.message || 'Failed to resend invite', 'error');
+                            Components.toast(I18n.error(err?.message) || I18n.t("Failed to resend invite"), 'error');
                         });
                     } else if (inviteAction === 'cancel') {
                         if (!row.id) {
-                            Components.toast('Invite id missing', 'error');
+                            Components.toast(I18n.t("Invite id missing"), 'error');
                             return;
                         }
                         API.admin.deleteInvite(row.id).then(async () => {
-                            Components.toast('Invite cancelled', 'success');
+                            Components.toast(I18n.t("Invite cancelled"), 'success');
                             await hydrateData();
                             Components.hideModal();
                             openInviteModal();
                         }).catch((err) => {
-                            Components.toast(err?.message || 'Failed to cancel invite', 'error');
+                            Components.toast(I18n.error(err?.message) || I18n.t("Failed to cancel invite"), 'error');
                         });
                     }
                 });
@@ -2328,7 +2332,7 @@ const AdminPanel = (() => {
                     const quotaGb = Math.max(1, asNumber(document.getElementById('drawer-quota')?.value, 10));
                     const email2fa = Boolean(document.getElementById('drawer-2fa')?.checked);
                     if (!name || !email.includes('@')) {
-                        Components.toast('Please fill valid name and e-mail', 'error');
+                        Components.toast(I18n.t("Please fill valid name and e-mail"), 'error');
                         return;
                     }
                     await API.admin.updateUser(userId, {
@@ -2341,7 +2345,7 @@ const AdminPanel = (() => {
                         Components.toast(err.message, 'error');
                         throw err;
                     });
-                    Components.toast('User updated', 'success');
+                    Components.toast(I18n.t("User updated"), 'success');
                     await load('users');
                     state.drawerUserId = userId;
                     try {
@@ -2362,20 +2366,20 @@ const AdminPanel = (() => {
                 if (action === 'bulk-suspend') {
                     try {
                         await Promise.all([...state.userSelection].map((id) => API.admin.updateUser(id, { suspended: true })));
-                        Components.toast('Selected users suspended', 'success');
+                        Components.toast(I18n.t("Selected users suspended"), 'success');
                         state.userSelection.clear();
                         await load(state.section);
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to suspend users', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to suspend users"), 'error');
                     }
                     return;
                 }
 
                 if (action === 'bulk-delete') {
                     const ok = await Components.confirm(
-                        'Delete selected users',
-                        'This permanently deletes the selected accounts and all of their files, folders, and devices. This cannot be undone.',
-                        'Delete',
+                        I18n.t("Delete selected users"),
+                        I18n.t("This permanently deletes the selected accounts and all of their files, folders, and devices. This cannot be undone."),
+                        I18n.t("Delete"),
                     );
                     if (!ok) return;
                     let deleted = 0;
@@ -2393,32 +2397,32 @@ const AdminPanel = (() => {
                     if (failures.length && deleted === 0) {
                         Components.toast(failures[0], 'error');
                     } else if (failures.length) {
-                        Components.toast(`Deleted ${deleted}; ${failures.length} failed (${failures[0]})`, 'warning');
+                        Components.toast(I18n.t('Deleted {0}; {1} failed ({2})', { 0: deleted, 1: failures.length, 2: I18n.error(failures[0]) }), 'warning');
                     } else {
-                        Components.toast(`Deleted ${deleted} user(s) and their files`, 'success');
+                        Components.toast(I18n.t("Deleted {0} user(s) and their files", { 0: deleted }), 'success');
                     }
                     return;
                 }
 
                 if (action === 'bulk-role') {
-                    const role = await Components.prompt('New role for selected users', 'user');
+                    const role = await Components.prompt(I18n.t("New role for selected users"), 'user');
                     if (!role) return;
                     for (const id of state.userSelection) {
                         await API.admin.updateUser(id, { role: role.toLowerCase() }).catch(() => {});
                     }
-                    Components.toast('Role changed for selected users', 'success');
+                    Components.toast(I18n.t("Role changed for selected users"), 'success');
                     await load('users');
                     return;
                 }
 
                 if (action === 'bulk-quota') {
-                    const quota = await promptQuota('New quota', 10);
+                    const quota = await promptQuota(I18n.t("New quota"), 10);
                     if (!quota) return;
                     const bytes = Math.round(Math.max(1, asNumber(quota, 10)) * (1024 ** 3));
                     for (const id of state.userSelection) {
                         await API.admin.updateUser(id, { quota_bytes: bytes }).catch(() => {});
                     }
-                    Components.toast('Quota updated for selected users', 'success');
+                    Components.toast(I18n.t("Quota updated for selected users"), 'success');
                     await load('users');
                     return;
                 }
@@ -2457,35 +2461,35 @@ const AdminPanel = (() => {
 
                 if (action === 'delete-large-file') {
                     const fileId = btn.getAttribute('data-file-id');
-                    const ok = await Components.confirm('Delete large file', 'This operation is irreversible.', 'Delete');
+                    const ok = await Components.confirm(I18n.t("Delete large file"), I18n.t("This operation is irreversible."), I18n.t("Delete"));
                     if (!ok) return;
                     await API.files.delete(fileId).catch((err) => Components.toast(err.message, 'error'));
-                    Components.toast('File moved to trash', 'success');
+                    Components.toast(I18n.t("File moved to trash"), 'success');
                     await load('storage');
                     return;
                 }
 
                 if (action === 'cleanup-trash') {
-                    const ok = await Components.confirm('Empty trash older than 30 days', 'Trashed files and folders older than 30 days will be permanently deleted.', 'Empty');
+                    const ok = await Components.confirm(I18n.t("Empty trash older than 30 days"), I18n.t("Trashed files and folders older than 30 days will be permanently deleted."), I18n.t("Empty"));
                     if (!ok) return;
                     try {
                         const res = await API.admin.purgeTrash(30);
                         Components.toast(formatPurgeTrashResult(res), 'success');
                         await load('storage');
                     } catch (err) {
-                        Components.toast(err?.message || 'Trash cleanup failed', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Trash cleanup failed"), 'error');
                     }
                     return;
                 }
                 if (action === 'cleanup-duplicates') {
-                    const ok = await Components.confirm('Remove duplicate files', 'In each duplicate group the newest copy is kept; older copies are permanently deleted.', 'Remove');
+                    const ok = await Components.confirm(I18n.t("Remove duplicate files"), I18n.t("In each duplicate group the newest copy is kept; older copies are permanently deleted."), I18n.t("Remove"));
                     if (!ok) return;
                     try {
                         const res = await API.admin.purgeDuplicates();
-                        Components.toast(`Removed ${res.removed_files || 0} duplicate file(s)`, 'success');
+                        Components.toast(I18n.t("Removed {0} duplicate file(s)", { 0: res.removed_files || 0 }), 'success');
                         await load('storage');
                     } catch (err) {
-                        Components.toast(err?.message || 'Duplicate cleanup failed', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Duplicate cleanup failed"), 'error');
                     }
                     return;
                 }
@@ -2560,10 +2564,15 @@ const AdminPanel = (() => {
 
                 if (action === 'export-activity-csv') {
                     const rows = filteredActivityList();
-                    const csv = ['timestamp,user,action,target,ip,device,status']
-                        .concat(rows.map((r) => [r.created_at, r.username, r.action, r.target_name, r.ip, r.device, r.status].map((x) => `"${String(x || '').replace(/"/g, '""')}"`).join(',')))
+                    const quote = (x) => `"${String(x || '').replace(/"/g, '""')}"`;
+                    // English keeps the machine-friendly header; other languages get readable columns.
+                    const header = I18n.language === 'en'
+                        ? 'timestamp,user,action,target,ip,device,status'
+                        : ['Time', 'User', 'Action', 'Target', 'IP Address', 'Device', 'Status'].map((h) => quote(I18n.t(h))).join(',');
+                    const csv = [header]
+                        .concat(rows.map((r) => [r.created_at, r.username, I18n.label(r.action), r.target_name, r.ip, r.device, I18n.label(r.status)].map(quote).join(',')))
                         .join('\n');
-                    downloadTextFile(csv, `activity-${Date.now()}.csv`, 'text/csv');
+                    downloadTextFile(Components.csvForExcel(csv), `activity-${Date.now()}.csv`, 'text/csv');
                     return;
                 }
 
@@ -2583,19 +2592,19 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'revoke-all-sessions') {
-                    const ok = await Components.confirm('Revoke all sessions', 'All active sessions will be terminated. This cannot be undone.', 'Revoke');
+                    const ok = await Components.confirm(I18n.t("Revoke all sessions"), I18n.t("All active sessions will be terminated. This cannot be undone."), I18n.t("Revoke"));
                     if (!ok) return;
                     try {
                         await API.admin.revokeAllSessions();
-                        Components.toast('All sessions revoked', 'success');
+                        Components.toast(I18n.t("All sessions revoked"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to revoke sessions', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to revoke sessions"), 'error');
                     }
                     return;
                 }
 
                 if (action === 'revoke-session') {
-                    Components.toast('Per-session revoke is not available yet. Use Revoke all.', 'info');
+                    Components.toast(I18n.t("Per-session revoke is not available yet. Use Revoke all."), 'info');
                     return;
                 }
 
@@ -2613,9 +2622,9 @@ const AdminPanel = (() => {
                     }
                     try {
                         await persistSettingsNow({ silent: true });
-                        Components.toast('IP blocklist updated', 'success');
+                        Components.toast(I18n.t("IP blocklist updated"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to save blocklist', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to save blocklist"), 'error');
                     }
                     renderSection();
                     return;
@@ -2632,22 +2641,22 @@ const AdminPanel = (() => {
                     const note = String(document.getElementById('admin-ip-note')?.value || '').trim();
                     const isIpLike = /^\d{1,3}(\.\d{1,3}){3}$/.test(ip);
                     if (!isIpLike) {
-                        Components.toast('Enter a valid IPv4 address', 'error');
+                        Components.toast(I18n.t("Enter a valid IPv4 address"), 'error');
                         return;
                     }
                     const key = state.listTab === 'allowlist' ? 'allowlist' : 'blocklist';
                     const list = state.settingsDraft.security[key] || [];
                     if (list.some((x) => x.ip === ip)) {
-                        Components.toast('IP already exists in list', 'warning');
+                        Components.toast(I18n.t("IP already exists in list"), 'warning');
                         return;
                     }
                     list.push({ ip, by: getCurrentUser().username || 'admin', at: nowISO(), note });
                     state.settingsDraft.security[key] = list;
                     try {
                         await persistSettingsNow({ silent: true });
-                        Components.toast('IP list updated', 'success');
+                        Components.toast(I18n.t("IP list updated"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to save IP list', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to save IP list"), 'error');
                     }
                     renderSection();
                     return;
@@ -2660,9 +2669,9 @@ const AdminPanel = (() => {
                     state.settingsDraft.security[tab] = (state.settingsDraft.security[tab] || []).filter((x) => x.ip !== ip);
                     try {
                         await persistSettingsNow({ silent: true });
-                        Components.toast('IP list updated', 'success');
+                        Components.toast(I18n.t("IP list updated"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to save IP list', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to save IP list"), 'error');
                     }
                     renderSection();
                     return;
@@ -2673,9 +2682,9 @@ const AdminPanel = (() => {
                     state.settingsDraft.security.require_2fa = next;
                     try {
                         await persistSettingsNow({ silent: true });
-                        Components.toast('2FA requirement saved', 'success');
+                        Components.toast(I18n.t("2FA requirement saved"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to save 2FA setting', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to save 2FA setting"), 'error');
                     }
                     renderSection();
                     return;
@@ -2685,22 +2694,22 @@ const AdminPanel = (() => {
                     try {
                         const result = await API.admin.send2FAReminder();
                         const sent = Number(result?.sent || 0);
-                        Components.toast(sent > 0 ? `2FA reminders sent to ${sent} user(s)` : (result?.message || 'No reminders sent'), sent > 0 ? 'success' : 'info');
+                        Components.toast(sent > 0 ? I18n.t("2FA reminders sent to {0} user(s)", { 0: sent }) : (result?.message || I18n.t("No reminders sent")), sent > 0 ? 'success' : 'info');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to send reminders', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to send reminders"), 'error');
                     }
                     return;
                 }
 
                 if (action === 'rotate-keys') {
-                    const ok = await Components.confirm('Record key rotation', 'This only saves a rotation timestamp in settings. It does not re-encrypt stored files yet.', 'Record');
+                    const ok = await Components.confirm(I18n.t("Record key rotation"), I18n.t("This only saves a rotation timestamp in settings. It does not re-encrypt stored files yet."), I18n.t("Record"));
                     if (!ok) return;
                     state.settingsDraft.security.last_key_rotation = nowISO();
                     try {
                         await persistSettingsNow({ silent: true });
-                        Components.toast('Key rotation timestamp saved', 'success');
+                        Components.toast(I18n.t("Key rotation timestamp saved"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to save setting', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to save setting"), 'error');
                     }
                     renderSection();
                     return;
@@ -2739,13 +2748,13 @@ const AdminPanel = (() => {
                 if (action === 'send-test-email') {
                     const target = String(document.getElementById('test-email-input')?.value || '').trim();
                     if (!target.includes('@')) {
-                        Components.toast('Enter valid target e-mail', 'error');
+                        Components.toast(I18n.t("Enter valid target e-mail"), 'error');
                         return;
                     }
                     
                     const btn = e.target.closest('button');
                     const originalHtml = btn.innerHTML;
-                    btn.innerHTML = '<span class="spinner" style="width: 14px; height: 14px; margin-right: 6px;"></span> Sending...';
+                    btn.innerHTML = `<span class="spinner" style="width: 14px; height: 14px; margin-right: 6px;"></span> ${I18n.t("Sending...")}`;
                     btn.disabled = true;
                     
                     const eConfig = state.settingsDraft.email;
@@ -2767,7 +2776,7 @@ const AdminPanel = (() => {
                         })
                     }).then(async (res) => {
                         const data = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(data.error || 'Failed to send test email');
+                        if (!res.ok) throw new Error(data.error || I18n.t("Failed to send test email"));
                         
                         const resultDiv = document.getElementById('test-email-result');
                         if (resultDiv) {
@@ -2776,9 +2785,9 @@ const AdminPanel = (() => {
                             resultDiv.style.backgroundColor = '#E6F4EA';
                             resultDiv.style.padding = '8px 12px';
                             resultDiv.style.borderRadius = '4px';
-                            resultDiv.innerHTML = `<strong>Success!</strong> The test email was successfully delivered to ${esc(target)}.`;
+                            resultDiv.innerHTML = `<strong>${I18n.t("Success!")}</strong> ${I18n.t('The test email was successfully delivered to {0}.', { 0: esc(target) })}`;
                         }
-                        Components.toast(`Test email sent to ${target}`, 'success');
+                        Components.toast(I18n.t("Test email sent to {0}", { 0: target }), 'success');
                     }).catch((err) => {
                         const resultDiv = document.getElementById('test-email-result');
                         if (resultDiv) {
@@ -2787,7 +2796,7 @@ const AdminPanel = (() => {
                             resultDiv.style.backgroundColor = '#FCE8E6';
                             resultDiv.style.padding = '8px 12px';
                             resultDiv.style.borderRadius = '4px';
-                            resultDiv.innerHTML = `<strong>Error:</strong> ${esc(err.message)}`;
+                            resultDiv.innerHTML = `<strong>${I18n.t("Error:")}</strong> ${esc(I18n.error(err.message))}`;
                         }
                         Components.toast(err.message, 'error');
                     }).finally(() => {
@@ -2808,15 +2817,15 @@ const AdminPanel = (() => {
                             },
                         });
                         const data = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(data.error || 'Backup failed');
+                        if (!res.ok) throw new Error(data.error || I18n.t("Backup failed"));
                         if (progress) progress.style.width = '100%';
                         const list = await API.admin.listBackups().catch(() => ({ backups: [] }));
                         state.backups = Array.isArray(list.backups) ? list.backups : [];
-                        Components.toast('Settings backup created', 'success');
+                        Components.toast(I18n.t("Settings backup created"), 'success');
                         renderSection();
                     } catch (err) {
                         if (progress) progress.style.width = '0%';
-                        Components.toast(err.message || 'Backup failed', 'error');
+                        Components.toast(I18n.error(err.message) || I18n.t("Backup failed"), 'error');
                     }
                     return;
                 }
@@ -2826,16 +2835,16 @@ const AdminPanel = (() => {
                     if (!filename) return;
                     try {
                         await API.admin.downloadBackup(filename);
-                        Components.toast('Download started', 'success');
+                        Components.toast(I18n.t("Download started"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Download failed', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Download failed"), 'error');
                     }
                     return;
                 }
                 if (action === 'backup-restore') {
                     const filename = btn.getAttribute('data-backup-filename');
                     if (!filename) return;
-                    const ok = await Components.confirm('Restore settings backup', 'This will merge saved admin settings into the server. Continue?', 'Restore');
+                    const ok = await Components.confirm(I18n.t("Restore settings backup"), I18n.t("This will merge saved admin settings into the server. Continue?"), I18n.t("Restore"));
                     if (!ok) return;
                     try {
                         await API.admin.restoreBackup(filename);
@@ -2843,31 +2852,35 @@ const AdminPanel = (() => {
                         if (data) {
                             applyServerSettings(data);
                         }
-                        Components.toast('Settings restored from backup', 'success');
+                        if (I18n.resolve(state.settings.general?.language) !== I18n.language) {
+                            window.location.reload();
+                            return;
+                        }
+                        Components.toast(I18n.t("Settings restored from backup"), 'success');
                         renderSection();
                     } catch (err) {
-                        Components.toast(err?.message || 'Restore failed', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Restore failed"), 'error');
                     }
                     return;
                 }
                 if (action === 'backup-delete') {
                     const filename = btn.getAttribute('data-backup-filename');
                     if (!filename) return;
-                    const ok = await Components.confirm('Delete backup', `Delete ${filename}?`, 'Delete');
+                    const ok = await Components.confirm(I18n.t("Delete backup"), I18n.t("Delete {0}?", { 0: filename }), I18n.t("Delete"));
                     if (!ok) return;
                     try {
                         await API.admin.deleteBackup(filename);
                         state.backups = state.backups.filter((b) => b.filename !== filename);
-                        Components.toast('Backup deleted', 'success');
+                        Components.toast(I18n.t("Backup deleted"), 'success');
                         renderSection();
                     } catch (err) {
-                        Components.toast(err?.message || 'Delete failed', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Delete failed"), 'error');
                     }
                     return;
                 }
 
                 if (action === 'logo-upload-prompt') {
-                    Components.toast('Logo uploader opened (drag & drop supported in full settings backend)', 'info');
+                    Components.toast(I18n.t("Logo uploader opened (drag & drop supported in full settings backend)"), 'info');
                     return;
                 }
 
@@ -2886,8 +2899,12 @@ const AdminPanel = (() => {
                     }
                     try {
                         await persistSettingsNow();
+                        if (I18n.resolve(state.settings.general?.language) !== I18n.language) {
+                            window.location.reload();
+                            return;
+                        }
                     } catch (e) {
-                        Components.toast(e?.message || 'Settings save failed', 'error');
+                        Components.toast(I18n.error(e?.message) || I18n.t("Settings save failed"), 'error');
                         return;
                     }
                     renderSection();
@@ -2895,26 +2912,26 @@ const AdminPanel = (() => {
                 }
 
                 if (action === 'danger-clear-trash') {
-                    const ok = await Components.confirm('Clear all trash', 'This cannot be undone and all trashed files and folders will be permanently deleted.', 'Clear');
+                    const ok = await Components.confirm(I18n.t("Clear all trash"), I18n.t("This cannot be undone and all trashed files and folders will be permanently deleted."), I18n.t("Clear"));
                     if (!ok) return;
                     try {
                         const res = await API.admin.purgeTrash(0);
-                        Components.toast(formatPurgeTrashResult(res, 'Cleared'), 'success');
+                        Components.toast(formatPurgeTrashResult(res, I18n.t("Cleared")), 'success');
                         await load('storage');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to clear trash', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to clear trash"), 'error');
                     }
                     return;
                 }
 
                 if (action === 'danger-reset-sessions') {
-                    const ok = await Components.confirm('Reset all user sessions', 'All users will be logged out immediately.', 'Reset');
+                    const ok = await Components.confirm(I18n.t("Reset all user sessions"), I18n.t("All users will be logged out immediately."), I18n.t("Reset"));
                     if (!ok) return;
                     try {
                         await API.admin.revokeAllSessions();
-                        Components.toast('All user sessions reset', 'success');
+                        Components.toast(I18n.t("All user sessions reset"), 'success');
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to reset sessions', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to reset sessions"), 'error');
                     }
                     return;
                 }
@@ -2922,18 +2939,18 @@ const AdminPanel = (() => {
                 if (action === 'danger-wipe-data') {
                     const confirmWord = String(document.getElementById('danger-confirm-input')?.value || '').trim();
                     if (confirmWord !== 'WIPE') {
-                        Components.toast('Type WIPE to proceed', 'warning');
+                        Components.toast(I18n.t("Type WIPE to proceed"), 'warning');
                         return;
                     }
-                    const finalOk = await Components.confirm('Final confirmation', 'All files and user data will be irreversibly destroyed. Your admin account and settings are kept.', 'Wipe');
+                    const finalOk = await Components.confirm(I18n.t("Final confirmation"), I18n.t("All files and user data will be irreversibly destroyed. Your admin account and settings are kept."), I18n.t("Wipe"));
                     if (!finalOk) return;
                     try {
                         await API.admin.wipeAllData();
-                        Components.toast('All data wiped', 'success');
+                        Components.toast(I18n.t("All data wiped"), 'success');
                         history.pushState(null, '', '/files');
                         window.dispatchEvent(new Event('popstate'));
                     } catch (err) {
-                        Components.toast(err?.message || 'Wipe failed', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Wipe failed"), 'error');
                     }
                     return;
                 }
@@ -2984,7 +3001,7 @@ const AdminPanel = (() => {
         const typeInput = document.getElementById('new-type-chip');
         if (typeInput) {
             typeInput.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter') return;
+                if (e.key !== 'Enter' || Components.isComposing(e)) return;
                 if (state.settingsDraft.general.allowed_types_unlimited) return;
                 e.preventDefault();
                 const value = String(typeInput.value || '').replace(/^\./, '').trim().toLowerCase();

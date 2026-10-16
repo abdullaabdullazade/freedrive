@@ -243,9 +243,9 @@ func (h *AdminHandler) Send2FAReminder(w http.ResponseWriter, r *http.Request) {
 		if user.Suspended || service.HasConfigured2FA(&user) || strings.TrimSpace(user.Email) == "" {
 			continue
 		}
-		subject := "Enable two-factor authentication on FreeDrive"
+		subject := email.T("Enable two-factor authentication on FreeDrive")
 		body := fmt.Sprintf(
-			"Hello %s,\n\nYour FreeDrive administrator recommends enabling two-factor authentication for your account (authenticator app or email codes).\n\nSign in to FreeDrive, open Security from your profile menu, and set up an authenticator app or turn on email two-factor authentication.\n",
+			email.T("Hello %s,\n\nYour FreeDrive administrator recommends enabling two-factor authentication for your account (authenticator app or email codes).\n\nSign in to FreeDrive, open Security from your profile menu, and set up an authenticator app or turn on email two-factor authentication.\n"),
 			chooseReminderName(user.Username, user.Email),
 		)
 		if err := email.SendFromSettings(user.Email, subject, body); err != nil {
@@ -460,21 +460,21 @@ func (h *AdminHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 			emailError = "smtp settings are incomplete: set server, port and from address in admin settings"
 		} else {
 			displayName := chooseDisplayName("", recipient)
-			subject := "You're invited to FreeDrive"
+			subject := email.T("You're invited to FreeDrive")
 			message := strings.TrimSpace(req.Message)
 
 			body := fmt.Sprintf(
-				"Hello %s,\n\nYou've been invited to join FreeDrive.\n\nInvite link:\n%s\n\nSign in email (required): %s\nRole: %s\nQuota: %.1f GB\n",
+				email.T("Hello %s,\n\nYou've been invited to join FreeDrive.\n\nInvite link:\n%s\n\nSign in email (required): %s\nRole: %s\nQuota: %.1f GB\n"),
 				displayName,
 				inviteURL,
 				inviteEmail,
-				strings.ToUpper(string(invite.Role)),
+				email.Role(string(invite.Role)),
 				float64(invite.QuotaBytes)/(1024*1024*1024),
 			)
 			if message != "" {
-				body += fmt.Sprintf("\nMessage from admin:\n%s\n", message)
+				body += fmt.Sprintf(email.T("\nMessage from admin:\n%s\n"), message)
 			}
-			body += "\nUse the email address above when creating your account and when signing in.\nIf the link does not open automatically, copy and paste it into your browser.\n"
+			body += email.T("\nUse the email address above when creating your account and when signing in.\nIf the link does not open automatically, copy and paste it into your browser.\n")
 
 			emailSent = true // Assume success for fast response
 			go func() {
@@ -582,19 +582,19 @@ func (h *AdminHandler) ResendInvite(w http.ResponseWriter, r *http.Request) {
 	if quota <= 0 {
 		quota = 10737418240
 	}
-	subject := "FreeDrive Invite Link (Resent)"
+	subject := email.T("FreeDrive Invite Link (Resent)")
 	body := fmt.Sprintf(
-		"Hello %s,\n\nYour FreeDrive invite link has been resent.\n\nInvite link:\n%s\n\nSign in email (required): %s\nRole: %s\nQuota: %.1f GB\n",
+		email.T("Hello %s,\n\nYour FreeDrive invite link has been resent.\n\nInvite link:\n%s\n\nSign in email (required): %s\nRole: %s\nQuota: %.1f GB\n"),
 		chooseDisplayName("", recipient),
 		inviteURL,
 		recipientEmail,
-		strings.ToUpper(role),
+		email.Role(role),
 		float64(quota)/(1024*1024*1024),
 	)
 	if strings.TrimSpace(req.Message) != "" {
-		body += fmt.Sprintf("\nMessage from admin:\n%s\n", strings.TrimSpace(req.Message))
+		body += fmt.Sprintf(email.T("\nMessage from admin:\n%s\n"), strings.TrimSpace(req.Message))
 	}
-	body += "\nUse the email address above when creating your account and when signing in.\nIf the link does not open automatically, copy and paste it into your browser.\n"
+	body += email.T("\nUse the email address above when creating your account and when signing in.\nIf the link does not open automatically, copy and paste it into your browser.\n")
 
 	go func() {
 		cfg := smtpConfig(smtpServer, smtpPort, smtpUser, smtpPass, fromAddress, fromName, useTLS)
@@ -743,9 +743,9 @@ func (h *AdminHandler) SendPasswordReset(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s", siteURL, token, url.QueryEscape(user.Email))
-	subject := "FreeDrive Password Reset"
+	subject := email.T("FreeDrive Password Reset")
 	body := fmt.Sprintf(
-		"Hello %s,\n\nA password reset was requested for your FreeDrive account.\n\nReset link:\n%s\n\nIf you did not request this, you can ignore this email.\n",
+		email.T("Hello %s,\n\nA password reset was requested for your FreeDrive account.\n\nReset link:\n%s\n\nIf you did not request this, you can ignore this email.\n"),
 		chooseDisplayName(user.Username, user.Email),
 		resetURL,
 	)
@@ -787,8 +787,8 @@ func (h *AdminHandler) TestEmail(w http.ResponseWriter, r *http.Request) {
 	if err := email.Send(
 		cfg,
 		req.ToAddress,
-		"FreeDrive Test Email",
-		"This is a test email sent from your FreeDrive Admin Panel.\nIf you received this, your SMTP configuration is correct!\n",
+		email.T("FreeDrive Test Email"),
+		email.T("This is a test email sent from your FreeDrive Admin Panel.\nIf you received this, your SMTP configuration is correct!\n"),
 	); err != nil {
 		writeError(w, "failed to send email: "+err.Error(), http.StatusInternalServerError)
 		return

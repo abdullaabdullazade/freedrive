@@ -53,7 +53,7 @@ const SidebarTree = (() => {
         const expanded = isExpanded(ROOT_KEY);
         chevron.classList.toggle('is-expanded', expanded);
         chevron.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        chevron.setAttribute('aria-label', expanded ? 'Collapse My Drive folders' : 'Expand My Drive folders');
+        chevron.setAttribute('aria-label', expanded ? I18n.t("Collapse My Drive folders") : I18n.t("Expand My Drive folders"));
         tree.classList.toggle('hidden', !expanded);
     }
 
@@ -66,7 +66,7 @@ const SidebarTree = (() => {
         if (expanded) btn.classList.add('is-expanded');
         if (hasKnownEmpty) btn.classList.add('is-hidden');
         btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        btn.setAttribute('aria-label', expanded ? 'Collapse folder' : 'Expand folder');
+        btn.setAttribute('aria-label', expanded ? I18n.t("Collapse folder") : I18n.t("Expand folder"));
         btn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();

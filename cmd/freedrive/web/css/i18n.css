@@ -1,0 +1,11 @@
+/* Keep CJK text readable while preserving the existing layout and visual style. */
+html[lang="zh-CN"] body,
+html[lang="zh-CN"] button,
+html[lang="zh-CN"] input,
+html[lang="zh-CN"] select,
+html[lang="zh-CN"] textarea {
+    font-family: 'Google Sans', 'Roboto', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+}
+
+html[lang="zh-CN"] .gd-btn-outline,
+html[lang="zh-CN"] .gd-btn-primary { white-space: nowrap; }

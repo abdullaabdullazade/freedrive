@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FreeDrive</title>
-    <meta name="description" content="Self-hosted cloud storage. Your files, your server.">
+    <meta name="description" content="Self-hosted cloud storage. Your files, your server." data-i18n-content="Self-hosted cloud storage. Your files, your server.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="/css/animations.css">
     <link rel="stylesheet" href="/css/admin.css">
     <link rel="stylesheet" href="/css/drive-clone.css">
+    <link rel="stylesheet" href="/css/i18n.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 87.3 78' fill='none'><path d='M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z' fill='%230066DA'/><path d='M43.65 25L29.1 0 58.2 0 72.8 25z' fill='%2300AC47'/><path d='M72.8 25L87.3 50 58.2 78 43.7 53z' fill='%23EA4335'/><path d='M43.65 25L29.1 50 0 50 14.5 25z' fill='%232684FC'/><path d='M43.65 25L58.2 50 29.1 50z' fill='%2300832D'/><path d='M72.8 25L87.3 50 58.2 50z' fill='%23FFBA00'/></svg>">
 </head>
 <body>
@@ -26,9 +27,9 @@
                         <svg width="48" height="48" viewBox="0 0 87.3 78"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
                         <span>FreeDrive</span>
                     </div>
-                    <h1>Sign in</h1>
-                    <p class="tagline">Use your FreeDrive Account</p>
-                    <button type="button" class="auth-account-chip hidden" id="login-account-chip" aria-label="Choose another account">
+                    <h1 data-i18n="Sign in">Sign in</h1>
+                    <p class="tagline" data-i18n="Use your FreeDrive Account">Use your FreeDrive Account</p>
+                    <button type="button" class="auth-account-chip hidden" id="login-account-chip" aria-label="Choose another account" data-i18n-aria-label="Choose another account">
                         <span class="material-icons-outlined" aria-hidden="true">account_circle</span>
                         <span id="login-account-email"></span>
                         <span class="material-icons-outlined auth-chip-arrow" aria-hidden="true">arrow_drop_down</span>
@@ -40,75 +41,75 @@
                 <div class="auth-step" id="login-email-step">
                     <div class="form-group auth-field">
                         <input type="email" id="login-email" placeholder=" " required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false">
-                        <label for="login-email">Email</label>
+                        <label for="login-email" data-i18n="Email">Email</label>
                     </div>
-                    <button type="button" class="auth-inline-link" id="forgot-email-btn">Forgot email?</button>
-                    <p class="auth-help-copy">Not your computer? Use a private browsing window to sign in securely.</p>
+                    <button type="button" class="auth-inline-link" id="forgot-email-btn" data-i18n="Forgot email?">Forgot email?</button>
+                    <p class="auth-help-copy" data-i18n="Not your computer? Use a private browsing window to sign in securely.">Not your computer? Use a private browsing window to sign in securely.</p>
                     <div class="auth-error" id="login-error" role="alert" aria-live="polite"></div>
                     <div class="auth-form-actions">
-                        <button type="button" class="auth-text-button" id="login-create-account-btn">Create account</button>
-                        <button type="submit" class="btn btn-primary" id="login-next-btn"><span>Next</span></button>
+                        <button type="button" class="auth-text-button" id="login-create-account-btn" data-i18n="Create account">Create account</button>
+                        <button type="submit" class="btn btn-primary" id="login-next-btn"><span data-i18n="Next">Next</span></button>
                     </div>
                 </div>
                 <div class="auth-step hidden" id="login-password-step">
                     <div class="form-group auth-field">
                         <input type="password" id="login-password" placeholder=" " required autocomplete="current-password">
-                        <label for="login-password">Enter your password</label>
+                        <label for="login-password" data-i18n="Enter your password">Enter your password</label>
                     </div>
-                    <label class="auth-show-password"><input type="checkbox" id="login-show-password"> <span>Show password</span></label>
-                    <button type="button" class="auth-inline-link" id="forgot-password-btn">Forgot password?</button>
+                    <label class="auth-show-password"><input type="checkbox" id="login-show-password"> <span data-i18n="Show password">Show password</span></label>
+                    <button type="button" class="auth-inline-link" id="forgot-password-btn" data-i18n="Forgot password?">Forgot password?</button>
                     <div class="auth-error" id="login-password-error" role="alert" aria-live="polite"></div>
                     <div class="auth-form-actions">
-                        <button type="button" class="auth-text-button" id="login-back-btn">Back</button>
-                        <button type="submit" class="btn btn-primary" id="login-btn"><span>Sign in</span><div class="btn-loader hidden"></div></button>
+                        <button type="button" class="auth-text-button" id="login-back-btn" data-i18n="Back">Back</button>
+                        <button type="submit" class="btn btn-primary" id="login-btn"><span data-i18n="Sign in">Sign in</span><div class="btn-loader hidden"></div></button>
                     </div>
                 </div>
             </form>
             <form id="register-form" class="auth-form hidden">
-                <div class="form-group auth-field"><input type="text" id="reg-username" placeholder=" " required autocomplete="name"><label for="reg-username">Your name</label></div>
-                <div class="form-group auth-field"><input type="email" id="reg-email" placeholder=" " required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"><label for="reg-email">Email</label></div>
-                <div class="form-group auth-field"><input type="password" id="reg-password" placeholder=" " required minlength="6" autocomplete="new-password"><label for="reg-password">Password</label></div>
-                <p class="auth-field-hint">Use 6 or more characters.</p>
-                <div class="form-group auth-field"><input type="text" id="reg-invite" placeholder=" " autocomplete="off"><label for="reg-invite">Invite code (optional)</label></div>
+                <div class="form-group auth-field"><input type="text" id="reg-username" placeholder=" " required autocomplete="name"><label for="reg-username" data-i18n="Your name">Your name</label></div>
+                <div class="form-group auth-field"><input type="email" id="reg-email" placeholder=" " required autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false"><label for="reg-email" data-i18n="Email">Email</label></div>
+                <div class="form-group auth-field"><input type="password" id="reg-password" placeholder=" " required minlength="6" autocomplete="new-password"><label for="reg-password" data-i18n="Password">Password</label></div>
+                <p class="auth-field-hint" data-i18n="Use 6 or more characters.">Use 6 or more characters.</p>
+                <div class="form-group auth-field"><input type="text" id="reg-invite" placeholder=" " autocomplete="off"><label for="reg-invite" data-i18n="Invite code (optional)">Invite code (optional)</label></div>
                 <div class="auth-error" id="register-error" role="alert" aria-live="polite"></div>
                 <div class="auth-form-actions">
-                    <button type="button" class="auth-text-button" id="register-signin-btn">Sign in instead</button>
-                    <button type="submit" class="btn btn-primary" id="register-btn"><span>Create account</span><div class="btn-loader hidden"></div></button>
+                    <button type="button" class="auth-text-button" id="register-signin-btn" data-i18n="Sign in instead">Sign in instead</button>
+                    <button type="submit" class="btn btn-primary" id="register-btn"><span data-i18n="Create account">Create account</span><div class="btn-loader hidden"></div></button>
                 </div>
             </form>
             <form id="reset-form" class="auth-form hidden">
-                <div class="form-group"><input type="email" id="reset-email" placeholder="Email" required autocapitalize="none" autocorrect="off" spellcheck="false"></div>
-                <div class="form-group"><input type="password" id="reset-password" placeholder="New password (min 6 chars)" required minlength="6"></div>
-                <div class="form-group"><input type="password" id="reset-password-confirm" placeholder="Confirm new password" required minlength="6"></div>
-                <div class="form-group"><input type="text" id="reset-recovery-code" placeholder="Encryption recovery code (optional)" autocomplete="off"></div>
-                <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">If you set up encryption, enter your recovery code to keep access to encrypted files after resetting your password.</p>
+                <div class="form-group"><input type="email" id="reset-email" placeholder="Email" required autocapitalize="none" autocorrect="off" spellcheck="false" data-i18n-placeholder="Email"></div>
+                <div class="form-group"><input type="password" id="reset-password" placeholder="New password (min 6 chars)" required minlength="6" data-i18n-placeholder="New password (min 6 chars)"></div>
+                <div class="form-group"><input type="password" id="reset-password-confirm" placeholder="Confirm new password" required minlength="6" data-i18n-placeholder="Confirm new password"></div>
+                <div class="form-group"><input type="text" id="reset-recovery-code" placeholder="Encryption recovery code (optional)" autocomplete="off" data-i18n-placeholder="Encryption recovery code (optional)"></div>
+                <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;" data-i18n="If you set up encryption, enter your recovery code to keep access to encrypted files after resetting your password.">If you set up encryption, enter your recovery code to keep access to encrypted files after resetting your password.</p>
                 <div class="auth-error" id="reset-error" role="alert" aria-live="polite"></div>
-                <button type="submit" class="btn btn-primary btn-full" id="reset-btn"><span>Reset password</span><div class="btn-loader hidden"></div></button>
+                <button type="submit" class="btn btn-primary btn-full" id="reset-btn"><span data-i18n="Reset password">Reset password</span><div class="btn-loader hidden"></div></button>
             </form>
             <form id="confirm-email-form" class="auth-form hidden">
-                <p id="confirm-email-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;">Confirming your new email address...</p>
+                <p id="confirm-email-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;" data-i18n="Confirming your new email address...">Confirming your new email address...</p>
                 <div class="auth-error" id="confirm-email-error" role="alert" aria-live="polite"></div>
-                <button type="button" class="btn btn-primary btn-full hidden" id="confirm-email-login-btn"><span>Sign in</span></button>
+                <button type="button" class="btn btn-primary btn-full hidden" id="confirm-email-login-btn"><span data-i18n="Sign in">Sign in</span></button>
             </form>
             <form id="twofa-form" class="auth-form hidden">
-                <p id="twofa-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;">Enter the 6-digit code sent to your email.</p>
-                <div class="form-group"><input type="text" id="twofa-code" placeholder="Verification code" inputmode="text" maxlength="16" autocomplete="one-time-code" required></div>
+                <p id="twofa-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;" data-i18n="Enter the 6-digit code sent to your email.">Enter the 6-digit code sent to your email.</p>
+                <div class="form-group"><input type="text" id="twofa-code" placeholder="Verification code" inputmode="text" maxlength="16" autocomplete="one-time-code" required data-i18n-placeholder="Verification code"></div>
                 <input type="hidden" id="twofa-challenge-id" value="">
                 <input type="hidden" id="twofa-method" value="email">
                 <div class="auth-error" id="twofa-error" role="alert" aria-live="polite"></div>
-                <button type="submit" class="btn btn-primary btn-full" id="twofa-btn"><span>Verify</span><div class="btn-loader hidden"></div></button>
-                <button type="button" class="auth-link-btn hidden" id="twofa-send-email-btn">Send code by email</button>
-                <button type="button" class="auth-link-btn" id="twofa-back-btn">Back to sign in</button>
+                <button type="submit" class="btn btn-primary btn-full" id="twofa-btn"><span data-i18n="Verify">Verify</span><div class="btn-loader hidden"></div></button>
+                <button type="button" class="auth-link-btn hidden" id="twofa-send-email-btn" data-i18n="Send code by email">Send code by email</button>
+                <button type="button" class="auth-link-btn" id="twofa-back-btn" data-i18n="Back to sign in">Back to sign in</button>
             </form>
             <div id="login-approval-form" class="auth-form hidden">
                 <p id="login-approval-message" style="margin:0 0 16px;color:#5f6368;font-size:14px;line-height:1.45;text-align:center;">
-                    Check your phone and tap <strong>Yes, it's me</strong> to finish signing in.
+                    <span data-i18n="Check your phone and tap">Check your phone and tap</span> <strong data-i18n="Yes, it&#x27;s me">Yes, it's me</strong> <span data-i18n="to finish signing in.">to finish signing in.</span>
                 </p>
                 <input type="hidden" id="login-approval-id" value="">
                 <input type="hidden" id="login-approval-token" value="">
                 <div class="auth-error" id="login-approval-error" role="alert" aria-live="polite"></div>
-                <p style="text-align:center;color:#5f6368;font-size:13px;">Waiting for approval…</p>
-                <button type="button" class="auth-link-btn" id="login-approval-back-btn">Cancel</button>
+                <p style="text-align:center;color:#5f6368;font-size:13px;" data-i18n="Waiting for approval…">Waiting for approval…</p>
+                <button type="button" class="auth-link-btn" id="login-approval-back-btn" data-i18n="Cancel">Cancel</button>
             </div>
             </section>
         </div>
@@ -119,7 +120,7 @@
             <div class="sidebar-header">
                 <div class="logo-small" onclick="window.location.href='/files'" style="cursor: pointer;">
                     <svg width="36" height="36" viewBox="0 0 87.3 78"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
-                    <span class="logo-text">Drive</span>
+                    <span class="logo-text" data-i18n="Drive">Drive</span>
                 </div>
             </div>
 
@@ -133,50 +134,50 @@
                             <rect fill="#4285F4" x="16" y="16" width="14" height="4"/>
                         </svg>
                     </span>
-                    New
+                    <span data-i18n="New">New</span>
                 </button>
                 <div class="new-dropdown hidden" id="new-dropdown">
-                    <button class="context-item" id="new-folder-action"><span class="new-item-icon" style="color:#5f6368"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span>New folder</span></button>
-                    <button class="context-item" id="file-upload-action"><span class="new-item-icon"><svg viewBox="0 0 24 24" fill="#5f6368"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg></span><span>File upload</span></button>
-                    <button class="context-item" id="folder-upload-action"><span class="new-item-icon"><svg viewBox="0 0 24 24" fill="#5f6368"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 8H9v-2h5v-3l4 4-4 4v-3z"/></svg></span><span>Folder upload</span></button>
+                    <button class="context-item" id="new-folder-action"><span class="new-item-icon" style="color:#5f6368"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></span><span data-i18n="New folder">New folder</span></button>
+                    <button class="context-item" id="file-upload-action"><span class="new-item-icon"><svg viewBox="0 0 24 24" fill="#5f6368"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg></span><span data-i18n="File upload">File upload</span></button>
+                    <button class="context-item" id="folder-upload-action"><span class="new-item-icon"><svg viewBox="0 0 24 24" fill="#5f6368"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 8H9v-2h5v-3l4 4-4 4v-3z"/></svg></span><span data-i18n="Folder upload">Folder upload</span></button>
                     <div class="context-divider"></div>
-                    <button class="context-item" id="new-doc-action"><span class="new-item-icon" style="color:#4285f4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3.5V9h5.5" fill="rgba(255,255,255,.5)"/><path d="M8 12h8v1.5H8zm0 3h8v1.5H8zm0 3h5v1.5H8z" fill="#fff"/></svg></span><span>Document</span></button>
-                    <button class="context-item" id="new-sheet-action"><span class="new-item-icon" style="color:#34a853"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3.5V9h5.5" fill="rgba(255,255,255,.5)"/><path d="M7 12h4v2H7zm0 3h4v2H7zm0 3h4v2H7zm5-6h4v2h-4zm0 3h4v2h-4zm0 3h4v2h-4z" fill="#fff"/></svg></span><span>Spreadsheet</span></button>
-                    <button class="context-item" id="new-presentation-action"><span class="new-item-icon" style="color:#fbbc05"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H4V8h16v11zm-7-9.2L9.2 15h7.6L13 9.8z"/></svg></span><span>Presentation</span></button>
+                    <button class="context-item" id="new-doc-action"><span class="new-item-icon" style="color:#4285f4"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3.5V9h5.5" fill="rgba(255,255,255,.5)"/><path d="M8 12h8v1.5H8zm0 3h8v1.5H8zm0 3h5v1.5H8z" fill="#fff"/></svg></span><span data-i18n="Document">Document</span></button>
+                    <button class="context-item" id="new-sheet-action"><span class="new-item-icon" style="color:#34a853"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3.5V9h5.5" fill="rgba(255,255,255,.5)"/><path d="M7 12h4v2H7zm0 3h4v2H7zm0 3h4v2H7zm5-6h4v2h-4zm0 3h4v2h-4zm0 3h4v2h-4z" fill="#fff"/></svg></span><span data-i18n="Spreadsheet">Spreadsheet</span></button>
+                    <button class="context-item" id="new-presentation-action"><span class="new-item-icon" style="color:#fbbc05"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 16H4V8h16v11zm-7-9.2L9.2 15h7.6L13 9.8z"/></svg></span><span data-i18n="Presentation">Presentation</span></button>
                 </div>
             </div>
 
             <nav class="sidebar-nav">
-                <a href="/home" class="nav-item" data-page="home" id="nav-home"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>Home</a>
+                <a href="/home" class="nav-item" data-page="home" id="nav-home"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span data-i18n="Home">Home</span></a>
                 <div class="nav-drive-group" id="nav-drive-group">
                     <div class="nav-drive-row" id="nav-files-row">
-                        <button type="button" class="nav-tree-chevron" id="nav-my-drive-chevron" aria-label="Expand My Drive folders" aria-expanded="false"></button>
-                        <a href="/files" class="nav-item nav-drive-link active" data-page="files" id="nav-files"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>My Drive</a>
+                        <button type="button" class="nav-tree-chevron" id="nav-my-drive-chevron" aria-label="Expand My Drive folders" aria-expanded="false" data-i18n-aria-label="Expand My Drive folders"></button>
+                        <a href="/files" class="nav-item nav-drive-link active" data-page="files" id="nav-files"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg><span data-i18n="My Drive">My Drive</span></a>
                     </div>
-                    <div class="nav-tree-children hidden" id="nav-my-drive-tree" role="group" aria-label="My Drive folders"></div>
+                    <div class="nav-tree-children hidden" id="nav-my-drive-tree" role="group" aria-label="My Drive folders" data-i18n-aria-label="My Drive folders"></div>
                 </div>
-                <a href="/computers" class="nav-item" data-page="computers" id="nav-computers"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5h16c1.1 0 2 .9 2 2v9a2 2 0 0 1-2 2h-6l1.5 2v1H8.5v-1L10 18H4a2 2 0 0 1-2-2V7c0-1.1.9-2 2-2zm0 2v9h16V7H4z"/></svg>Computers</a>
-                <a href="/recent" class="nav-item" data-page="recent" id="nav-recent"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>Recent</a>
-                <a href="/starred" class="nav-item" data-page="starred" id="nav-starred"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>Starred</a>
-                <a href="/shared-with" class="nav-item" data-page="shared-with" id="nav-shared-with"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.98 1.97 3.45V19h7v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>Shared with me</a>
+                <a href="/computers" class="nav-item" data-page="computers" id="nav-computers"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5h16c1.1 0 2 .9 2 2v9a2 2 0 0 1-2 2h-6l1.5 2v1H8.5v-1L10 18H4a2 2 0 0 1-2-2V7c0-1.1.9-2 2-2zm0 2v9h16V7H4z"/></svg><span data-i18n="Computers">Computers</span></a>
+                <a href="/recent" class="nav-item" data-page="recent" id="nav-recent"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg><span data-i18n="Recent">Recent</span></a>
+                <a href="/starred" class="nav-item" data-page="starred" id="nav-starred"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg><span data-i18n="Starred">Starred</span></a>
+                <a href="/shared-with" class="nav-item" data-page="shared-with" id="nav-shared-with"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.98 1.97 3.45V19h7v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg><span data-i18n="Shared with me">Shared with me</span></a>
 
-                <a href="/offline" class="nav-item" data-page="offline" id="nav-offline"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C7.03 3 2.73 6.11 1 10.5L12 21l11-10.5C21.27 6.11 16.97 3 12 3z"/></svg>Offline</a>
-                <a href="/trash" class="nav-item" data-page="trash" id="nav-trash"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>Trash</a>
+                <a href="/offline" class="nav-item" data-page="offline" id="nav-offline"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C7.03 3 2.73 6.11 1 10.5L12 21l11-10.5C21.27 6.11 16.97 3 12 3z"/></svg><span data-i18n="Offline">Offline</span></a>
+                <a href="/trash" class="nav-item" data-page="trash" id="nav-trash"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg><span data-i18n="Trash">Trash</span></a>
                 <div class="nav-divider"></div>
-                <a href="/activity" class="nav-item" data-page="activity" id="nav-activity"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>Activity</a>
-                <a href="/storage" class="nav-item" data-page="storage" id="nav-storage"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>Storage</a>
+                <a href="/activity" class="nav-item" data-page="activity" id="nav-activity"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg><span data-i18n="Activity">Activity</span></a>
+                <a href="/storage" class="nav-item" data-page="storage" id="nav-storage"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg><span data-i18n="Storage">Storage</span></a>
                 <div class="storage-info">
                     <div class="storage-bar"><div class="storage-bar-fill" id="storage-bar-fill"></div></div>
-                    <span class="storage-text" id="storage-text">Calculating...</span>
+                    <span class="storage-text" id="storage-text" data-i18n="Calculating...">Calculating...</span>
                 </div>
-                <a href="/admin/dashboard" class="nav-item admin-nav-item" id="nav-admin-dashboard"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm10 8h8V3h-8v18zM3 21h8v-6H3v6z"/></svg>Dashboard</a>
-                <a href="/admin/users" class="nav-item admin-nav-item" id="nav-admin-users"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.98 1.97 3.45v2h7v-2c0-2.66-5.33-4-8-4z"/></svg>Users</a>
-                <a href="/admin/storage" class="nav-item admin-nav-item" id="nav-admin-storage"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6H4a2 2 0 0 0-2 2v8a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4V8a2 2 0 0 0-2-2zm-8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg>Storage</a>
-                <a href="/admin/activity" class="nav-item admin-nav-item" id="nav-admin-activity"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2.05v2.02A8.001 8.001 0 0 1 20 12h2c0-5-3.66-9.15-8.45-9.95zM11 2.05C6.22 2.86 2.56 7 2.56 12S6.22 21.14 11 21.95v-2.02A8.001 8.001 0 0 1 4.56 12 8.001 8.001 0 0 1 11 4.07V2.05zM12 8v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>Activity Log</a>
-                <a href="/admin/security" class="nav-item admin-nav-item" id="nav-admin-security"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>Security</a>
-                <a href="/admin/settings" class="nav-item admin-nav-item" id="nav-admin-settings"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94a7.43 7.43 0 0 0 .05-.94 7.43 7.43 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.36 7.36 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.58.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.03.31-.05.62-.05.94s.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.38 1.05.7 1.63.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.24 1.13-.56 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"/></svg>Settings</a>
+                <a href="/admin/dashboard" class="nav-item admin-nav-item" id="nav-admin-dashboard"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm10 8h8V3h-8v18zM3 21h8v-6H3v6z"/></svg><span data-i18n="Dashboard">Dashboard</span></a>
+                <a href="/admin/users" class="nav-item admin-nav-item" id="nav-admin-users"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.98 1.97 3.45v2h7v-2c0-2.66-5.33-4-8-4z"/></svg><span data-i18n="Users">Users</span></a>
+                <a href="/admin/storage" class="nav-item admin-nav-item" id="nav-admin-storage"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6H4a2 2 0 0 0-2 2v8a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4V8a2 2 0 0 0-2-2zm-8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/></svg><span data-i18n="Storage">Storage</span></a>
+                <a href="/admin/activity" class="nav-item admin-nav-item" id="nav-admin-activity"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2.05v2.02A8.001 8.001 0 0 1 20 12h2c0-5-3.66-9.15-8.45-9.95zM11 2.05C6.22 2.86 2.56 7 2.56 12S6.22 21.14 11 21.95v-2.02A8.001 8.001 0 0 1 4.56 12 8.001 8.001 0 0 1 11 4.07V2.05zM12 8v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg><span data-i18n="Activity Log">Activity Log</span></a>
+                <a href="/admin/security" class="nav-item admin-nav-item" id="nav-admin-security"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg><span data-i18n="Security">Security</span></a>
+                <a href="/admin/settings" class="nav-item admin-nav-item" id="nav-admin-settings"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94a7.43 7.43 0 0 0 .05-.94 7.43 7.43 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.36 7.36 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.58.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.03.31-.05.62-.05.94s.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.38 1.05.7 1.63.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.24 1.13-.56 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"/></svg><span data-i18n="Settings">Settings</span></a>
                 <div class="nav-divider admin-nav-item"></div>
-                <a href="/files" class="nav-item admin-nav-item" id="nav-admin-back"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"/></svg>Back to Drive</a>
+                <a href="/files" class="nav-item admin-nav-item" id="nav-admin-back"><svg viewBox="0 0 24 24" fill="currentColor"><path d="m20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z"/></svg><span data-i18n="Back to Drive">Back to Drive</span></a>
             </nav>
         </aside>
         <div class="sidebar-resizer" id="sidebar-resizer" aria-hidden="true"></div>
@@ -185,177 +186,177 @@
         <main class="main-content">
             <header class="topbar">
                 <div class="topbar-leading">
-                    <button class="btn-icon topbar-menu" id="sidebar-toggle" title="Menu" aria-label="Menu">
+                    <button class="btn-icon topbar-menu" id="sidebar-toggle" title="Menu" aria-label="Menu" data-i18n-aria-label="Menu" data-i18n-title="Menu">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
                     </button>
                     <div class="topbar-logo" onclick="window.location.href='/files'" style="cursor: pointer;">
                         <svg width="28" height="28" viewBox="0 0 87.3 78"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
-                        <span class="topbar-logo-text">Drive</span>
+                        <span class="topbar-logo-text" data-i18n="Drive">Drive</span>
                     </div>
                 </div>
-                <div class="topbar-admin-title" id="topbar-admin-title">Admin Panel</div>
+                <div class="topbar-admin-title" id="topbar-admin-title" data-i18n="Admin Panel">Admin Panel</div>
                 <div class="search-wrap">
                     <div class="search-box">
                         <span class="search-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></span>
-                        <input type="text" id="search-input" placeholder="Search in Drive" autocomplete="off">
-                        <button class="btn-icon" id="search-options" title="Search filters" aria-label="Search filters">
+                        <input type="text" id="search-input" placeholder="Search in Drive" autocomplete="off" data-i18n-placeholder="Search in Drive">
+                        <button class="btn-icon" id="search-options" title="Search filters" aria-label="Search filters" data-i18n-aria-label="Search filters" data-i18n-title="Search filters">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
                         </button>
                     </div>
                     <div class="search-live-dropdown hidden" id="search-live-dropdown"></div>
                     <div class="search-filter-panel adv-search-panel hidden" id="search-filter-panel">
                         <div class="adv-search-header">
-                            <h2 class="adv-search-title">Advanced search</h2>
-                            <button type="button" class="adv-search-close btn-icon" id="adv-search-close" aria-label="Close advanced search">&times;</button>
+                            <h2 class="adv-search-title" data-i18n="Advanced search">Advanced search</h2>
+                            <button type="button" class="adv-search-close btn-icon" id="adv-search-close" aria-label="Close advanced search" data-i18n-aria-label="Close advanced search">&times;</button>
                         </div>
                         <div class="adv-search-body">
                             <div class="adv-search-row">
-                                <label class="adv-search-label" for="filter-type">Type</label>
+                                <label class="adv-search-label" for="filter-type" data-i18n="Type">Type</label>
                                 <select id="filter-type" class="adv-search-control">
-                                    <option value="">Any</option>
-                                    <option value="Photos">Photos &amp; images</option>
-                                    <option value="PDFs">PDFs</option>
-                                    <option value="Documents">Documents</option>
-                                    <option value="Spreadsheets">Spreadsheets</option>
-                                    <option value="Presentations">Presentations</option>
-                                    <option value="Forms">Forms</option>
-                                    <option value="Audio">Audio</option>
-                                    <option value="Videos">Videos</option>
-                                    <option value="Archives">Archives (zip)</option>
-                                    <option value="Folders">Folders</option>
+                                    <option value="" data-i18n="Any">Any</option>
+                                    <option value="Photos" data-i18n="Photos &amp; images">Photos &amp; images</option>
+                                    <option value="PDFs" data-i18n="PDFs">PDFs</option>
+                                    <option value="Documents" data-i18n="Documents">Documents</option>
+                                    <option value="Spreadsheets" data-i18n="Spreadsheets">Spreadsheets</option>
+                                    <option value="Presentations" data-i18n="Presentations">Presentations</option>
+                                    <option value="Forms" data-i18n="Forms">Forms</option>
+                                    <option value="Audio" data-i18n="Audio">Audio</option>
+                                    <option value="Videos" data-i18n="Videos">Videos</option>
+                                    <option value="Archives" data-i18n="Archives (zip)">Archives (zip)</option>
+                                    <option value="Folders" data-i18n="Folders">Folders</option>
                                 </select>
                             </div>
                             <div class="adv-search-row">
-                                <label class="adv-search-label" for="filter-owner">Owner</label>
+                                <label class="adv-search-label" for="filter-owner" data-i18n="Owner">Owner</label>
                                 <div class="adv-search-control-wrap">
                                     <select id="filter-owner" class="adv-search-control">
-                                        <option value="Anyone">Anyone</option>
-                                        <option value="Me">Owned by me</option>
-                                        <option value="Not me">Not owned by me</option>
-                                        <option value="Specific person">Specific person...</option>
+                                        <option value="Anyone" data-i18n="Anyone">Anyone</option>
+                                        <option value="Me" data-i18n="Owned by me">Owned by me</option>
+                                        <option value="Not me" data-i18n="Not owned by me">Not owned by me</option>
+                                        <option value="Specific person" data-i18n="Specific person...">Specific person...</option>
                                     </select>
-                                    <input type="email" id="filter-owner-email" class="adv-search-control adv-search-sub hidden" placeholder="Enter a name or email address..." autocomplete="off">
+                                    <input type="email" id="filter-owner-email" class="adv-search-control adv-search-sub hidden" placeholder="Enter a name or email address..." autocomplete="off" data-i18n-placeholder="Enter a name or email address...">
                                 </div>
                             </div>
                             <div class="adv-search-row">
-                                <label class="adv-search-label" for="filter-words">Includes the words</label>
-                                <input type="text" id="filter-words" class="adv-search-control" placeholder="Enter words found in the file" autocomplete="off">
+                                <label class="adv-search-label" for="filter-words" data-i18n="Includes the words">Includes the words</label>
+                                <input type="text" id="filter-words" class="adv-search-control" placeholder="Enter words found in the file" autocomplete="off" data-i18n-placeholder="Enter words found in the file">
                             </div>
                             <div class="adv-search-row">
-                                <label class="adv-search-label" for="filter-item-name">Item name</label>
-                                <input type="text" id="filter-item-name" class="adv-search-control" placeholder="Enter a term that matches part of the file name" autocomplete="off">
+                                <label class="adv-search-label" for="filter-item-name" data-i18n="Item name">Item name</label>
+                                <input type="text" id="filter-item-name" class="adv-search-control" placeholder="Enter a term that matches part of the file name" autocomplete="off" data-i18n-placeholder="Enter a term that matches part of the file name">
                             </div>
                             <div class="adv-search-row adv-search-row-stack">
-                                <label class="adv-search-label" for="filter-location">Location</label>
+                                <label class="adv-search-label" for="filter-location" data-i18n="Location">Location</label>
                                 <div class="adv-search-control-wrap">
                                     <select id="filter-location" class="adv-search-control">
-                                        <option value="Anywhere">Anywhere</option>
-                                        <option value="My Drive">My Drive</option>
-                                        <option value="Shared with me">Shared with me</option>
-                                        <option value="Computers">Computers</option>
-                                        <option value="More locations">More locations...</option>
+                                        <option value="Anywhere" data-i18n="Anywhere">Anywhere</option>
+                                        <option value="My Drive" data-i18n="My Drive">My Drive</option>
+                                        <option value="Shared with me" data-i18n="Shared with me">Shared with me</option>
+                                        <option value="Computers" data-i18n="Computers">Computers</option>
+                                        <option value="More locations" data-i18n="More locations...">More locations...</option>
                                     </select>
                                     <div class="adv-search-checks">
-                                        <label class="adv-search-check"><input type="checkbox" id="filter-location-bin"> In bin</label>
-                                        <label class="adv-search-check"><input type="checkbox" id="filter-location-starred"> Starred</label>
-                                        <label class="adv-search-check"><input type="checkbox" id="filter-location-encrypted"> Encrypted</label>
+                                        <label class="adv-search-check"><input type="checkbox" id="filter-location-bin"> <span data-i18n="In bin">In bin</span></label>
+                                        <label class="adv-search-check"><input type="checkbox" id="filter-location-starred"> <span data-i18n="Starred">Starred</span></label>
+                                        <label class="adv-search-check"><input type="checkbox" id="filter-location-encrypted"> <span data-i18n="Encrypted">Encrypted</span></label>
                                     </div>
                                 </div>
                             </div>
                             <div class="adv-search-row adv-search-row-stack">
-                                <label class="adv-search-label" for="filter-modified">Date modified</label>
+                                <label class="adv-search-label" for="filter-modified" data-i18n="Date modified">Date modified</label>
                                 <div class="adv-search-control-wrap">
                                     <select id="filter-modified" class="adv-search-control">
-                                        <option value="Any time">Any time</option>
-                                        <option value="Today">Today</option>
-                                        <option value="Yesterday">Yesterday</option>
-                                        <option value="Last 7 days">Last 7 days</option>
-                                        <option value="Last 30 days">Last 30 days</option>
-                                        <option value="Last 90 days">Last 90 days</option>
-                                        <option value="Custom">Custom...</option>
+                                        <option value="Any time" data-i18n="Any time">Any time</option>
+                                        <option value="Today" data-i18n="Today">Today</option>
+                                        <option value="Yesterday" data-i18n="Yesterday">Yesterday</option>
+                                        <option value="Last 7 days" data-i18n="Last 7 days">Last 7 days</option>
+                                        <option value="Last 30 days" data-i18n="Last 30 days">Last 30 days</option>
+                                        <option value="Last 90 days" data-i18n="Last 90 days">Last 90 days</option>
+                                        <option value="Custom" data-i18n="Custom...">Custom...</option>
                                     </select>
                                     <div class="adv-search-dates hidden" id="filter-modified-custom">
-                                        <input type="date" id="filter-modified-from" class="adv-search-control" aria-label="Modified from">
+                                        <input type="date" id="filter-modified-from" class="adv-search-control" aria-label="Modified from" data-i18n-aria-label="Modified from">
                                         <span class="adv-search-date-sep">–</span>
-                                        <input type="date" id="filter-modified-to" class="adv-search-control" aria-label="Modified to">
+                                        <input type="date" id="filter-modified-to" class="adv-search-control" aria-label="Modified to" data-i18n-aria-label="Modified to">
                                     </div>
                                 </div>
                             </div>
                             <div class="adv-search-row adv-search-row-stack">
-                                <label class="adv-search-label">Approvals and eSignatures</label>
+                                <label class="adv-search-label" data-i18n="Approvals and eSignatures">Approvals and eSignatures</label>
                                 <div class="adv-search-checks">
-                                    <label class="adv-search-check"><input type="checkbox" id="filter-approval-awaiting"> Awaiting my approval</label>
-                                    <label class="adv-search-check"><input type="checkbox" id="filter-approval-requested"> Requested by me</label>
+                                    <label class="adv-search-check"><input type="checkbox" id="filter-approval-awaiting"> <span data-i18n="Awaiting my approval">Awaiting my approval</span></label>
+                                    <label class="adv-search-check"><input type="checkbox" id="filter-approval-requested"> <span data-i18n="Requested by me">Requested by me</span></label>
                                 </div>
                             </div>
                             <div class="adv-search-row">
-                                <label class="adv-search-label" for="filter-shared-to">Shared to</label>
-                                <input type="text" id="filter-shared-to" class="adv-search-control" placeholder="Enter a name or email address..." autocomplete="off">
+                                <label class="adv-search-label" for="filter-shared-to" data-i18n="Shared to">Shared to</label>
+                                <input type="text" id="filter-shared-to" class="adv-search-control" placeholder="Enter a name or email address..." autocomplete="off" data-i18n-placeholder="Enter a name or email address...">
                             </div>
                             <div class="adv-search-row">
-                                <label class="adv-search-label" for="filter-followups">Follow-ups</label>
+                                <label class="adv-search-label" for="filter-followups" data-i18n="Follow-ups">Follow-ups</label>
                                 <select id="filter-followups" class="adv-search-control">
                                     <option value="-">-</option>
-                                    <option value="Any">Any</option>
-                                    <option value="Suggestions only">Suggestions only</option>
-                                    <option value="Comments assigned to me only">Comments assigned to me only</option>
+                                    <option value="Any" data-i18n="Any">Any</option>
+                                    <option value="Suggestions only" data-i18n="Suggestions only">Suggestions only</option>
+                                    <option value="Comments assigned to me only" data-i18n="Comments assigned to me only">Comments assigned to me only</option>
                                 </select>
                             </div>
                         </div>
                         <div class="adv-search-footer">
-                            <a href="#" class="adv-search-learn" id="adv-search-learn">Learn more</a>
+                            <a href="#" class="adv-search-learn" id="adv-search-learn" data-i18n="Learn more">Learn more</a>
                             <div class="adv-search-actions">
-                                <button type="button" class="adv-search-reset" id="adv-search-reset">Reset</button>
-                                <button type="button" class="adv-search-submit" id="search-filter-apply">Search</button>
+                                <button type="button" class="adv-search-reset" id="adv-search-reset" data-i18n="Reset">Reset</button>
+                                <button type="button" class="adv-search-submit" id="search-filter-apply" data-i18n="Search">Search</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="topbar-actions">
-                    <button class="btn-icon" id="topbar-settings" title="Settings" aria-label="Settings">
+                    <button class="btn-icon" id="topbar-settings" title="Settings" aria-label="Settings" data-i18n-aria-label="Settings" data-i18n-title="Settings">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.3-.06.62-.06.94s.02.64.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.49-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                     </button>
                     <div class="topbar-view-toggle">
-                        <button class="btn-icon" id="topbar-view-list" title="List view" aria-label="List view">
+                        <button class="btn-icon" id="topbar-view-list" title="List view" aria-label="List view" data-i18n-aria-label="List view" data-i18n-title="List view">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg>
                         </button>
-                        <button class="btn-icon active" id="topbar-view-grid" title="Grid view" aria-label="Grid view">
+                        <button class="btn-icon active" id="topbar-view-grid" title="Grid view" aria-label="Grid view" data-i18n-aria-label="Grid view" data-i18n-title="Grid view">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm7 0h5v-6h-5v6zm7 0h5v-6h-5v6zm-7-13v6h5V5h-5zm7 0v6h5V5h-5z"/></svg>
                         </button>
                     </div>
-                    <button class="btn-icon" id="topbar-security" title="Security" aria-label="Security">
+                    <button class="btn-icon" id="topbar-security" title="Security" aria-label="Security" data-i18n-aria-label="Security" data-i18n-title="Security">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
                     </button>
-                    <button class="btn-icon hidden" id="admin-btn" title="Admin Panel" aria-label="Admin Panel" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg></button>
+                    <button class="btn-icon hidden" id="admin-btn" title="Admin Panel" aria-label="Admin Panel" aria-hidden="true" data-i18n-aria-label="Admin Panel" data-i18n-title="Admin Panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg></button>
                     <div class="topbar-profile-wrap" id="topbar-profile-wrap">
-                        <button class="btn-icon topbar-avatar-btn" id="profile-avatar-btn" title="Profile" aria-label="Profile"><div class="user-avatar" id="topbar-avatar">A</div></button>
-                        <div class="profile-dropdown hidden" id="profile-dropdown" role="dialog" aria-label="Account menu">
-                            <button type="button" class="profile-dropdown-close" id="profile-dropdown-close" aria-label="Close">×</button>
+                        <button class="btn-icon topbar-avatar-btn" id="profile-avatar-btn" title="Profile" aria-label="Profile" data-i18n-aria-label="Profile" data-i18n-title="Profile"><div class="user-avatar" id="topbar-avatar">A</div></button>
+                        <div class="profile-dropdown hidden" id="profile-dropdown" role="dialog" aria-label="Account menu" data-i18n-aria-label="Account menu">
+                            <button type="button" class="profile-dropdown-close" id="profile-dropdown-close" aria-label="Close" data-i18n-aria-label="Close">×</button>
                             <div class="profile-dropdown-header">
                                 <div class="profile-avatar-lg" id="profile-avatar-lg">A</div>
                                 <div class="profile-info">
-                                    <div class="profile-greeting" id="profile-greeting">Hi!</div>
+                                    <div class="profile-greeting" id="profile-greeting" data-i18n="Hi!">Hi!</div>
                                     <div class="profile-email" id="profile-email">admin@admin.com</div>
                                 </div>
                             </div>
                             <div class="profile-dropdown-actions">
-                                <button type="button" class="profile-dropdown-signout" id="logout-btn">Sign out</button>
+                                <button type="button" class="profile-dropdown-signout" id="logout-btn" data-i18n="Sign out">Sign out</button>
                             </div>
                             <div class="profile-dropdown-storage hidden" id="profile-storage">
                                 <div class="profile-storage-row">
                                     <span class="profile-storage-warn hidden" id="profile-storage-warn" aria-hidden="true">!</span>
-                                    <span id="profile-storage-text">Loading storage…</span>
-                                    <button type="button" class="profile-storage-link" id="profile-manage-storage">Manage storage</button>
+                                    <span id="profile-storage-text" data-i18n="Loading storage…">Loading storage…</span>
+                                    <button type="button" class="profile-storage-link" id="profile-manage-storage" data-i18n="Manage storage">Manage storage</button>
                                 </div>
                                 <div class="profile-storage-bar">
                                     <div class="profile-storage-bar-fill" id="profile-storage-bar-fill" style="width:0%"></div>
                                 </div>
                             </div>
                             <div class="profile-dropdown-footer">
-                                <a href="/" target="_blank" rel="noreferrer">Privacy Policy</a>
+                                <a href="/" target="_blank" rel="noreferrer" data-i18n="Privacy Policy">Privacy Policy</a>
                                 <span aria-hidden="true">·</span>
-                                <a href="/" target="_blank" rel="noreferrer">Terms of Service</a>
+                                <a href="/" target="_blank" rel="noreferrer" data-i18n="Terms of Service">Terms of Service</a>
                             </div>
                         </div>
                     </div>
@@ -368,12 +369,12 @@
                 <div class="home-warning hidden" id="home-warning">
                     <div class="home-warning-text" id="home-warning-text">
                         <span class="home-warning-icon">⚠</span>
-                        <span>Storage is getting full.</span>
+                        <span data-i18n="Storage is getting full.">Storage is getting full.</span>
                     </div>
                     <div class="home-warning-actions">
-                        <button class="home-warning-btn" id="home-warning-clean">Clean up space</button>
-                        <button class="home-warning-btn" id="home-warning-manage">System stats</button>
-                        <button class="home-warning-close" id="home-warning-close" aria-label="Dismiss warning">✕</button>
+                        <button class="home-warning-btn" id="home-warning-clean" data-i18n="Clean up space">Clean up space</button>
+                        <button class="home-warning-btn" id="home-warning-manage" data-i18n="System stats">System stats</button>
+                        <button class="home-warning-close" id="home-warning-close" aria-label="Dismiss warning" data-i18n-aria-label="Dismiss warning">✕</button>
                     </div>
                 </div>
 
@@ -385,27 +386,27 @@
                 <div class="md3-chip-bar hidden" id="md3-chip-bar"></div>
 
                 <div class="selection-bar hidden" id="selection-bar">
-                    <span id="selection-count">0 items selected</span>
+                    <span id="selection-count" data-i18n="0 items selected">0 items selected</span>
                     <div class="selection-actions">
-                        <button class="btn-icon" id="bulk-share" title="Share"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
-                    <button class="btn-icon" id="bulk-download" title="Download"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
-                    <button class="btn-icon" id="bulk-move" title="Move to"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm0 12H4V8h16v10zm-8-1h2v-3h3v-2h-3V9h-2v3h-3v2h3v3z"/></svg></button>
-                    <button class="btn-icon" id="bulk-restore" title="Restore" aria-label="Restore" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 12H5.83l3.58 3.59L8 17l-6-6 6-6 1.41 1.41L5.83 10H16a4 4 0 0 1 0 8h-3v-2h3a2 2 0 0 0 0-4z"/></svg></button>
-                    <button class="btn-icon danger-icon" id="bulk-delete" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>
+                        <button class="btn-icon" id="bulk-share" title="Share" data-i18n-title="Share"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
+                    <button class="btn-icon" id="bulk-download" title="Download" data-i18n-title="Download"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
+                    <button class="btn-icon" id="bulk-move" title="Move to" data-i18n-title="Move to"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm0 12H4V8h16v10zm-8-1h2v-3h3v-2h-3V9h-2v3h-3v2h3v3z"/></svg></button>
+                    <button class="btn-icon" id="bulk-restore" title="Restore" aria-label="Restore" hidden data-i18n-aria-label="Restore" data-i18n-title="Restore"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M14 12H5.83l3.58 3.59L8 17l-6-6 6-6 1.41 1.41L5.83 10H16a4 4 0 0 1 0 8h-3v-2h3a2 2 0 0 0 0-4z"/></svg></button>
+                    <button class="btn-icon danger-icon" id="bulk-delete" title="Delete" aria-label="Delete" data-i18n-aria-label="Delete" data-i18n-title="Delete"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>
                     </div>
                 </div>
                 </div>
 
                 <div class="file-list-header" id="file-list-header">
-                    <button class="col-name sort-col" data-sort="name">Name <span class="sort-arrow" data-arrow="name">↕</span></button>
-                    <button class="col-owner sort-col" data-sort="owner">Owner <span class="sort-arrow" data-arrow="owner">↕</span></button>
-                    <button class="col-date sort-col" data-sort="modified">Last modified <span class="sort-arrow" data-arrow="modified">↕</span></button>
-                    <button class="col-size sort-col" data-sort="size">File size <span class="sort-arrow" data-arrow="size">↕</span></button>
+                    <button class="col-name sort-col" data-sort="name"><span data-i18n="Name">Name</span> <span class="sort-arrow" data-arrow="name">↕</span></button>
+                    <button class="col-owner sort-col" data-sort="owner"><span data-i18n="Owner">Owner</span> <span class="sort-arrow" data-arrow="owner">↕</span></button>
+                    <button class="col-date sort-col" data-sort="modified"><span data-i18n="Last modified">Last modified</span> <span class="sort-arrow" data-arrow="modified">↕</span></button>
+                    <button class="col-size sort-col" data-sort="size"><span data-i18n="File size">File size</span> <span class="sort-arrow" data-arrow="size">↕</span></button>
                     <div class="col-actions"></div>
                 </div>
                 <div class="trash-bin-banner hidden" id="trash-bin-banner" role="status">
-                    <span class="trash-bin-banner-text">Items in the bin will be deleted forever after 30 days</span>
-                    <button type="button" class="trash-bin-empty-btn" id="empty-bin-btn">Empty bin</button>
+                    <span class="trash-bin-banner-text" data-i18n="Items in the bin will be deleted forever after 30 days">Items in the bin will be deleted forever after 30 days</span>
+                    <button type="button" class="trash-bin-empty-btn" id="empty-bin-btn" data-i18n="Empty bin">Empty bin</button>
                 </div>
                 <div class="file-grid" id="file-grid"></div>
 
@@ -413,7 +414,7 @@
 
                 <div class="activity-page hidden" id="activity-page">
                     <div class="activity-top">
-                        <select id="activity-filter"><option value="all">All activity</option><option value="me">Only me</option><option value="others">Only others</option></select>
+                        <select id="activity-filter"><option value="all" data-i18n="All activity">All activity</option><option value="me" data-i18n="Only me">Only me</option><option value="others" data-i18n="Only others">Only others</option></select>
                     </div>
                     <div id="activity-list"></div>
                 </div>
@@ -426,28 +427,28 @@
                                     <span id="storage-circle-text">
                                         <div class="storage-circle-inner">
                                             <span class="storage-circle-pct">0%</span>
-                                            <span class="storage-circle-label">Loading…</span>
+                                            <span class="storage-circle-label" data-i18n="Loading…">Loading…</span>
                                         </div>
                                     </span>
                                 </div>
                             </div>
                             <div class="storage-hero-meta">
-                                <h3>Storage overview</h3>
-                                <p>Track usage across your files and clean up quickly.</p>
+                                <h3 data-i18n="Storage overview">Storage overview</h3>
+                                <p data-i18n="Track usage across your files and clean up quickly.">Track usage across your files and clean up quickly.</p>
                                 <div class="storage-hero-stats">
                                     <div class="storage-stat-chip">
-                                        <span class="storage-stat-label">Free space</span>
+                                        <span class="storage-stat-label" data-i18n="Free space">Free space</span>
                                         <span class="storage-stat-value" id="storage-free-space">—</span>
                                     </div>
                                     <div class="storage-stat-chip">
-                                        <span class="storage-stat-label">Total files</span>
+                                        <span class="storage-stat-label" data-i18n="Total files">Total files</span>
                                         <span class="storage-stat-value" id="storage-total-files">—</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div class="storage-breakdown-card">
-                            <div class="storage-card-title">Storage breakdown</div>
+                            <div class="storage-card-title" data-i18n="Storage breakdown">Storage breakdown</div>
                             <div class="storage-breakdown" id="storage-breakdown"></div>
                         </div>
                         <div id="largest-files" class="largest-files"></div>
@@ -455,15 +456,15 @@
                 </div>
 
                 <div class="empty-state hidden" id="empty-state">
-                    <h3 id="empty-title">A place for all your files</h3>
-                    <p id="empty-desc">Drag files and folders here or use the "New" button</p>
+                    <h3 id="empty-title" data-i18n="A place for all your files">A place for all your files</h3>
+                    <p id="empty-desc" data-i18n="Drag files and folders here or use the &quot;New&quot; button">Drag files and folders here or use the "New" button</p>
                 </div>
-                <div class="loading-state hidden" id="loading-state"><div class="spinner"></div><p>Loading...</p></div>
+                <div class="loading-state hidden" id="loading-state"><div class="spinner"></div><p data-i18n="Loading...">Loading...</p></div>
             </div>
             </div>
 
             <div class="drop-overlay hidden" id="drop-overlay">
-                <div class="drop-content"><h3>Drop files here</h3><p>Files will be encrypted and uploaded</p></div>
+                <div class="drop-content"><h3 data-i18n="Drop files here">Drop files here</h3><p data-i18n="Files will be encrypted and uploaded">Files will be encrypted and uploaded</p></div>
             </div>
         </main>
 
@@ -473,7 +474,7 @@
                     <span id="details-header-icon" class="details-header-icon"></span>
                     <input id="details-name" class="details-name" readonly />
                 </div>
-                <button class="btn-icon" id="details-close" title="Close details">
+                <button class="btn-icon" id="details-close" title="Close details" data-i18n-title="Close details">
                     <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                 </button>
             </div>
@@ -484,34 +485,34 @@
                 </div>
 
                 <div class="details-actions-row" id="details-actions-row">
-                    <button class="details-action-btn" id="details-share-btn" title="Share">
+                    <button class="details-action-btn" id="details-share-btn" title="Share" data-i18n-title="Share">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg>
-                        Share
+                        <span data-i18n="Share">Share</span>
                     </button>
-                    <button class="details-action-btn" id="details-download-btn" title="Download">
+                    <button class="details-action-btn" id="details-download-btn" title="Download" data-i18n-title="Download">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zm-8 2V5h2v6h1.17L12 13.17 9.83 11H11zm-6 7h14v2H5v-2z"/></svg>
-                        Download
+                        <span data-i18n="Download">Download</span>
                     </button>
-                    <button class="details-action-btn" id="details-rename-btn" title="Rename">
+                    <button class="details-action-btn" id="details-rename-btn" title="Rename" data-i18n-title="Rename">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                        Rename
+                        <span data-i18n="Rename">Rename</span>
                     </button>
-                    <button class="details-action-btn" id="details-delete-btn" title="Move to trash" aria-label="Delete">
+                    <button class="details-action-btn" id="details-delete-btn" title="Move to trash" aria-label="Delete" data-i18n-aria-label="Delete" data-i18n-title="Move to trash">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                        Delete
+                        <span data-i18n="Delete">Delete</span>
                     </button>
                 </div>
 
                 <div class="m3-details-access">
-                    <h4>Who has access</h4>
+                    <h4 data-i18n="Who has access">Who has access</h4>
                     <div class="access-avatars" id="access-avatars"></div>
-                    <div class="access-desc" id="access-desc">Only you (admin) have access</div>
-                    <button class="btn m3-manage-access-btn" id="details-share-btn2">Manage access</button>
+                    <div class="access-desc" id="access-desc" data-i18n="Only you (admin) have access">Only you (admin) have access</div>
+                    <button class="btn m3-manage-access-btn" id="details-share-btn2" data-i18n="Manage access">Manage access</button>
                 </div>
 
                 <div class="m3-details-tabs">
-                    <button class="tab-btn active" data-tab="properties">Details</button>
-                    <button class="tab-btn" data-tab="activity">Activity</button>
+                    <button class="tab-btn active" data-tab="properties" data-i18n="Details">Details</button>
+                    <button class="tab-btn" data-tab="activity" data-i18n="Activity">Activity</button>
                 </div>
 
                 <div class="tab-body" id="details-properties"></div>
@@ -520,35 +521,35 @@
         </aside>
 
         <aside class="notifications-panel hidden" id="notifications-panel">
-            <div class="panel-header"><h3>Notifications</h3><button class="link-btn" id="notifications-mark-read">Mark all as read</button></div>
+            <div class="panel-header"><h3 data-i18n="Notifications">Notifications</h3><button class="link-btn" id="notifications-mark-read" data-i18n="Mark all as read">Mark all as read</button></div>
             <div id="notifications-list"></div>
         </aside>
     </div>
 
     <div class="upload-progress hidden" id="upload-progress">
-        <div class="upload-progress-header"><h4>Uploading <span id="upload-count">0</span> file(s)</h4><button class="btn-icon" id="upload-minimize">—</button></div>
+        <div class="upload-progress-header"><h4><span data-i18n="Uploading">Uploading</span> <span id="upload-count">0</span> <span data-i18n="file(s)">file(s)</span></h4><button class="btn-icon" id="upload-minimize">—</button></div>
         <div class="upload-list" id="upload-list"></div>
     </div>
 
     <div class="context-menu hidden" id="context-menu">
-        <button class="context-item" data-action="open">Open</button>
-        <button class="context-item" data-action="open_with">Open with...</button>
+        <button class="context-item" data-action="open" data-i18n="Open">Open</button>
+        <button class="context-item" data-action="open_with" data-i18n="Open with...">Open with...</button>
         <div class="context-divider"></div>
-        <button class="context-item" data-action="share">Share</button>
-        <button class="context-item" data-action="get_link">Get link</button>
-        <button class="context-item" data-action="request_approval">Request approval</button>
+        <button class="context-item" data-action="share" data-i18n="Share">Share</button>
+        <button class="context-item" data-action="get_link" data-i18n="Get link">Get link</button>
+        <button class="context-item" data-action="request_approval" data-i18n="Request approval">Request approval</button>
         <div class="context-divider"></div>
-        <button class="context-item" data-action="move">Move to</button>
-        <button class="context-item" data-action="star">Add to Starred</button>
-        <button class="context-item" data-action="offline">Add to Offline</button>
-        <button class="context-item" data-action="copy">Make a copy</button>
-        <button class="context-item" data-action="rename">Rename</button>
+        <button class="context-item" data-action="move" data-i18n="Move to">Move to</button>
+        <button class="context-item" data-action="star" data-i18n="Add to Starred">Add to Starred</button>
+        <button class="context-item" data-action="offline" data-i18n="Add to Offline">Add to Offline</button>
+        <button class="context-item" data-action="copy" data-i18n="Make a copy">Make a copy</button>
+        <button class="context-item" data-action="rename" data-i18n="Rename">Rename</button>
         <div class="context-divider"></div>
-        <button class="context-item" data-action="info">File information</button>
-        <button class="context-item" data-action="download">Download</button>
-        <button class="context-item" data-action="restore" id="ctx-restore" hidden aria-label="Restore">Restore</button>
+        <button class="context-item" data-action="info" data-i18n="File information">File information</button>
+        <button class="context-item" data-action="download" data-i18n="Download">Download</button>
+        <button class="context-item" data-action="restore" id="ctx-restore" hidden aria-label="Restore" data-i18n="Restore" data-i18n-aria-label="Restore">Restore</button>
         <div class="context-divider"></div>
-        <button class="context-item danger" data-action="delete" id="ctx-delete" aria-label="Move to trash">Move to trash</button>
+        <button class="context-item danger" data-action="delete" id="ctx-delete" aria-label="Move to trash" data-i18n="Move to trash" data-i18n-aria-label="Move to trash">Move to trash</button>
     </div>
 
     <div class="modal-overlay hidden" id="modal-overlay">
@@ -561,9 +562,9 @@
 
     <div class="modal-overlay hidden" id="share-modal-overlay">
         <div class="modal share-modal">
-            <div class="modal-header"><h3 id="share-modal-title">Share</h3><button class="btn-icon" id="share-modal-close">✕</button></div>
+            <div class="modal-header"><h3 id="share-modal-title" data-i18n="Share">Share</h3><button class="btn-icon" id="share-modal-close">✕</button></div>
             <div class="modal-body">
-                <label class="modal-label">Add people or groups</label>
+                <label class="modal-label" data-i18n="Add people or groups">Add people or groups</label>
                 <input type="text" id="share-people-input" placeholder="name@example.com">
                 <div class="share-suggestions hidden" id="share-suggestions"></div>
                 <div class="share-added" id="share-added"></div>
@@ -571,24 +572,24 @@
                 <div class="share-existing" id="share-existing"></div>
                 <div class="context-divider"></div>
                 <div class="share-general">
-                    <label class="modal-label">General access</label>
+                    <label class="modal-label" data-i18n="General access">General access</label>
                     <div class="row-inline">
-                        <select id="share-general-access"><option value="restricted">Restricted</option><option value="link">Anyone with the link</option></select>
-                        <button class="btn btn-secondary btn-sm" id="share-copy-link">Copy link</button>
+                        <select id="share-general-access"><option value="restricted" data-i18n="Restricted">Restricted</option><option value="link" data-i18n="Anyone with the link">Anyone with the link</option></select>
+                        <button class="btn btn-secondary btn-sm" id="share-copy-link" data-i18n="Copy link">Copy link</button>
                     </div>
-                    <select id="share-link-role"><option value="viewer">Can view</option><option value="commenter">Can comment</option><option value="editor">Can edit</option></select>
+                    <select id="share-link-role"><option value="viewer" data-i18n="Can view">Can view</option><option value="commenter" data-i18n="Can comment">Can comment</option><option value="editor" data-i18n="Can edit">Can edit</option></select>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="share-copy-link-footer">Copy link</button>
-                <button class="btn btn-primary" id="share-done">Done</button>
+                <button class="btn btn-secondary" id="share-copy-link-footer" data-i18n="Copy link">Copy link</button>
+                <button class="btn btn-primary" id="share-done" data-i18n="Done">Done</button>
             </div>
         </div>
     </div>
 
     <div class="modal-overlay hidden" id="shortcuts-modal-overlay">
         <div class="modal shortcuts-modal">
-            <div class="modal-header"><h3>Keyboard shortcuts</h3><button class="btn-icon" id="shortcuts-close">✕</button></div>
+            <div class="modal-header"><h3 data-i18n="Keyboard shortcuts">Keyboard shortcuts</h3><button class="btn-icon" id="shortcuts-close">✕</button></div>
             <div class="modal-body shortcuts-grid" id="shortcuts-content"></div>
         </div>
     </div>
@@ -600,29 +601,29 @@
     <div class="audio-mini-player hidden" id="audio-mini-player">
         <canvas id="audio-wave" width="180" height="36" aria-hidden="true"></canvas>
         <div class="audio-track-info">
-            <div class="audio-title" id="audio-title" title="Audio">Audio</div>
+            <div class="audio-title" id="audio-title" title="Audio" data-i18n="Audio" data-i18n-title="Audio">Audio</div>
             <div class="audio-timeline">
                 <span id="audio-current-time">0:00</span>
-                <input id="audio-seek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Seek audio">
+                <input id="audio-seek" type="range" min="0" max="100" value="0" step="0.1" aria-label="Seek audio" data-i18n-aria-label="Seek audio">
                 <span id="audio-duration">0:00</span>
             </div>
         </div>
         <div class="audio-controls">
-            <button class="btn-icon" id="audio-prev" type="button" aria-label="Previous track" title="Previous track">
+            <button class="btn-icon" id="audio-prev" type="button" aria-label="Previous track" title="Previous track" data-i18n-title="Previous track" data-i18n-aria-label="Previous track">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z"/></svg>
             </button>
-            <button class="btn-icon audio-toggle" id="audio-toggle" type="button" aria-label="Pause" title="Pause">
+            <button class="btn-icon audio-toggle" id="audio-toggle" type="button" aria-label="Pause" title="Pause" data-i18n-title="Pause" data-i18n-aria-label="Pause">
                 <svg class="audio-play-icon hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
                 <svg class="audio-pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"/></svg>
             </button>
-            <button class="btn-icon" id="audio-next" type="button" aria-label="Next track" title="Next track">
+            <button class="btn-icon" id="audio-next" type="button" aria-label="Next track" title="Next track" data-i18n-title="Next track" data-i18n-aria-label="Next track">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2V6zM6 18l8.5-6L6 6v12z"/></svg>
             </button>
             <span class="audio-control-divider" aria-hidden="true"></span>
-            <button class="btn-icon" id="audio-shuffle" type="button" aria-label="Shuffle" title="Shuffle" aria-pressed="false">
+            <button class="btn-icon" id="audio-shuffle" type="button" aria-label="Shuffle" title="Shuffle" aria-pressed="false" data-i18n-title="Shuffle" data-i18n-aria-label="Shuffle">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.59 9.17 5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
             </button>
-            <button class="btn-icon" id="audio-repeat" type="button" aria-label="Repeat" title="Repeat" aria-pressed="false">
+            <button class="btn-icon" id="audio-repeat" type="button" aria-label="Repeat" title="Repeat" aria-pressed="false" data-i18n-title="Repeat" data-i18n-aria-label="Repeat">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v3l4-4-4-4v3H7a5 5 0 00-5 5v2h2v-2a3 3 0 013-3zm10 10H7v-3l-4 4 4 4v-3h10a5 5 0 005-5v-2h-2v2a3 3 0 01-3 3z"/></svg>
             </button>
         </div>
@@ -634,15 +635,7 @@
     <input type="file" id="file-input" multiple hidden>
     <input type="file" id="folder-input" webkitdirectory hidden>
 
-    <script src="/js/crypto.js"></script>
-    <script src="/js/crypto_sync.js"></script>
-    <script src="/js/api.js"></script>
-    <script src="/js/components.js"></script>
-    <script src="/js/auth.js"></script>
-    <script src="/js/upload.js"></script>
-    <script src="/js/filemanager.js"></script>
-    <script src="/js/sidebar-tree.js"></script>
-    <script src="/js/admin_panel.js"></script>
-    <script src="/js/app.js"></script>
+    <script src="/js/i18n.js"></script>
+    <script src="/js/bootstrap.js"></script>
 </body>
 </html>

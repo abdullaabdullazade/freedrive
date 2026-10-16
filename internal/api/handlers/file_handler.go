@@ -147,7 +147,7 @@ func (h *FileHandler) Download(w http.ResponseWriter, r *http.Request) {
 	h.fileService.RecordDownload(r.Context(), userID, file.ID, file.Name)
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+file.Name+"\"")
+	w.Header().Set("Content-Disposition", attachmentDisposition(file.Name))
 	w.Header().Set("Content-Length", strconv.FormatInt(file.EncryptedSize, 10))
 	w.Header().Set("X-File-IV", file.IV)
 	w.Header().Set("X-File-Mime", file.MimeType)

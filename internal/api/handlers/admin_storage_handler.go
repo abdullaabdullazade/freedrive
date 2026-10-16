@@ -319,7 +319,7 @@ func (h *AdminHandler) DownloadBackup(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("Content-Disposition", attachmentDisposition(filename))
 	http.ServeContent(w, r, filename, time.Time{}, f)
 }
 

@@ -88,6 +88,20 @@ func RegistrationMode() string {
 	}
 }
 
+// DefaultLanguage defaults to English on unconfigured installations.
+// Legacy language choices are retained in settings and fall back to English in the UI.
+func DefaultLanguage() string {
+	language := strings.ToLower(strings.ReplaceAll(asString(general(load())["language"]), "_", "-"))
+	switch language {
+	case "zh", "zh-cn", "zh-sg", "zh-hans", "zh-hans-cn", "zh-hans-sg":
+		return "zh-CN"
+	case "en", "az", "tr", "de":
+		return language
+	default:
+		return "en"
+	}
+}
+
 // DefaultQuotaBytes returns the configured default user quota.
 func DefaultQuotaBytes() int64 {
 	gb := asInt(general(load())["default_quota_gb"], 10)

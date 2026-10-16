@@ -202,9 +202,9 @@ func (s *AuthService) createChallenge(ctx context.Context, user *domain.User, me
 }
 
 func (s *AuthService) sendSignInCodeEmail(user *domain.User, code string) {
-	subject := "Your FreeDrive sign-in code"
+	subject := email.T("Your FreeDrive sign-in code")
 	body := fmt.Sprintf(
-		"Hello %s,\n\nYour FreeDrive sign-in verification code is:\n\n%s\n\nThis code expires in 10 minutes. If you did not try to sign in, change your password immediately.\n",
+		email.T("Hello %s,\n\nYour FreeDrive sign-in verification code is:\n\n%s\n\nThis code expires in 10 minutes. If you did not try to sign in, change your password immediately.\n"),
 		chooseAuthDisplayName(user.Username, user.Email),
 		code,
 	)

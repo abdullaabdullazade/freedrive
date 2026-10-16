@@ -178,7 +178,7 @@ var CryptoSync = window.CryptoSync = (() => {
     function toastSyncStats(stats) {
         const total = (stats?.pulled || 0) + (stats?.pushed || 0);
         if (total > 0) {
-            Components.toast(`Synced ${total} encryption key${total === 1 ? '' : 's'}`, 'success');
+            Components.toast(I18n.t('Synced {0} encryption key{1}', { 0: total, 1: total === 1 ? '' : 's' }), 'success');
         }
     }
 
@@ -418,19 +418,18 @@ var CryptoSync = window.CryptoSync = (() => {
     async function showRecoverySetupModal(recoveryCode) {
         return new Promise((resolve) => {
             Components.showModal(
-                'Save your recovery code',
+                I18n.t('Save your recovery code'),
                 `<p style="margin:0 0 12px;font-size:14px;color:#5f6368;line-height:1.45;">
-                    Store this code in a safe place. You will need it only if you reset your password
-                    without knowing the old one.
+                    ${I18n.t('Store this code in a safe place. You will need it only if you reset your password without knowing the old one.')}
                 </p>
                 <div style="font-family:monospace;font-size:15px;padding:12px;border-radius:8px;background:#f1f3f4;word-break:break-all;">${Components.escapeHtml(recoveryCode)}</div>
                 <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#3c4043;">
                     <input type="checkbox" id="crypto-recovery-saved">
-                    I saved this recovery code
+                    ${I18n.t('I saved this recovery code')}
                 </label>`,
                 [
                     {
-                        text: 'Continue',
+                        text: I18n.t('Continue'),
                         class: 'btn-primary',
                         close: false,
                         action: () => {

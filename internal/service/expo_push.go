@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/abdullaabdullazade/freedrive/internal/email"
 	"github.com/abdullaabdullazade/freedrive/internal/repository"
 )
 
@@ -34,7 +35,7 @@ type expoPushMessage struct {
 	Data  map[string]interface{} `json:"data,omitempty"`
 }
 
-// SendLoginApproval notifies all registered devices for the user (English copy).
+// SendLoginApproval notifies all registered devices for the user in the site language.
 func (s *ExpoPushService) SendLoginApproval(ctx context.Context, userID, challengeID, deviceName, ip string) error {
 	tokens, err := s.tokenRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -43,14 +44,17 @@ func (s *ExpoPushService) SendLoginApproval(ctx context.Context, userID, challen
 	if len(tokens) == 0 {
 		return nil
 	}
-	body := "Someone is trying to sign in"
-	if deviceName != "" {
-		body = fmt.Sprintf("Sign-in attempt from %s", deviceName)
+	var body string
+	switch {
+	case deviceName != "" && ip != "":
+		body = fmt.Sprintf(email.T("Sign-in attempt from %s (%s). Tap to approve or deny."), email.DeviceName(deviceName), ip)
+	case deviceName != "":
+		body = fmt.Sprintf(email.T("Sign-in attempt from %s. Tap to approve or deny."), email.DeviceName(deviceName))
+	case ip != "":
+		body = fmt.Sprintf(email.T("Someone is trying to sign in (%s). Tap to approve or deny."), ip)
+	default:
+		body = email.T("Someone is trying to sign in. Tap to approve or deny.")
 	}
-	if ip != "" {
-		body += fmt.Sprintf(" (%s)", ip)
-	}
-	body += ". Tap to approve or deny."
 
 	msgs := make([]expoPushMessage, 0, len(tokens))
 	for _, t := range tokens {
@@ -59,7 +63,7 @@ func (s *ExpoPushService) SendLoginApproval(ctx context.Context, userID, challen
 		}
 		msgs = append(msgs, expoPushMessage{
 			To:    t.ExpoPushToken,
-			Title: "Is this you signing in?",
+			Title: email.T("Is this you signing in?"),
 			Body:  body,
 			Sound: "default",
 			Data: map[string]interface{}{

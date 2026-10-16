@@ -59,8 +59,8 @@ func (s *PasswordResetService) SendResetEmail(ctx context.Context, emailAddr, si
 		return nil
 	}
 	link := strings.TrimRight(siteURL, "/") + "/reset-password?token=" + rawToken + "&email=" + emailAddr
-	subject := "Reset your FreeDrive password"
-	body := fmt.Sprintf("Hello,\n\nUse this link to reset your password (expires in 30 minutes):\n\n%s\n\nIf you did not request this, ignore this email.\n", link)
+	subject := email.T("Reset your FreeDrive password")
+	body := fmt.Sprintf(email.T("Hello,\n\nUse this link to reset your password (expires in 30 minutes):\n\n%s\n\nIf you did not request this, ignore this email.\n"), link)
 	return email.SendFromSettings(emailAddr, subject, body)
 }
 

@@ -88,6 +88,8 @@ FreeDrive is ideal for:
 
 ## Core Features
 
+The web UI supports English and Simplified Chinese, including the admin panel and the emails and push notifications the server sends. English is the default; administrators can select Simplified Chinese in Settings → General → Default language. See [Chinese localization notes](docs/localization.zh-CN.md).
+
 ### 1. Drive-like File Management UX
 
 - Folder-based navigation and root view

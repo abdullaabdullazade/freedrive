@@ -161,10 +161,10 @@ const Upload = (() => {
         prepItem.className = 'upload-item';
         prepItem.innerHTML = `
             <div style="flex:1;min-width:0;">
-                <div class="upload-item-name">Creating folder structure…</div>
+                <div class="upload-item-name">${I18n.t("Creating folder structure…")}</div>
                 <div class="upload-item-progress"><div class="upload-item-progress-fill" style="width:60%;transition:none"></div></div>
             </div>
-            <div class="upload-item-status">Preparing…</div>
+            <div class="upload-item-status">${I18n.t("Preparing…")}</div>
         `;
         uploadList.appendChild(prepItem);
         uploadCount.textContent = '…';
@@ -191,7 +191,7 @@ const Upload = (() => {
             }
         } catch (err) {
             prepItem.remove();
-            Components.toast(`Folder structure could not be created: ${err.message}`, 'error');
+            Components.toast(I18n.t("Folder structure could not be created: {0}", { 0: I18n.error(err.message) }), 'error');
             return;
         }
 
@@ -230,7 +230,7 @@ const Upload = (() => {
                     <div class="upload-item-name">${Components.escapeHtml(file.name)}</div>
                     <div class="upload-item-progress"><div class="upload-item-progress-fill"></div></div>
                 </div>
-                <div class="upload-item-status">Encrypting...</div>
+                <div class="upload-item-status">${I18n.t("Encrypting...")}</div>
             `;
             uploadList.appendChild(item);
             queue.push({ file, id, folderId });
@@ -242,14 +242,14 @@ const Upload = (() => {
 
     function showBatchSummary() {
         if (batchUploaded > 0) {
-            const label = batchUploaded === 1 ? '1 file uploaded' : `${batchUploaded} files uploaded`;
+            const label = batchUploaded === 1 ? I18n.t("1 file uploaded") : I18n.t("{0} files uploaded", { 0: batchUploaded });
             Components.toast(label, batchFailed ? 'warning' : 'success', { duration: 4000 });
         }
         if (batchFailed > 0 && batchUploaded === 0) {
-            const label = batchFailed === 1 ? '1 upload failed' : `${batchFailed} uploads failed`;
+            const label = batchFailed === 1 ? I18n.t("1 upload failed") : I18n.t("{0} uploads failed", { 0: batchFailed });
             Components.toast(label, 'error', { duration: 5000 });
         } else if (batchFailed > 0) {
-            Components.toast(`${batchFailed} upload(s) failed`, 'error', { duration: 5000 });
+            Components.toast(I18n.t("{0} upload(s) failed", { 0: batchFailed }), 'error', { duration: 5000 });
         }
         batchUploaded = 0;
         batchFailed = 0;
@@ -307,7 +307,7 @@ const Upload = (() => {
             const canEncrypt = Boolean(cryptoModule?.canEncrypt?.() && cryptoModule?.generateKey);
             if (!canEncrypt) throw new Error('Secure browser encryption is unavailable. Use HTTPS or the FreeDrive desktop app.');
 
-            statusEl.textContent = 'Uploading...';
+            statusEl.textContent = I18n.t("Uploading...");
 
             const currentFolder = jobFolderId || FileManager.getCurrentFolder?.();
             let key = null;
@@ -316,7 +316,7 @@ const Upload = (() => {
             const originalSize = file.size;
 
             if (canEncrypt) {
-                statusEl.textContent = 'Encrypting...';
+                statusEl.textContent = I18n.t("Encrypting...");
                 key = await cryptoModule.generateKey();
                 const originalBuffer = await file.arrayBuffer();
                 const { ciphertext, iv } = await cryptoModule.encryptFile(originalBuffer, key);
@@ -325,7 +325,7 @@ const Upload = (() => {
             } else {
                 if (!insecureUploadNoticeShown) {
                     insecureUploadNoticeShown = true;
-                    Components.toast('HTTPS is not enabled, so files will be uploaded without browser encryption.', 'info', { duration: 7000 });
+                    Components.toast(I18n.t("HTTPS is not enabled, so files will be uploaded without browser encryption."), 'info', { duration: 7000 });
                 }
                 payload = await file.arrayBuffer();
             }
@@ -354,14 +354,14 @@ const Upload = (() => {
                 }
             }
             progressFill.style.width = '100%';
-            statusEl.textContent = 'Done';
+            statusEl.textContent = I18n.t("Done");
             statusEl.style.color = 'var(--fd-green)';
 
             FileManager.afterUpload?.(result, file);
             batchUploaded += 1;
             scheduleRefresh();
         } catch (err) {
-            statusEl.textContent = 'Failed';
+            statusEl.textContent = I18n.t("Failed");
             statusEl.style.color = 'var(--fd-red)';
             batchFailed += 1;
         }

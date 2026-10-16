@@ -91,6 +91,7 @@ func NewRouter(
 		})
 
 		r.Get("/public/share/{token}", shareHandler.PublicLinkInfo)
+		r.Get("/public/config", handlers.PublicConfig)
 		r.Get("/public/share/{token}/download", shareHandler.PublicLinkDownload)
 
 		r.Group(func(r chi.Router) {

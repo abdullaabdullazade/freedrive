@@ -89,14 +89,14 @@ const FileManager = (() => {
                 const used = Components.formatSize(stats.used_bytes || 0);
                 const total = Components.formatSize(stats.total_bytes || 0);
                 const free = Components.formatSize((stats.total_bytes || 0) - (stats.used_bytes || 0));
-                Components.showModal('System stats', `
+                Components.showModal(I18n.t("System stats"), `
                     <div style="display:flex;flex-direction:column;gap:10px;">
-                        <div><strong>Disk usage:</strong> ${used} / ${total}</div>
-                        <div><strong>Free space:</strong> ${free}</div>
+                        <div><strong>${I18n.t("Disk usage:")}</strong> ${used} / ${total}</div>
+                        <div><strong>${I18n.t("Free space:")}</strong> ${free}</div>
                     </div>
-                `, [{ text: 'Close' }]);
+                `, [{ text: I18n.t("Close") }]);
             } catch {
-                Components.toast('Unable to load system stats', 'error');
+                Components.toast(I18n.t("Unable to load system stats"), 'error');
             }
         });
         document.getElementById('home-warning-close')?.addEventListener('click', dismissHomeWarning);
@@ -166,6 +166,7 @@ const FileManager = (() => {
 
         const searchInput = document.getElementById('search-input');
         searchInput?.addEventListener('keydown', (e) => {
+            if (Components.isComposing(e)) return;
             if (e.key === 'Enter') {
                 const q = searchInput.value.trim();
                 if (q) searchAllResults(q);
@@ -239,7 +240,7 @@ const FileManager = (() => {
             if (!newName || newName === selectedPrimary.data.name) return;
             try {
                 await renameItem(selectedPrimary, newName);
-                Components.toast('Renamed', 'success');
+                Components.toast(I18n.t("Renamed"), 'success');
                 refresh();
             } catch (err) {
                 Components.toast(err.message, 'error');
@@ -253,7 +254,7 @@ const FileManager = (() => {
         });
 
         document.getElementById('share-people-input')?.addEventListener('keydown', (e) => {
-            if (e.key !== 'Enter') return;
+            if (e.key !== 'Enter' || Components.isComposing(e)) return;
             e.preventDefault();
             const value = e.currentTarget.value.trim();
             if (!value) return;
@@ -311,7 +312,7 @@ const FileManager = (() => {
     }
 
     function getCurrentUser() {
-        return API.getUser() || { id: '', username: 'User', email: '' };
+        return API.getUser() || { id: '', username: I18n.t("User"), email: '' };
     }
 
     function canWriteFileItem(item) {
@@ -323,37 +324,37 @@ const FileManager = (() => {
     }
 
     function lookupUserLabel(userId) {
-        if (!userId) return 'Unknown';
+        if (!userId) return I18n.t("Unknown");
         const me = getCurrentUser();
-        if (me?.id && userId === me.id) return me.username || me.email || 'You';
+        if (me?.id && userId === me.id) return me.username || me.email || I18n.t("You");
         const hit = usersCache.find((u) => u.id === userId);
         return hit?.label || hit?.email || hit?.username || userId.slice(0, 8);
     }
 
     async function requestApprovalForFile(file) {
-        const email = await Components.prompt('Request approval', '', 'Approver email');
+        const email = await Components.prompt(I18n.t("Request approval"), '', I18n.t("Approver email"));
         if (!email || !String(email).trim()) return;
         try {
             await API.approvals.create(file.id, { approver_email: String(email).trim() });
-            Components.toast('Approval requested', 'success');
+            Components.toast(I18n.t("Approval requested"), 'success');
             if (selectedPrimary?.type === 'file' && selectedPrimary.data?.id === file.id) {
                 await renderDetailsActivity(selectedPrimary);
             }
         } catch (err) {
-            Components.toast(err?.message || 'Failed to request approval', 'error');
+            Components.toast(I18n.error(err?.message) || I18n.t("Failed to request approval"), 'error');
         }
     }
 
     function currentUserLabel() {
         const u = getCurrentUser();
-        return u.username || u.email || 'Me';
+        return u.username || u.email || I18n.t("Me");
     }
 
     function itemOwner(item) {
         if (item.owner_name) return item.owner_name;
         const me = getCurrentUser();
         if (item.owner_id && me.id && item.owner_id === me.id) return currentUserLabel();
-        return item.shared_by_name || 'Unknown';
+        return item.shared_by_name || I18n.t("Unknown");
     }
 
     function isComputerListEntry(item) {
@@ -389,7 +390,7 @@ const FileManager = (() => {
     const SHARED_BADGE_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg>';
 
     function renderSharedBadge() {
-        return `<span class="file-shared-badge" title="Shared" style="display:inline-flex;align-items:center;margin-left:4px;color:#5f6368;vertical-align:middle;">${SHARED_BADGE_SVG}</span>`;
+        return `<span class="file-shared-badge" title="${I18n.t("Shared")}" style="display:inline-flex;align-items:center;margin-left:4px;color:#5f6368;vertical-align:middle;">${SHARED_BADGE_SVG}</span>`;
     }
 
     function renderOwnerCell(item, options = {}) {
@@ -723,7 +724,7 @@ const FileManager = (() => {
             }
             text.innerHTML = `
                 <span class="home-warning-icon">⚠</span>
-                <span><strong>${Math.round(pct)}% of storage used.</strong> If you run out, you can't create, edit, and upload files.</span>
+                <span><strong>${I18n.t("{0}% of storage used.", { 0: Math.round(pct) })}</strong> ${I18n.t("If you run out, you can't create, edit, and upload files.")}</span>
             `;
             warning.classList.remove('hidden');
         } catch {
@@ -744,7 +745,7 @@ const FileManager = (() => {
     function setBreadcrumbHtml(html) {
         const el = getPageHeaderEl();
         if (!el) return;
-        el.innerHTML = `<nav class="page-hero-breadcrumb breadcrumb" aria-label="Breadcrumb">${html}</nav>`;
+        el.innerHTML = `<nav class="page-hero-breadcrumb breadcrumb" aria-label="${I18n.t("Breadcrumb")}">${html}</nav>`;
     }
 
     function syncPageActions() {
@@ -797,7 +798,7 @@ const FileManager = (() => {
     }
 
     async function updateComputerBreadcrumb(folderId) {
-        let html = '<a href="/computers" class="breadcrumb-item">Computers</a>';
+        let html = `<a href="/computers" class="breadcrumb-item">${I18n.t("Computers")}</a>`;
         if (!folderId) {
             setBreadcrumbHtml(html);
             return;
@@ -843,19 +844,19 @@ const FileManager = (() => {
         grid.classList.add('hidden');
         header?.classList.add('hidden');
         empty?.classList.remove('hidden');
-        document.getElementById('empty-title').textContent = 'No computers registered';
+        document.getElementById('empty-title').textContent = I18n.t("No computers registered");
         document.getElementById('empty-desc').textContent =
-            'Register a computer from the API or a future desktop client to back up files here.';
+            I18n.t("Register a computer from the API or a future desktop client to back up files here.");
         updateSelectionUI();
     }
 
     async function updateBreadcrumb(folderId) {
         if (!folderId) {
-            setBreadcrumbText('My Drive');
+            setBreadcrumbText(I18n.t("My Drive"));
             return;
         }
 
-        let html = '<a href="/files" class="breadcrumb-item">My Drive</a>';
+        let html = `<a href="/files" class="breadcrumb-item">${I18n.t("My Drive")}</a>`;
         try {
             const data = await API.folders.breadcrumb(folderId);
             const crumbs = data.breadcrumb || [];
@@ -908,7 +909,7 @@ const FileManager = (() => {
             await updateStorageInfo();
             syncTrashActionLabels();
         } catch (err) {
-            Components.toast(`Failed to load files: ${err.message}`, 'error');
+            Components.toast(I18n.t("Failed to load files: {0}", { 0: I18n.error(err.message) }), 'error');
         } finally {
             showLoading(false);
         }
@@ -937,7 +938,7 @@ const FileManager = (() => {
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
         } catch (err) {
-            Components.toast(`Failed to load more files: ${err.message}`, 'error');
+            Components.toast(I18n.t("Failed to load more files: {0}", { 0: I18n.error(err.message) }), 'error');
         } finally {
             folderFilesLoadingMore = false;
         }
@@ -951,7 +952,7 @@ const FileManager = (() => {
         showFilesView();
         showLoading(true);
         syncPageActions();
-        setBreadcrumbText('Computers');
+        setBreadcrumbText(I18n.t("Computers"));
 
         try {
             const data = await API.computers.list();
@@ -962,7 +963,7 @@ const FileManager = (() => {
                 .map((c) => ({
                     id: c.root_folder_id,
                     owner_id: c.owner_id,
-                    name: c.name || c.hostname || 'Computer',
+                    name: c.name || c.hostname || I18n.t("Computer"),
                     mime_type: 'application/x-freedrive-computer',
                     updated_at: c.last_seen_at || c.updated_at || c.created_at,
                     created_at: c.created_at,
@@ -986,7 +987,7 @@ const FileManager = (() => {
             syncTrashActionLabels();
             syncToolbarSlot();
         } catch (err) {
-            Components.toast(`Failed to load computers: ${err.message}`, 'error');
+            Components.toast(I18n.t("Failed to load computers: {0}", { 0: I18n.error(err.message) }), 'error');
             renderComputersEmptyState();
         } finally {
             showLoading(false);
@@ -1025,7 +1026,7 @@ const FileManager = (() => {
             syncTrashActionLabels();
             syncToolbarSlot();
         } catch (err) {
-            Components.toast(`Failed to load computer folder: ${err.message}`, 'error');
+            Components.toast(I18n.t("Failed to load computer folder: {0}", { 0: I18n.error(err.message) }), 'error');
             await loadComputers();
         } finally {
             showLoading(false);
@@ -1071,10 +1072,10 @@ const FileManager = (() => {
             filteredFiles = flt.files;
 
             renderHomeItems(filteredFiles, homeSuggestedFolders);
-            setBreadcrumbText('Welcome to FreeDrive');
+            setBreadcrumbText(I18n.t("Welcome to FreeDrive"));
             await renderHomeWarning();
         } catch {
-            Components.toast('Failed to load Home', 'error');
+            Components.toast(I18n.t("Failed to load Home"), 'error');
             hideHomeWarning();
         } finally {
             showLoading(false);
@@ -1084,10 +1085,10 @@ const FileManager = (() => {
     // Filter chips shown under the Home search box. They mirror the hidden
     // #filter-* <select> elements used by applyAdvancedSearch().
     const HOME_CHIP_DEFS = [
-        { key: 'type', label: 'Type', select: 'filter-type', anyLabel: 'Any', options: ['Photos', 'Documents', 'Spreadsheets', 'PDFs', 'Presentations', 'Videos', 'Audio', 'Archives', 'Folders'] },
-        { key: 'people', label: 'People', select: 'filter-owner', anyLabel: 'Anyone', options: ['Me', 'Not me'] },
-        { key: 'modified', label: 'Modified', select: 'filter-modified', anyLabel: 'Any time', options: ['Today', 'Yesterday', 'Last 7 days', 'Last 30 days', 'Last 90 days'] },
-        { key: 'location', label: 'Location', select: 'filter-location', anyLabel: 'Anywhere', options: ['My Drive', 'Shared with me', 'Computers'] },
+        { key: 'type', label: "Type", select: 'filter-type', anyLabel: "Any", options: ["Photos", "Documents", "Spreadsheets", 'PDFs', "Presentations", "Videos", "Audio", "Archives", "Folders"] },
+        { key: 'people', label: "People", select: 'filter-owner', anyLabel: "Anyone", options: ['Me', "Not me"] },
+        { key: 'modified', label: "Modified", select: 'filter-modified', anyLabel: "Any time", options: ["Today", "Yesterday", "Last 7 days", "Last 30 days", "Last 90 days"] },
+        { key: 'location', label: "Location", select: 'filter-location', anyLabel: "Anywhere", options: ["My Drive", "Shared with me", "Computers"] },
     ];
 
     function resetAdvancedSearchForm() {
@@ -1126,7 +1127,7 @@ const FileManager = (() => {
 
     function showAdvancedSearchHelp() {
         Components.toast(
-            'Includes the words searches file names and comments, not encrypted file contents. Approvals use a simplified workflow. More locations folder picker is coming soon.',
+            I18n.t("Includes the words searches file names and comments, not encrypted file contents. Approvals use a simplified workflow. More locations folder picker is coming soon."),
             'info',
         );
     }
@@ -1178,19 +1179,19 @@ const FileManager = (() => {
     function homeChipHtml(defs, options = {}) {
         const withClear = !!options.withClear;
         const caretSvg = '<span class="gd-chip-caret"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg></span>';
-        const clearSvg = '<span class="gd-chip-clear" role="button" aria-label="Clear filter"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>';
+        const clearSvg = `<span class="gd-chip-clear" role="button" aria-label="${I18n.t("Clear filter")}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>`;
         return defs.map((d) => {
             const sel = document.getElementById(d.select);
             const current = sel && sel.value && sel.value !== d.anyLabel ? sel.value : '';
             const active = current ? ' active' : '';
             const label = current || d.label;
             const trailing = (withClear && current) ? clearSvg : caretSvg;
-            const opts = `<button class="gd-chip-option" data-value="">${esc(d.anyLabel)}</button>` +
-                d.options.map((o) => `<button class="gd-chip-option" data-value="${esc(o)}">${esc(o)}</button>`).join('');
+            const opts = `<button class="gd-chip-option" data-value="">${esc(I18n.t(d.anyLabel))}</button>` +
+                d.options.map((o) => `<button class="gd-chip-option" data-value="${esc(o)}">${esc(I18n.t(o))}</button>`).join('');
             return `
                 <div class="gd-chip${active}" data-chip="${d.key}" data-select="${d.select}" data-any="${esc(d.anyLabel)}" data-label="${esc(d.label)}">
                     <button class="gd-chip-btn" type="button">
-                        <span class="gd-chip-text">${esc(label)}</span>
+                        <span class="gd-chip-text">${esc(I18n.t(label))}</span>
                         ${trailing}
                     </button>
                     <div class="gd-chip-menu hidden">${opts}</div>
@@ -1205,7 +1206,7 @@ const FileManager = (() => {
         const when = new Date(opened
             ? (item.accessed_at || item.updated_at || item.created_at)
             : (item.created_at || item.updated_at || item.accessed_at));
-        return `${opened ? 'You opened' : 'You created'} \u00b7 ${formatHomeReasonDate(when)}`;
+        return `${opened ? I18n.t("You opened") : I18n.t("You created")} \u00b7 ${formatHomeReasonDate(when)}`;
     }
 
     function formatHomeReasonDate(d) {
@@ -1215,13 +1216,16 @@ const FileManager = (() => {
             && d.getMonth() === now.getMonth()
             && d.getDate() === now.getDate();
         if (sameDay) {
-            return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+            return d.toLocaleTimeString(I18n.language === 'en' ? 'en-GB' : I18n.language, { hour: '2-digit', minute: '2-digit', hour12: false });
         }
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const day = d.getDate();
-        const mon = months[d.getMonth()];
-        if (d.getFullYear() !== now.getFullYear()) return `${day} ${mon} ${d.getFullYear()}`;
-        return `${day} ${mon}`;
+        if (I18n.language === 'en') {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const day = d.getDate();
+            const mon = months[d.getMonth()];
+            if (d.getFullYear() !== now.getFullYear()) return `${day} ${mon} ${d.getFullYear()}`;
+            return `${day} ${mon}`;
+        }
+        return d.toLocaleDateString(I18n.language, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
     }
 
     function renderHomeItems(files, folders) {
@@ -1246,7 +1250,7 @@ const FileManager = (() => {
 
         if (suggestedFolders.length > 0) {
             html += `
-                <h3 class="gd-home-section-title collapsible" data-target="gd-suggested-grid"><span class="caret">▾</span> Suggested folders</h3>
+                <h3 class="gd-home-section-title collapsible" data-target="gd-suggested-grid"><span class="caret">▾</span> ${I18n.t("Suggested folders")}</h3>
                 <div class="gd-suggested-grid" id="gd-suggested-grid"></div>
             `;
         }
@@ -1254,25 +1258,25 @@ const FileManager = (() => {
         if (initialCards.length > 0) {
             if (useList) {
                 html += `
-                    <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-wrap"><span class="caret">▾</span> Suggested files</h3>
+                    <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-wrap"><span class="caret">▾</span> ${I18n.t("Suggested files")}</h3>
                     <div id="gd-home-suggested-wrap">
                         <div class="file-list-header gd-home-list-header">
-                            <div class="col-name">Name</div>
-                            <div class="col-owner">Reason suggested</div>
-                            <div class="col-date">Owner</div>
-                            <div class="col-size">Location</div>
+                            <div class="col-name">${I18n.t("Name")}</div>
+                            <div class="col-owner">${I18n.t("Reason suggested")}</div>
+                            <div class="col-date">${I18n.t("Owner")}</div>
+                            <div class="col-size">${I18n.t("Location")}</div>
                             <div class="col-actions"></div>
                         </div>
                         <div class="file-grid gd-home-recent-list" id="gd-home-suggested-list"></div>
-                        ${showViewMore ? '<div class="gd-home-viewmore"><button type="button" class="gd-viewmore-link" id="home-view-more-btn">View more</button></div>' : ''}
+                        ${showViewMore ? `<div class="gd-home-viewmore"><button type="button" class="gd-viewmore-link" id="home-view-more-btn">${I18n.t("View more")}</button></div>` : ''}
                     </div>
                 `;
             } else {
                 html += `
-                    <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-wrap"><span class="caret">▾</span> Suggested files</h3>
+                    <h3 class="gd-home-section-title collapsible" data-target="gd-home-suggested-wrap"><span class="caret">▾</span> ${I18n.t("Suggested files")}</h3>
                     <div id="gd-home-suggested-wrap">
                         <div class="file-grid grid-view" id="gd-home-suggested-cards"></div>
-                        ${showViewMore ? '<div class="gd-home-viewmore"><button type="button" class="gd-viewmore-link" id="home-view-more-btn">View more</button></div>' : ''}
+                        ${showViewMore ? `<div class="gd-home-viewmore"><button type="button" class="gd-viewmore-link" id="home-view-more-btn">${I18n.t("View more")}</button></div>` : ''}
                     </div>
                 `;
             }
@@ -1280,7 +1284,7 @@ const FileManager = (() => {
 
         if (!suggestedFiles.length && !suggestedFolders.length) {
             html += `
-                <div class="gd-home-empty">Welcome to your Drive. You don't have any files yet.</div>
+                <div class="gd-home-empty">${I18n.t("Welcome to your Drive. You don't have any files yet.")}</div>
             `;
         }
 
@@ -1298,7 +1302,7 @@ const FileManager = (() => {
                         <div class="gd-card-icon"><svg viewBox="0 0 24 24" fill="#5F6368" width="24" height="24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div>
                         <div class="gd-card-content">
                             <div class="gd-card-name" title="${esc(f.name)}">${esc(f.name)}</div>
-                            <div class="gd-card-action">in My Drive</div>
+                            <div class="gd-card-action">${I18n.t("in My Drive")}</div>
                         </div>
                     </div>
                 `;
@@ -1375,7 +1379,7 @@ const FileManager = (() => {
 
     function updateChipLabel(chip, value) {
         const textEl = chip.querySelector('.gd-chip-text');
-        if (textEl) textEl.textContent = value || (chip.dataset.label || '');
+        if (textEl) textEl.textContent = I18n.t(value || (chip.dataset.label || ''));
         chip.classList.toggle('active', !!value);
     }
 
@@ -1427,18 +1431,18 @@ const FileManager = (() => {
     }
 
     function resolveHomeLocationName(folderId) {
-        if (!folderId) return 'My Drive';
+        if (!folderId) return I18n.t("My Drive");
         return folderNameCache.get(folderId) || '';
     }
 
     async function ensureFolderNames(ids, onResolved) {
         const missing = [...new Set((ids || []).filter((id) => id && !folderNameCache.has(id)))];
         for (const id of missing) {
-            let name = 'My Drive';
+            let name = I18n.t("My Drive");
             try {
                 const data = await API.folders.breadcrumb(id);
                 const crumbs = data.breadcrumb || [];
-                name = crumbs.length ? crumbs[crumbs.length - 1].name : 'My Drive';
+                name = crumbs.length ? crumbs[crumbs.length - 1].name : I18n.t("My Drive");
             } catch { /* keep fallback */ }
             folderNameCache.set(id, name);
             onResolved?.(id, name);
@@ -1532,7 +1536,7 @@ const FileManager = (() => {
 
         let rowsHtml;
         if (!top.length) {
-            rowsHtml = '<div class="gd-sr-empty">No results found</div>';
+            rowsHtml = `<div class="gd-sr-empty">${I18n.t("No results found")}</div>`;
         } else {
             rowsHtml = top.map((f) => {
                 const type = (f.mime_type === 'folder') ? 'folder' : 'file';
@@ -1545,7 +1549,7 @@ const FileManager = (() => {
                             <span class="gd-sr-owner">${esc(itemOwner(f))}</span>
                         </span>
                         <span class="gd-sr-date">${esc(Components.formatDate(f.updated_at || f.created_at))}</span>
-                        <span class="gd-sr-loc">${folderIcon}<span class="gd-sr-loc-text">${esc(loc || 'My Drive')}</span></span>
+                        <span class="gd-sr-loc">${folderIcon}<span class="gd-sr-loc-text">${esc(loc || I18n.t("My Drive"))}</span></span>
                     </button>`;
             }).join('');
         }
@@ -1554,8 +1558,8 @@ const FileManager = (() => {
             <div class="gd-sr-chips">${chipsHtml}</div>
             <div class="gd-sr-list">${rowsHtml}</div>
             <div class="gd-sr-footer">
-                <a href="#" class="gd-sr-advanced">Advanced search</a>
-                <a href="#" class="gd-sr-all">${'\u2190'} All results</a>
+                <a href="#" class="gd-sr-advanced">${I18n.t("Advanced search")}</a>
+                <a href="#" class="gd-sr-all">${I18n.t("{2} All results", { 2: '\u2190' })}</a>
             </div>
         `;
 
@@ -1611,7 +1615,7 @@ const FileManager = (() => {
             return s && s.value && s.value !== d.anyLabel;
         });
         bar.innerHTML = homeChipHtml(HOME_CHIP_DEFS, { withClear: true })
-            + (anyActive ? '<button type="button" class="gd-chip-clearall">Clear filters</button>' : '');
+            + (anyActive ? `<button type="button" class="gd-chip-clearall">${I18n.t("Clear filters")}</button>` : '');
 
         bar.querySelectorAll('.gd-chip').forEach((chip) => {
             const clearEl = chip.querySelector('.gd-chip-clear');
@@ -1650,9 +1654,9 @@ const FileManager = (() => {
             filteredFolders = [];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
-            setBreadcrumbText('Recent');
+            setBreadcrumbText(I18n.t("Recent"));
         } catch {
-            Components.toast('Failed to load recent files', 'error');
+            Components.toast(I18n.t("Failed to load recent files"), 'error');
         } finally {
             showLoading(false);
         }
@@ -1671,9 +1675,9 @@ const FileManager = (() => {
             filteredFolders = [];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
-            setBreadcrumbText('Starred');
+            setBreadcrumbText(I18n.t("Starred"));
         } catch {
-            Components.toast('Failed to load starred', 'error');
+            Components.toast(I18n.t("Failed to load starred"), 'error');
         } finally {
             showLoading(false);
         }
@@ -1692,11 +1696,11 @@ const FileManager = (() => {
             filteredFolders = [...allFolders];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles, { isTrash: true });
-            setBreadcrumbText('Trash');
+            setBreadcrumbText(I18n.t("Trash"));
             syncTrashActionLabels();
             updateTrashBinBanner();
         } catch {
-            Components.toast('Failed to load trash', 'error');
+            Components.toast(I18n.t("Failed to load trash"), 'error');
         } finally {
             showLoading(false);
         }
@@ -1715,19 +1719,19 @@ const FileManager = (() => {
         const hasItems = (allFolders && allFolders.length) || (allFiles && allFiles.length);
         if (!hasItems) return;
         const ok = await Components.confirm(
-            'Empty bin?',
-            'All items in the bin will be deleted forever. This cannot be undone.',
-            'Empty bin',
+            I18n.t("Empty bin?"),
+            I18n.t("All items in the bin will be deleted forever. This cannot be undone."),
+            I18n.t("Empty bin"),
         );
         if (!ok) return;
-        Components.toast('Emptying bin…', 'info');
+        Components.toast(I18n.t("Emptying bin…"), 'info');
         try {
             await API.trash.empty();
-            Components.toast('Bin emptied', 'success');
+            Components.toast(I18n.t("Bin emptied"), 'success');
             clearSelection();
             await loadTrash();
         } catch (e) {
-            Components.toast(e?.message || 'Failed to empty bin', 'error');
+            Components.toast(I18n.error(e?.message) || I18n.t("Failed to empty bin"), 'error');
         }
     }
 
@@ -1746,14 +1750,14 @@ const FileManager = (() => {
                     if (mode === 'with-me') {
                         return {
                             ...base,
-                            shared_by_name: item.owner_name || 'User',
+                            shared_by_name: item.owner_name || I18n.t("User"),
                             shared_by_email: item.owner_email || '',
                         };
                     }
                     const recipient = usersCache.find((u) => u.id === item.share?.shared_with);
                     return {
                         ...base,
-                        shared_with_name: recipient?.label || recipient?.email || item.share?.shared_with || 'User',
+                        shared_with_name: recipient?.label || recipient?.email || item.share?.shared_with || I18n.t("User"),
                         shared_with_email: recipient?.email || '',
                     };
                 } catch {
@@ -1766,7 +1770,7 @@ const FileManager = (() => {
             .map((item) => {
                 const base = {
                     id: item.item_id,
-                    name: item.item_name || 'Folder',
+                    name: item.item_name || I18n.t("Folder"),
                     updated_at: item.share?.created_at || new Date().toISOString(),
                     created_at: item.share?.created_at || new Date().toISOString(),
                     share_role: permissionToRole(item.share?.permission),
@@ -1775,14 +1779,14 @@ const FileManager = (() => {
                 if (mode === 'with-me') {
                     return {
                         ...base,
-                        shared_by_name: item.owner_name || 'User',
+                        shared_by_name: item.owner_name || I18n.t("User"),
                         shared_by_email: item.owner_email || '',
                     };
                 }
                 const recipient = usersCache.find((u) => u.id === item.share?.shared_with);
                 return {
                     ...base,
-                    shared_with_name: recipient?.label || recipient?.email || item.share?.shared_with || 'User',
+                    shared_with_name: recipient?.label || recipient?.email || item.share?.shared_with || I18n.t("User"),
                     shared_with_email: recipient?.email || '',
                 };
             });
@@ -1809,14 +1813,14 @@ const FileManager = (() => {
             filteredFolders = [...allFolders];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
-            setBreadcrumbText('Shared with me');
+            setBreadcrumbText(I18n.t("Shared with me"));
         } catch {
             allFolders = [];
             allFiles = [];
             filteredFolders = [];
             filteredFiles = [];
             renderItems([], []);
-            setBreadcrumbText('Shared with me');
+            setBreadcrumbText(I18n.t("Shared with me"));
         } finally {
             showLoading(false);
         }
@@ -1836,9 +1840,9 @@ const FileManager = (() => {
             filteredFolders = [];
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
-            setBreadcrumbText('Offline');
+            setBreadcrumbText(I18n.t("Offline"));
         } catch {
-            Components.toast('Failed to load offline files', 'error');
+            Components.toast(I18n.t("Failed to load offline files"), 'error');
         } finally {
             showLoading(false);
         }
@@ -1846,14 +1850,14 @@ const FileManager = (() => {
 
     async function createFolder() {
         if (!canAcceptUploads()) {
-            Components.toast('Connect a computer to add folders here', 'info');
+            Components.toast(I18n.t("Connect a computer to add folders here"), 'info');
             return;
         }
-        const name = await Components.prompt('New folder', '', 'Folder name');
+        const name = await Components.prompt(I18n.t("New folder"), '', I18n.t("Folder name"));
         if (!name || !name.trim()) return;
         try {
             await API.folders.create(name.trim(), currentFolderId || null);
-            Components.toast('Folder created', 'success');
+            Components.toast(I18n.t("Folder created"), 'success');
             refresh();
             if (currentPage === 'files') SidebarTree.refresh(currentFolderId || null);
         } catch (err) {
@@ -1886,9 +1890,9 @@ const FileManager = (() => {
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
             renderSearchChipBar();
-            setBreadcrumbText(`Search: ${query}`);
+            setBreadcrumbText(I18n.t("Search: {0}", { 0: query }));
         } catch {
-            Components.toast('Search failed', 'error');
+            Components.toast(I18n.t("Search failed"), 'error');
         } finally {
             showLoading(false);
         }
@@ -1910,9 +1914,9 @@ const FileManager = (() => {
             filteredFiles = [...allFiles];
             renderItems(filteredFolders, filteredFiles);
             renderSearchChipBar();
-            setBreadcrumbText('Advanced Search');
+            setBreadcrumbText(I18n.t("Advanced Search"));
         } catch {
-            Components.toast('Advanced search failed', 'error');
+            Components.toast(I18n.t("Advanced search failed"), 'error');
         } finally {
             showLoading(false);
         }
@@ -1926,7 +1930,7 @@ const FileManager = (() => {
 
         const sortFn = (a, b) => {
             if (sortBy === 'name') {
-                return a.name.localeCompare(b.name) * factor;
+                return a.name.localeCompare(b.name, I18n.collation) * factor;
             }
             if (sortBy === 'owner') {
                 const ownerA = currentPage === 'shared-with'
@@ -1935,13 +1939,13 @@ const FileManager = (() => {
                 const ownerB = currentPage === 'shared-with'
                     ? (b.shared_by_name || b.shared_by_email || itemOwner(b))
                     : itemOwner(b);
-                return ownerA.localeCompare(ownerB) * factor;
+                return ownerA.localeCompare(ownerB, I18n.collation) * factor;
             }
             if (sortBy === 'size') {
                 if (currentPage === 'shared-with') {
                     const roleA = String(a.share_role || 'viewer');
                     const roleB = String(b.share_role || 'viewer');
-                    return roleA.localeCompare(roleB) * factor;
+                    return roleA.localeCompare(roleB, I18n.collation) * factor;
                 }
                 const av = Number(a.size || 0);
                 const bv = Number(b.size || 0);
@@ -1950,7 +1954,7 @@ const FileManager = (() => {
             if (sortBy === 'modified_by') {
                 const am = (a.last_modified_by || itemOwner(a)).toLowerCase();
                 const bm = (b.last_modified_by || itemOwner(b)).toLowerCase();
-                return am.localeCompare(bm) * factor;
+                return am.localeCompare(bm, I18n.collation) * factor;
             }
 
             const at = new Date((currentPage === 'shared-with')
@@ -2063,10 +2067,10 @@ const FileManager = (() => {
                 renderComputersEmptyState();
                 return;
             }
-            document.getElementById('empty-title').textContent = isTrash ? 'Trash is empty' : 'No files found';
+            document.getElementById('empty-title').textContent = isTrash ? I18n.t("Trash is empty") : I18n.t("No files found");
             document.getElementById('empty-desc').textContent = isTrash
-                ? 'Items in Trash are deleted after 30 days.'
-                : 'Use New or Upload to add files.';
+                ? I18n.t("Items in Trash are deleted after 30 days.")
+                : I18n.t("Use New or Upload to add files.");
             updateSelectionUI();
             return;
         }
@@ -2081,7 +2085,7 @@ const FileManager = (() => {
             if (filteredFolders.length) {
                 const fh = document.createElement('div');
                 fh.className = 'fd-grid-section-title';
-                fh.textContent = 'Folders';
+                fh.textContent = I18n.t("Folders");
                 grid.appendChild(fh);
                 const fw = document.createElement('div');
                 fw.className = 'fd-folder-chips';
@@ -2090,7 +2094,7 @@ const FileManager = (() => {
                 if (filteredFiles.length) {
                     const dh = document.createElement('div');
                     dh.className = 'fd-grid-section-title';
-                    dh.textContent = 'Files';
+                    dh.textContent = I18n.t("Files");
                     grid.appendChild(dh);
                 }
             }
@@ -2123,9 +2127,9 @@ const FileManager = (() => {
         const isSharedWith = currentPage === 'shared-with';
 
         let owner = itemOwner(item);
-        let modifiedBy = item.last_modified_by || owner || 'Admin';
+        let modifiedBy = item.last_modified_by || owner || I18n.t("Admin");
         let sizeText = type === 'folder' ? '—' : Components.formatSize(item.size);
-        let modifiedText = `${Components.formatDate(item.updated_at || item.created_at)}${type === 'file' ? ` by ${modifiedBy}` : ''}`;
+        let modifiedText = `${Components.formatDate(item.updated_at || item.created_at)}${type === 'file' ? I18n.t(" by {0}", { 0: modifiedBy }) : ''}`;
         let locationText = buildLocationLabel(item.folder_id);
         if (isSharedWith) {
             modifiedText = Components.formatDate(item.shared_at || item.updated_at || item.created_at);
@@ -2142,7 +2146,7 @@ const FileManager = (() => {
 
         row.innerHTML = `
             <div class="file-cell file-name">
-                <input type="checkbox" class="file-checkbox" aria-label="Select">
+                <input type="checkbox" class="file-checkbox" aria-label="${I18n.t("Select")}">
                 <span class="file-icon">${getIcon(type, item.mime_type, item.name)}</span>
                 <span class="file-label">${esc(item.name)}</span>
                 ${sharedBadge}
@@ -2158,9 +2162,9 @@ const FileManager = (() => {
                 ? `<a class="home-location-cell" data-folder="${esc(item.folder_id || '')}" href="/files${item.folder_id ? `/${item.folder_id}` : ''}">${folderIconSvg}<span class="home-location-text">${esc(locationText)}</span></a>`
                 : sizeText}</div>
             <div class="file-cell file-actions">
-                <button class="btn-icon action-share" title="Share"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
-                <button class="btn-icon action-download" title="Download"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
-                <button class="btn-icon action-more" title="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+                <button class="btn-icon action-share" title="${I18n.t("Share")}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18 16.08a2.9 2.9 0 0 0-1.96.77L8.91 12.7a2.9 2.9 0 0 0 0-1.39l7.05-4.11A2.99 2.99 0 1 0 15 5a2.9 2.9 0 0 0 .09.7L8.04 9.81A3 3 0 1 0 8 14.19l7.12 4.16a2.96 2.96 0 1 0 2.88-2.27z"/></svg></button>
+                <button class="btn-icon action-download" title="${I18n.t("Download")}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M5 20h14v-2H5m14-9h-4V3H9v6H5l7 7 7-7z"/></svg></button>
+                <button class="btn-icon action-more" title="${I18n.t("More")}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
             </div>
         `;
 
@@ -2178,16 +2182,16 @@ const FileManager = (() => {
 
         const overlayHtml = `
             <div class="card-overlay">
-                <input type="checkbox" class="file-checkbox" aria-label="Select">
+                <input type="checkbox" class="file-checkbox" aria-label="${I18n.t("Select")}">
             </div>
-            <button class="btn-icon action-more card-more-btn" title="More" aria-label="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>`;
+            <button class="btn-icon action-more card-more-btn" title="${I18n.t("More")}" aria-label="${I18n.t("More")}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>`;
 
         if (type === 'folder') {
             const folderSharedBadge = showSharedBadgeForItem(item) ? renderSharedBadge() : '';
             card.innerHTML = `
                 <span class="folder-chip-icon">${getIcon('folder', item.mime_type, item.name)}</span>
                 <span class="folder-chip-name" title="${esc(item.name)}">${esc(item.name)}</span>${folderSharedBadge}
-                <button class="btn-icon action-more card-more-btn" title="More" aria-label="More"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
+                <button class="btn-icon action-more card-more-btn" title="${I18n.t("More")}" aria-label="${I18n.t("More")}"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></button>
             `;
             bindItemRowEvents(card, item, type, isTrash);
             setupDropTarget(card, item, type);
@@ -2197,8 +2201,11 @@ const FileManager = (() => {
         const me = getCurrentUser();
         const edited = item.updated_at && item.created_at
             && new Date(item.updated_at).getTime() > new Date(item.created_at).getTime();
-        const who = (item.owner_id && me.id && item.owner_id === me.id) ? 'You' : (itemOwner(item) || 'You');
-        const reason = `${who} ${edited ? 'edited' : 'created'} \u00b7 ${Components.formatDate(item.updated_at || item.created_at)}`;
+        const owner = (item.owner_id && me.id && item.owner_id === me.id) ? '' : itemOwner(item);
+        const when = Components.formatDate(item.updated_at || item.created_at);
+        const reason = owner
+            ? I18n.t(edited ? '{1} edited \u00b7 {0}' : '{1} created \u00b7 {0}', { 0: when, 1: owner })
+            : I18n.t(edited ? 'You edited \u00b7 {0}' : 'You created \u00b7 {0}', { 0: when });
         const fileSharedBadge = showSharedBadgeForItem(item) ? renderSharedBadge() : '';
 
         card.innerHTML = `
@@ -2338,7 +2345,7 @@ const FileManager = (() => {
             container.classList.remove('folder-drop-target');
             if (!dragPayload) return;
             const toFolder = item.id;
-            Components.toast(`Moving to ${item.name}...`, 'info');
+            Components.toast(I18n.t("Moving to {0}...", { 0: item.name }), 'info');
             try {
                 if (dragPayload.type === 'file') {
                     await API.files.update(dragPayload.data.id, { folder_id: toFolder });
@@ -2348,7 +2355,7 @@ const FileManager = (() => {
                 addFileActivity(dragPayload.data.id, 'moved', dragPayload.data.name);
                 refresh();
             } catch (err) {
-                Components.toast(`Move failed: ${err.message}`, 'error');
+                Components.toast(I18n.t("Move failed: {0}", { 0: I18n.error(err.message) }), 'error');
             }
         });
     }
@@ -2358,29 +2365,29 @@ const FileManager = (() => {
     }
 
     const TrashCopy = {
-        deleteForever: 'Delete forever',
-        deleteForeverTitle: 'Delete forever?',
-        deleteForeverButton: 'Delete forever',
-        deleteForeverToast: 'Deleted forever',
-        moveToTrash: 'Move to trash',
-        moveToTrashTitle: 'Move to trash?',
-        moveToTrashButton: 'Move to trash',
-        movedToTrashToast: 'Moved to trash',
-        restore: 'Restore',
+        deleteForever: I18n.t("Delete forever"),
+        deleteForeverTitle: I18n.t("Delete forever?"),
+        deleteForeverButton: I18n.t("Delete forever"),
+        deleteForeverToast: I18n.t("Deleted forever"),
+        moveToTrash: I18n.t("Move to trash"),
+        moveToTrashTitle: I18n.t("Move to trash?"),
+        moveToTrashButton: I18n.t("Move to trash"),
+        movedToTrashToast: I18n.t("Moved to trash"),
+        restore: I18n.t("Restore"),
         singleDeleteBody(name) {
-            return `"${name}" will be deleted forever.`;
+            return I18n.t("\"{0}\" will be deleted forever.", { 0: name });
         },
         bulkDeleteBody(count) {
-            return count === 1 ? '1 item will be deleted forever.' : `${count} items will be deleted forever.`;
+            return count === 1 ? I18n.t("1 item will be deleted forever.") : I18n.t("{0} items will be deleted forever.", { 0: count });
         },
         singleMoveBody(name) {
-            return `"${name}" will be moved to trash.`;
+            return I18n.t("\"{0}\" will be moved to trash.", { 0: name });
         },
         bulkMoveBody() {
-            return 'Selected items will be moved to trash.';
+            return I18n.t("Selected items will be moved to trash.");
         },
         restoredToast(count) {
-            return count === 1 ? 'Restored' : `${count} items restored`;
+            return count === 1 ? I18n.t("Restored") : I18n.t("{0} items restored", { 0: count });
         },
     };
 
@@ -2415,7 +2422,7 @@ const FileManager = (() => {
 
         setActionLabel(
             document.getElementById('bulk-delete'),
-            trashMode ? TrashCopy.deleteForever : (computerList ? 'Remove device' : 'Delete'),
+            trashMode ? TrashCopy.deleteForever : (computerList ? I18n.t("Remove device") : I18n.t("Delete")),
         );
         setActionLabel(document.getElementById('bulk-restore'), TrashCopy.restore);
 
@@ -2425,7 +2432,7 @@ const FileManager = (() => {
 
         const detailsDeleteBtn = document.getElementById('details-delete-btn');
         if (detailsDeleteBtn) {
-            const label = trashMode ? TrashCopy.deleteForever : 'Delete';
+            const label = trashMode ? TrashCopy.deleteForever : I18n.t("Delete");
             detailsDeleteBtn.title = trashMode ? TrashCopy.deleteForever : TrashCopy.moveToTrash;
             detailsDeleteBtn.setAttribute('aria-label', label);
             const textNode = detailsDeleteBtn.lastChild;
@@ -2482,8 +2489,8 @@ const FileManager = (() => {
         if (actionMap.delete) {
             const computerEntry = target && target.type === 'folder' && isComputerListEntry(target.data);
             if (computerEntry) {
-                actionMap.delete.textContent = 'Remove device';
-                setActionLabel(actionMap.delete, 'Remove device');
+                actionMap.delete.textContent = I18n.t("Remove device");
+                setActionLabel(actionMap.delete, I18n.t("Remove device"));
             } else {
                 actionMap.delete.textContent = inTrash ? TrashCopy.deleteForever : TrashCopy.moveToTrash;
                 setActionLabel(actionMap.delete, actionMap.delete.textContent);
@@ -2494,7 +2501,7 @@ const FileManager = (() => {
             setActionLabel(actionMap.restore, TrashCopy.restore);
         }
         if (actionMap.info) {
-            const infoLabel = (target && target.type === 'folder') ? 'Folder information' : 'File information';
+            const infoLabel = (target && target.type === 'folder') ? I18n.t("Folder information") : I18n.t("File information");
             actionMap.info.textContent = infoLabel;
             setActionLabel(actionMap.info, infoLabel);
         }
@@ -2668,7 +2675,7 @@ const FileManager = (() => {
             return;
         }
 
-        count.textContent = `${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'} selected`;
+        count.textContent = I18n.t("{0} {1} selected", { 0: selectedItems.size, 1: selectedItems.size === 1 ? 'item' : 'items' });
         syncTrashActionLabels();
         chipBar?.classList.add('hidden');
         bar.classList.remove('hidden');
@@ -2693,7 +2700,7 @@ const FileManager = (() => {
                 return;
             case 'get_link':
                 await navigator.clipboard.writeText(buildShareLink(data.id));
-                Components.toast('Link copied to clipboard', 'success');
+                Components.toast(I18n.t("Link copied to clipboard"), 'success');
                 return;
             case 'request_approval':
                 if (type === 'file') await requestApprovalForFile(data);
@@ -2737,10 +2744,10 @@ const FileManager = (() => {
     }
 
     async function renamePrompt(type, data) {
-        const value = await Components.prompt('Rename', data.name);
+        const value = await Components.prompt(I18n.t("Rename"), data.name);
         if (!value || value.trim() === data.name) return;
         await renameItem({ type, data }, value.trim());
-        Components.toast('Renamed', 'success');
+        Components.toast(I18n.t("Renamed"), 'success');
         refresh();
     }
 
@@ -2759,25 +2766,25 @@ const FileManager = (() => {
             const root = await API.folders.root();
             list = root.folders || [];
         } catch {
-            Components.toast('Could not load folders', 'error');
+            Components.toast(I18n.t("Could not load folders"), 'error');
             return;
         }
 
         const options = [''].concat(list.map((f) => f.id));
-        const labels = ['My Drive (root)'].concat(list.map((f) => f.name));
+        const labels = [I18n.t("My Drive (root)")].concat(list.map((f) => f.name));
 
         const html = `
-            <label class="modal-label">Move to</label>
+            <label class="modal-label">${I18n.t("Move to")}</label>
             <select id="move-target" style="width:100%;height:36px;border-radius:8px;border:1px solid var(--fd-border);background:var(--fd-bg-soft);color:var(--fd-text);">
                 ${options.map((id, i) => `<option value="${id}">${esc(labels[i])}</option>`).join('')}
             </select>
         `;
 
         let moved = false;
-        Components.showModal('Move to', html, [
-            { text: 'Cancel' },
+        Components.showModal(I18n.t("Move to"), html, [
+            { text: I18n.t("Cancel") },
             {
-                text: 'Move',
+                text: I18n.t("Move"),
                 class: 'btn-primary',
                 action: async () => {
                     const targetId = document.getElementById('move-target').value;
@@ -2795,7 +2802,7 @@ const FileManager = (() => {
             if (!document.getElementById('modal-overlay')?.classList.contains('hidden')) return;
             clearInterval(check);
             if (moved) {
-                Components.toast('Moved', 'success');
+                Components.toast(I18n.t("Moved"), 'success');
                 refresh();
             }
         }, 120);
@@ -2807,7 +2814,7 @@ const FileManager = (() => {
         } else {
             await API.folders.update(data.id, { is_starred: !data.is_starred });
         }
-        Components.toast(data.is_starred ? 'Removed from Starred' : 'Added to Starred', 'success');
+        Components.toast(data.is_starred ? I18n.t("Removed from Starred") : I18n.t("Added to Starred"), 'success');
         refresh();
     }
 
@@ -2815,10 +2822,10 @@ const FileManager = (() => {
         const has = meta.offline_ids.includes(fileId);
         if (has) {
             meta.offline_ids = meta.offline_ids.filter((id) => id !== fileId);
-            Components.toast('Removed from Offline', 'info');
+            Components.toast(I18n.t("Removed from Offline"), 'info');
         } else {
             meta.offline_ids.push(fileId);
-            Components.toast('Added to Offline', 'success');
+            Components.toast(I18n.t("Added to Offline"), 'success');
         }
         saveMeta();
         if (currentPage === 'offline') refresh();
@@ -2826,44 +2833,44 @@ const FileManager = (() => {
 
     async function makeCopy(type, data) {
         if (type === 'folder') {
-            await API.folders.create(`Copy of ${data.name}`, data.parent_id || null);
-            Components.toast('Folder copy created', 'success');
+            await API.folders.create(I18n.t("Copy of {0}", { 0: data.name }), data.parent_id || null);
+            Components.toast(I18n.t("Folder copy created"), 'success');
             refresh();
             return;
         }
 
         const blob = await decryptFileBlob(data);
-        const copyName = `Copy of ${data.name}`;
+        const copyName = I18n.t("Copy of {0}", { 0: data.name });
         await uploadEncryptedBlob(blob, copyName, data.mime_type || blob.type, data.folder_id || currentFolderId);
-        Components.toast('Copy created', 'success');
+        Components.toast(I18n.t("Copy created"), 'success');
         refresh();
     }
 
     function showFileInfo(type, data) {
         const html = `
             <div style="display:flex;flex-direction:column;gap:10px;">
-                <div><span class="modal-label">Name</span>${esc(data.name)}</div>
-                <div><span class="modal-label">Type</span>${esc(type === 'folder' ? 'Folder' : (data.mime_type || 'File'))}</div>
-                <div><span class="modal-label">Size</span>${type === 'folder' ? '—' : Components.formatSize(data.size)}</div>
-                <div><span class="modal-label">Owner</span>${esc(itemOwner(data))}</div>
-                <div><span class="modal-label">Modified</span>${Components.formatAbsoluteDate(data.updated_at || data.created_at)}</div>
-                <div><span class="modal-label">Created</span>${Components.formatAbsoluteDate(data.created_at)}</div>
+                <div><span class="modal-label">${I18n.t("Name")}</span>${esc(data.name)}</div>
+                <div><span class="modal-label">${I18n.t("Type")}</span>${esc(type === 'folder' ? I18n.t("Folder") : (data.mime_type || I18n.t("File")))}</div>
+                <div><span class="modal-label">${I18n.t("Size")}</span>${type === 'folder' ? '—' : Components.formatSize(data.size)}</div>
+                <div><span class="modal-label">${I18n.t("Owner")}</span>${esc(itemOwner(data))}</div>
+                <div><span class="modal-label">${I18n.t("Modified")}</span>${Components.formatAbsoluteDate(data.updated_at || data.created_at)}</div>
+                <div><span class="modal-label">${I18n.t("Created")}</span>${Components.formatAbsoluteDate(data.created_at)}</div>
             </div>
         `;
-        Components.showModal('File information', html, [{ text: 'Close' }]);
+        Components.showModal(I18n.t("File information"), html, [{ text: I18n.t("Close") }]);
     }
 
     async function removeComputerDevice(data) {
-        const name = data.name || 'this device';
+        const name = data.name || I18n.t("this device");
         const ok = await Components.confirm(
-            'Remove device?',
-            `Remove "${name}" and all synced files from FreeDrive? This cannot be undone.`,
-            'Remove device',
+            I18n.t("Remove device?"),
+            I18n.t("Remove \"{0}\" and all synced files from FreeDrive? This cannot be undone.", { 0: name }),
+            I18n.t("Remove device"),
         );
         if (!ok) return;
-        Components.toast('Removing device…', 'info');
+        Components.toast(I18n.t("Removing device…"), 'info');
         await API.computers.delete(data.computer_id);
-        Components.toast('Device removed', 'success');
+        Components.toast(I18n.t("Device removed"), 'success');
         clearSelection();
         refresh();
     }
@@ -2906,7 +2913,7 @@ const FileManager = (() => {
         }
 
         Components.toast(TrashCopy.movedToTrashToast, 'success', {
-            actionText: 'Undo',
+            actionText: I18n.t("Undo"),
             onAction: async () => {
                 try {
                     if (type === 'file') {
@@ -2916,7 +2923,7 @@ const FileManager = (() => {
                     }
                     refresh();
                 } catch {
-                    Components.toast('Undo failed', 'error');
+                    Components.toast(I18n.t("Undo failed"), 'error');
                 }
             },
             duration: 4000,
@@ -2935,7 +2942,7 @@ const FileManager = (() => {
     function openShareModal(payload) {
         shareTarget = payload;
         shareDraft = [];
-        document.getElementById('share-modal-title').textContent = `Share ${payload.data.name}`;
+        document.getElementById('share-modal-title').textContent = I18n.t("Share {0}", { 0: payload.data.name });
 
         const key = shareKey(payload.data.id, payload.type);
         const currentAccess = meta.general_access[key] || { access: 'restricted', role: 'viewer' };
@@ -2982,10 +2989,10 @@ const FileManager = (() => {
                 const created = await API.shares.createLink(payload);
                 const link = `${location.origin}/api/v1/public/share/${created.token}/download`;
                 await navigator.clipboard.writeText(link);
-                Components.toast('Share link copied', 'success');
+                Components.toast(I18n.t("Share link copied"), 'success');
                 return;
             } catch (err) {
-                Components.toast(err?.message || 'Failed to create share link', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to create share link"), 'error');
                 return;
             }
         }
@@ -2993,9 +3000,9 @@ const FileManager = (() => {
         const link = await buildShareLink(shareTarget.data.id);
         await navigator.clipboard.writeText(link);
         if (me.role === 'admin') {
-            Components.toast('Link copied — only accessible while logged in', 'success');
+            Components.toast(I18n.t("Link copied — only accessible while logged in"), 'success');
         } else {
-            Components.toast('Link copied to clipboard', 'success');
+            Components.toast(I18n.t("Link copied to clipboard"), 'success');
         }
     }
 
@@ -3053,11 +3060,11 @@ const FileManager = (() => {
         chip.innerHTML = `
             <span>${esc(name)}</span>
             <select>
-                <option value="viewer">Viewer</option>
-                <option value="commenter">Commenter</option>
-                <option value="editor">Editor</option>
+                <option value="viewer">${I18n.t("Viewer")}</option>
+                <option value="commenter">${I18n.t("Commenter")}</option>
+                <option value="editor">${I18n.t("Editor")}</option>
             </select>
-            <button type="button" class="link-btn" style="font-size:11px;">Remove</button>
+            <button type="button" class="link-btn" style="font-size:11px;">${I18n.t("Remove")}</button>
         `;
         chip.querySelector('select').value = role;
         chip.querySelector('select').addEventListener('change', (e) => {
@@ -3098,10 +3105,10 @@ const FileManager = (() => {
                 <span class="share-avatar">${ownerAvatarHtml}</span>
                 <div>
                     <div class="share-name">${esc(currentUserLabel())} <span class="share-email">(${esc(me.email)})</span></div>
-                    <div class="share-meta">Owner</div>
+                    <div class="share-meta">${I18n.t("Owner")}</div>
                 </div>
             </div>
-            <span class="owner-pill">Owner</span>
+            <span class="owner-pill">${I18n.t("Owner")}</span>
             <span class="share-actions-placeholder"></span>
         `;
         existingWrap.appendChild(ownerRow);
@@ -3122,7 +3129,7 @@ const FileManager = (() => {
         entries.forEach((item) => {
             const share = item.share || {};
             const recipient = usersCache.find((u) => u.id === share.shared_with);
-            const displayName = recipient?.label || recipient?.email || share.shared_with || 'User';
+            const displayName = recipient?.label || recipient?.email || share.shared_with || I18n.t("User");
             const row = document.createElement('div');
             row.className = 'share-existing-entry';
             
@@ -3136,16 +3143,16 @@ const FileManager = (() => {
                     <span class="share-avatar">${userAvatarHtml}</span>
                     <div>
                         <div class="share-name">${esc(displayName)}</div>
-                        <div class="share-meta">Shared · ${Components.formatDate(share.created_at)}</div>
+                        <div class="share-meta">${I18n.t("Shared · {2}", { 2: Components.formatDate(share.created_at) })}</div>
                     </div>
                 </div>
                 <div class="share-existing-actions">
                     <select class="share-role-select">
-                        <option value="viewer">Viewer</option>
-                        <option value="commenter">Commenter</option>
-                        <option value="editor">Editor</option>
+                        <option value="viewer">${I18n.t("Viewer")}</option>
+                        <option value="commenter">${I18n.t("Commenter")}</option>
+                        <option value="editor">${I18n.t("Editor")}</option>
                     </select>
-                    <button class="link-btn danger share-remove-btn" type="button">Remove</button>
+                    <button class="link-btn danger share-remove-btn" type="button">${I18n.t("Remove")}</button>
                 </div>
             `;
             const sel = row.querySelector('select');
@@ -3153,23 +3160,23 @@ const FileManager = (() => {
             sel.addEventListener('change', async () => {
                 try {
                     await API.shares.updateUserShare(share.id, { permission: sel.value });
-                    Components.toast('Permission updated', 'success');
+                    Components.toast(I18n.t("Permission updated"), 'success');
                 } catch (err) {
-                    Components.toast(err?.message || 'Failed to update permission', 'error');
+                    Components.toast(I18n.error(err?.message) || I18n.t("Failed to update permission"), 'error');
                     sel.value = permissionToRole(share.permission);
                 }
             });
             row.querySelector('button').addEventListener('click', async () => {
                 try {
                     await API.shares.deleteUserShare(share.id);
-                    Components.toast('Share removed', 'success');
+                    Components.toast(I18n.t("Share removed"), 'success');
                     await refreshSharedByMeCache();
                     if (isMyDrivePage()) {
                         renderItems(filteredFolders, filteredFiles);
                     }
                     renderShareExisting();
                 } catch (err) {
-                    Components.toast(err?.message || 'Failed to remove share', 'error');
+                    Components.toast(I18n.error(err?.message) || I18n.t("Failed to remove share"), 'error');
                 }
             });
             existingWrap.appendChild(row);
@@ -3198,7 +3205,7 @@ const FileManager = (() => {
                 if (shareTarget.type === 'folder') payload.folder_id = shareTarget.data.id;
                 else payload.file_id = shareTarget.data.id;
                 await API.shares.createUserShare(payload);
-                createNotification(`${currentUserLabel()} shared a file with you: ${shareTarget.data.name}`, now, false, d.name || d.email);
+                createNotification({ key: "{0} shared a file with you: {1}", values: { 0: currentUserLabel(), 1: shareTarget.data.name } }, now, false, d.name || d.email);
             }
 
             addFileActivity(shareTarget.data.id, 'shared', shareTarget.data.name, now);
@@ -3206,18 +3213,25 @@ const FileManager = (() => {
             if (isMyDrivePage()) {
                 renderItems(filteredFolders, filteredFiles);
             }
-            Components.toast('Sharing updated', 'success');
+            Components.toast(I18n.t("Sharing updated"), 'success');
             closeShareModal();
             await copyCurrentShareLink();
         } catch (err) {
-            Components.toast(err?.message || 'Failed to save sharing', 'error');
+            Components.toast(I18n.error(err?.message) || I18n.t("Failed to save sharing"), 'error');
         }
     }
 
-    function createNotification(text, createdAt = new Date().toISOString(), read = false, actor = '') {
+    // message is plain text or { key, values }; keyed messages are translated when rendered,
+    // and the English text is kept for icon detection and older readers.
+    function createNotification(message, createdAt = new Date().toISOString(), read = false, actor = '') {
+        const keyed = message && typeof message === 'object';
+        const text = keyed
+            ? message.key.replace(/\{(\d+)\}/g, (match, id) => message.values?.[id] == null ? match : String(message.values[id]))
+            : message;
         meta.notifications.unshift({
             id: Components.uuid(),
             text,
+            ...(keyed ? { i18n: { key: message.key, values: message.values || {} } } : {}),
             created_at: createdAt,
             read,
             actor,
@@ -3270,6 +3284,7 @@ const FileManager = (() => {
                 meta.notifications.push({
                     id,
                     text,
+                    ...(log.details ? {} : { action: log.action, target_name: log.target_name || '', target_type: log.target_type || '' }),
                     created_at: log.created_at || new Date().toISOString(),
                     read: false,
                     actor: log.username || '',
@@ -3285,6 +3300,16 @@ const FileManager = (() => {
         } catch {
             // keep local notifications if activity fetch fails
         }
+    }
+
+    function notificationText(n) {
+        if (n.i18n?.key) return I18n.t(n.i18n.key, n.i18n.values);
+        if (n.action && I18n.language !== 'en') {
+            const typeLabels = { file: 'File', folder: 'Folder', user: 'User' };
+            const target = n.target_name || I18n.t(typeLabels[n.target_type] || 'item');
+            return `${I18n.label(n.action)} — ${target}`;
+        }
+        return n.text;
     }
 
     function notifIconType(text) {
@@ -3316,8 +3341,8 @@ const FileManager = (() => {
                     <div class="notif-empty-icon">
                         <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M12 22c1.1 0 1.99-.9 1.99-2h-4A2 2 0 0012 22zm6-6V11c0-3.07-1.63-5.64-4.5-6.32V4a1.5 1.5 0 00-3 0v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
                     </div>
-                    <p>You're all caught up</p>
-                    <span>No new notifications</span>
+                    <p>${I18n.t("You're all caught up")}</p>
+                    <span>${I18n.t("No new notifications")}</span>
                 </div>`;
             return;
         }
@@ -3341,18 +3366,19 @@ const FileManager = (() => {
 
             const header = document.createElement('div');
             header.className = 'notif-group-label';
-            header.textContent = label;
+            header.textContent = I18n.t(label);
             header.style.setProperty('--fd-i', delayIndex++);
             list.appendChild(header);
 
             items.forEach((n) => {
                 const type = notifIconType(n.text);
+                const text = notificationText(n);
                 const row = document.createElement('div');
                 row.className = `notification-item ${n.read ? '' : 'unread'}`;
                 row.innerHTML = `
                     <div class="notif-icon-wrap ${type}">${notifIcons[type]}</div>
                     <div class="notification-body">
-                        ${esc(n.text)}
+                        ${esc(text)}
                         <div class="notification-time">${Components.formatDate(n.created_at)}</div>
                     </div>
                     ${n.read ? '' : '<span class="notif-unread-dot"></span>'}
@@ -3375,7 +3401,7 @@ const FileManager = (() => {
         saveMeta();
         refreshNotificationsBadge();
         renderNotifications();
-        Components.toast('All notifications marked as read', 'success');
+        Components.toast(I18n.t("All notifications marked as read"), 'success');
     }
 
     function addFileActivity(fileId, actionStr, filename, when = new Date().toISOString()) {
@@ -3402,9 +3428,9 @@ const FileManager = (() => {
             return;
         }
 
-        const email = await Components.prompt('Share selected items', '', 'name@example.com');
+        const email = await Components.prompt(I18n.t("Share selected items"), '', 'name@example.com');
         if (!email) return;
-        const role = await Components.prompt('Role (viewer/commenter/editor)', 'viewer');
+        const role = await Components.prompt(I18n.t("Role (viewer/commenter/editor)"), 'viewer');
         if (!role) return;
 
         const now = new Date().toISOString();
@@ -3421,9 +3447,9 @@ const FileManager = (() => {
                 await API.shares.createUserShare(body);
                 addFileActivity(id, 'shared', payload.data.name, now);
             }
-            Components.toast('Shared selected items', 'success');
+            Components.toast(I18n.t("Shared selected items"), 'success');
         } catch (err) {
-            Components.toast(err?.message || 'Failed to share items', 'error');
+            Components.toast(I18n.error(err?.message) || I18n.t("Failed to share items"), 'error');
         }
     }
 
@@ -3437,7 +3463,7 @@ const FileManager = (() => {
     async function bulkMove() {
         const ids = Array.from(selectedItems);
         if (!ids.length) return;
-        const folderId = await Components.prompt('Move selected to folder ID', currentFolderId || '');
+        const folderId = await Components.prompt(I18n.t("Move selected to folder ID"), currentFolderId || '');
         if (folderId === null) return;
         for (const id of ids) {
             const payload = findSelectedPayload(id);
@@ -3448,7 +3474,7 @@ const FileManager = (() => {
                 await API.folders.update(id, { parent_id: folderId || '' });
             }
         }
-        Components.toast('Moved selected items', 'success');
+        Components.toast(I18n.t("Moved selected items"), 'success');
         refresh();
     }
 
@@ -3462,16 +3488,16 @@ const FileManager = (() => {
                 .filter((payload) => payload && isComputerListEntry(payload.data));
             if (!devices.length) return;
             const ok = await Components.confirm(
-                'Remove devices?',
-                `Remove ${devices.length} device(s) and all synced files from FreeDrive? This cannot be undone.`,
-                'Remove devices',
+                I18n.t("Remove devices?"),
+                I18n.t("Remove {0} device(s) and all synced files from FreeDrive? This cannot be undone.", { 0: devices.length }),
+                I18n.t("Remove devices"),
             );
             if (!ok) return;
             for (const payload of devices) {
                 await API.computers.delete(payload.data.computer_id);
             }
             clearSelection();
-            Components.toast('Devices removed', 'success');
+            Components.toast(I18n.t("Devices removed"), 'success');
             refresh();
             return;
         }
@@ -3699,7 +3725,7 @@ const FileManager = (() => {
 
         const names = [currentUserLabel()].concat(entries.map((item) => {
             const recipient = usersCache.find((u) => u.id === item.share?.shared_with);
-            return recipient?.label || recipient?.email || 'User';
+            return recipient?.label || recipient?.email || I18n.t("User");
         }));
 
         names.slice(0, 6).forEach((name) => {
@@ -3713,10 +3739,10 @@ const FileManager = (() => {
         const descEl = document.getElementById('access-desc');
         if (descEl) {
             if (entries.length) {
-                const extra = names.length > 6 ? ` +${names.length - 6} more` : '';
-                descEl.textContent = `Shared with ${entries.length} person${entries.length > 1 ? 's' : ''}${extra}`;
+                const extra = names.length > 6 ? I18n.t(" +{0} more", { 0: names.length - 6 }) : '';
+                descEl.textContent = I18n.t("Shared with {0} person{1}{2}", { 0: entries.length, 1: entries.length > 1 ? 's' : '', 2: extra });
             } else {
-                descEl.textContent = me.role === 'admin' ? 'Only you (admin) have access' : 'Only you have access';
+                descEl.textContent = me.role === 'admin' ? I18n.t("Only you (admin) have access") : I18n.t("Only you have access");
             }
         }
     }
@@ -3738,49 +3764,49 @@ const FileManager = (() => {
             return `<div class="property-item"><span class="property-icon">${iconSvg}</span><span class="property-content"><span class="property-label">${label}</span><span class="property-value">${valueHTML}</span></span></div>`;
         }
         const sharedRows = currentPage === 'shared-with'
-            ? sharedPropRow(ICON_PERSON, 'Shared by',   esc(data.shared_by_name || 'User'))
-              + sharedPropRow(ICON_CLOCK,  'Date shared', Components.formatAbsoluteDate(data.shared_at || data.updated_at || data.created_at))
-              + sharedPropRow(ICON_KEY,    'Access',      esc(capitalizeRole(data.share_role || 'viewer')))
+            ? sharedPropRow(ICON_PERSON, I18n.t("Shared by"),   esc(data.shared_by_name || I18n.t("User")))
+              + sharedPropRow(ICON_CLOCK,  I18n.t("Date shared"), Components.formatAbsoluteDate(data.shared_at || data.updated_at || data.created_at))
+              + sharedPropRow(ICON_KEY,    I18n.t("Access"),      esc(capitalizeRole(data.share_role || 'viewer')))
             : '';
 
         function formatMimeType(mime, filename) {
-            if (!mime) return 'File';
+            if (!mime) return I18n.t("File");
             const m = mime.toLowerCase();
             const n = (filename || '').toLowerCase();
-            if (m.includes('python') || n.endsWith('.py')) return 'Python Script';
-            if (m.includes('javascript') || n.endsWith('.js')) return 'JavaScript File';
+            if (m.includes('python') || n.endsWith('.py')) return I18n.t("Python Script");
+            if (m.includes('javascript') || n.endsWith('.js')) return I18n.t("JavaScript File");
             if (m.includes('octet-stream') || m.includes('binary')) {
-                if (n.includes('.')) return n.split('.').pop().toUpperCase() + ' File';
-                return 'Configuration File'; // Often dockerignore, gitignore, etc.
+                if (n.includes('.')) return n.split('.').pop().toUpperCase() + I18n.t(" File");
+                return I18n.t("Configuration File"); // Often dockerignore, gitignore, etc.
             }
-            if (m.includes('text/plain')) return 'Text File';
-            if (m.includes('markdown') || n.endsWith('.md')) return 'Markdown Document';
-            if (m.includes('html')) return 'HTML Document';
-            if (m.includes('json') || n.endsWith('.json')) return 'JSON File';
-            if (m.includes('yaml') || m.includes('yml') || n.endsWith('.yml')) return 'YAML Configuration';
-            if (m.includes('shell') || m.includes('sh') || m.includes('bash') || n.endsWith('.sh')) return 'Shell Script';
-            if (m.includes('image/jpeg') || m.includes('jpg')) return 'JPEG Image';
-            if (m.includes('image/png')) return 'PNG Image';
-            if (m.includes('image/gif')) return 'GIF Image';
-            if (m.includes('image/')) return 'Image File';
-            if (m.includes('pdf')) return 'PDF Document';
-            if (m.includes('audio/')) return 'Audio File';
-            if (m.includes('video/')) return 'Video File';
-            if (m.includes('zip') || m.includes('archive')) return 'ZIP Archive';
-            if (m.includes('msword') || m.includes('wordprocessing')) return 'Word Document';
-            if (m.includes('excel') || m.includes('spreadsheet')) return 'Excel Spreadsheet';
-            if (m.includes('powerpoint') || m.includes('presentation')) return 'PowerPoint Presentation';
+            if (m.includes('text/plain')) return I18n.t("Text File");
+            if (m.includes('markdown') || n.endsWith('.md')) return I18n.t("Markdown Document");
+            if (m.includes('html')) return I18n.t("HTML Document");
+            if (m.includes('json') || n.endsWith('.json')) return I18n.t("JSON File");
+            if (m.includes('yaml') || m.includes('yml') || n.endsWith('.yml')) return I18n.t("YAML Configuration");
+            if (m.includes('shell') || m.includes('sh') || m.includes('bash') || n.endsWith('.sh')) return I18n.t("Shell Script");
+            if (m.includes('image/jpeg') || m.includes('jpg')) return I18n.t("JPEG Image");
+            if (m.includes('image/png')) return I18n.t("PNG Image");
+            if (m.includes('image/gif')) return I18n.t("GIF Image");
+            if (m.includes('image/')) return I18n.t("Image File");
+            if (m.includes('pdf')) return I18n.t("PDF Document");
+            if (m.includes('audio/')) return I18n.t("Audio File");
+            if (m.includes('video/')) return I18n.t("Video File");
+            if (m.includes('zip') || m.includes('archive')) return I18n.t("ZIP Archive");
+            if (m.includes('msword') || m.includes('wordprocessing')) return I18n.t("Word Document");
+            if (m.includes('excel') || m.includes('spreadsheet')) return I18n.t("Excel Spreadsheet");
+            if (m.includes('powerpoint') || m.includes('presentation')) return I18n.t("PowerPoint Presentation");
             return mime;
         }
 
         const typeValue = isFolder
             ? (stats
-                ? `Folder · ${stats.folders} folder${stats.folders === 1 ? '' : 's'} · ${stats.files} file${stats.files === 1 ? '' : 's'}`
-                : 'Folder')
+                ? I18n.t("Folder · {0} folder{1} · {2} file{3}", { 0: stats.folders, 1: stats.folders === 1 ? '' : 's', 2: stats.files, 3: stats.files === 1 ? '' : 's' })
+                : I18n.t("Folder"))
             : formatMimeType(data.mime_type, data.name);
 
         const folderSizeValue = isFolder
-            ? (stats ? formatSizeStrict(stats.bytes) : 'Calculating...')
+            ? (stats ? formatSizeStrict(stats.bytes) : I18n.t("Calculating..."))
             : formatSizeStrict(data.size);
 
         const ICONS = {
@@ -3805,20 +3831,20 @@ const FileManager = (() => {
         }
 
         box.innerHTML = `
-            <div class="details-section-title">Details</div>
-            ${propRow('type',     'Type',         esc(typeValue))}
-            ${propRow('size',     'Size',         esc(folderSizeValue))}
-            ${propRow('location', 'Location',     `<a href="/files${data.folder_id ? `/${data.folder_id}` : ''}">${esc(locationLabel)}</a>`)}
-            ${propRow('owner',    'Owner',        esc(itemOwner(data)))}
+            <div class="details-section-title">${I18n.t("Details")}</div>
+            ${propRow('type',     I18n.t("Type"),         esc(typeValue))}
+            ${propRow('size',     I18n.t("Size"),         esc(folderSizeValue))}
+            ${propRow('location', I18n.t("Location"),     `<a href="/files${data.folder_id ? `/${data.folder_id}` : ''}">${esc(locationLabel)}</a>`)}
+            ${propRow('owner',    I18n.t("Owner"),        esc(itemOwner(data)))}
             ${sharedRows}
-            ${propRow('modified', 'Modified',     `${Components.formatAbsoluteDate(data.updated_at || data.created_at)}<br><span style="color:#5f6368;font-size:12px;">by ${esc(ownerName)}</span>`)}
-            ${propRow('created',  'Created',      Components.formatAbsoluteDate(data.created_at))}
+            ${propRow('modified', I18n.t("Modified"),     `${Components.formatAbsoluteDate(data.updated_at || data.created_at)}<br><span style="color:#5f6368;font-size:12px;">${I18n.t("by {1}", { 1: esc(ownerName) })}</span>`)}
+            ${propRow('created',  I18n.t("Created"),      Components.formatAbsoluteDate(data.created_at))}
             <div class="panel-sep"></div>
             <div class="property-item">
                 <span class="property-icon">${ICONS.desc}</span>
                 <span class="property-content">
-                    <span class="property-label">Description</span>
-                    <textarea id="details-description" placeholder="Add a description">${esc(desc)}</textarea>
+                    <span class="property-label">${I18n.t("Description")}</span>
+                    <textarea id="details-description" placeholder="${I18n.t("Add a description")}">${esc(desc)}</textarea>
                 </span>
             </div>
         `;
@@ -3842,6 +3868,15 @@ const FileManager = (() => {
         }
     }
 
+    // Translate only the stored action; preserve its original actor and filename.
+    function localActivityText(activity) {
+        const text = String(activity.text || '');
+        if (I18n.language === 'en' || !activity.action || !activity.filename) return text;
+        const suffix = ' ' + activity.action + ' ' + activity.filename;
+        if (!text.endsWith(suffix)) return text;
+        return text.slice(0, -suffix.length) + ' ' + I18n.t(activity.action) + ' ' + activity.filename;
+    }
+
     async function renderDetailsActivity(payload) {
         const box = document.getElementById('details-activity');
         if (!box) return;
@@ -3849,15 +3884,15 @@ const FileManager = (() => {
         const list = meta.file_activity[data.id] || [];
         const me = getCurrentUser();
 
-        let html = `<div class="details-section-title">Activity</div>`;
+        let html = `<div class="details-section-title">${I18n.t("Activity")}</div>`;
         if (!list.length) {
-            html += `<div style="padding:16px;color:#5f6368;font-size:13px;font-family:'Roboto',Arial,sans-serif;">No local activity yet.</div>`;
+            html += `<div style="padding:16px;color:#5f6368;font-size:13px;font-family:'Roboto',Arial,sans-serif;">${I18n.t("No local activity yet.")}</div>`;
         } else {
             html += list.map((a) => `
                 <div class="activity-item">
                     <div class="activity-avatar">${Components.initials(a.text)}</div>
                     <div class="activity-body">
-                        <div class="activity-text">${esc(a.text)}</div>
+                        <div class="activity-text">${esc(localActivityText(a))}</div>
                         <div class="activity-time">${Components.formatDate(a.created_at)}</div>
                     </div>
                 </div>
@@ -3865,13 +3900,13 @@ const FileManager = (() => {
         }
 
         if (type === 'file') {
-            html += `<div class="details-section-title" style="margin-top:16px;">Comments</div>`;
+            html += `<div class="details-section-title" style="margin-top:16px;">${I18n.t("Comments")}</div>`;
             let comments = [];
             try {
                 const res = await API.comments.list(data.id);
                 comments = res.comments || [];
                 if (!comments.length) {
-                    html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">No comments yet.</div>`;
+                    html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">${I18n.t("No comments yet.")}</div>`;
                 } else {
                     html += comments.map((c) => {
                         const canDelete = me && (c.user_id === me.id || canWriteFileItem(data));
@@ -3885,18 +3920,18 @@ const FileManager = (() => {
                                 <div class="activity-text">${esc(c.content)}${assigneeBadge}</div>
                                 <div class="activity-time">${Components.formatDate(c.created_at)}</div>
                             </div>
-                            ${canDelete ? `<button class="btn-icon comment-delete-btn" data-id="${esc(c.id)}" title="Delete comment" aria-label="Delete comment" style="align-self:flex-start;">✕</button>` : ''}
+                            ${canDelete ? `<button class="btn-icon comment-delete-btn" data-id="${esc(c.id)}" title="${I18n.t("Delete comment")}" aria-label="${I18n.t("Delete comment")}" style="align-self:flex-start;">✕</button>` : ''}
                         </div>`;
                     }).join('');
                 }
                 html += `
                     <div style="padding:16px;">
-                        <textarea id="detail-comment-input" placeholder="Add a comment..." style="width:100%;min-height:64px;border-radius:8px;border:1px solid var(--fd-border);padding:8px;font-family:inherit;"></textarea>
-                        <input id="detail-comment-assignee" type="email" placeholder="Assign to (email, optional)" style="width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--fd-border);padding:8px;font-family:inherit;" autocomplete="off">
-                        <button class="btn btn-primary btn-sm" id="detail-comment-submit" style="margin-top:8px;">Comment</button>
+                        <textarea id="detail-comment-input" placeholder="${I18n.t("Add a comment...")}" style="width:100%;min-height:64px;border-radius:8px;border:1px solid var(--fd-border);padding:8px;font-family:inherit;"></textarea>
+                        <input id="detail-comment-assignee" type="email" placeholder="${I18n.t("Assign to (email, optional)")}" style="width:100%;margin-top:8px;border-radius:8px;border:1px solid var(--fd-border);padding:8px;font-family:inherit;" autocomplete="off">
+                        <button class="btn btn-primary btn-sm" id="detail-comment-submit" style="margin-top:8px;">${I18n.t("Comment")}</button>
                     </div>`;
             } catch {
-                html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">Comments unavailable.</div>`;
+                html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">${I18n.t("Comments unavailable.")}</div>`;
             }
 
             try {
@@ -3905,19 +3940,19 @@ const FileManager = (() => {
                 const hasPending = fileApprovals.some((a) => a.status === 'pending');
                 const canRequest = canWriteFileItem(data) && !hasPending;
 
-                html += `<div class="details-section-title" style="margin-top:16px;">Approvals</div>`;
+                html += `<div class="details-section-title" style="margin-top:16px;">${I18n.t("Approvals")}</div>`;
                 if (!fileApprovals.length) {
-                    html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">No approval requests yet.</div>`;
+                    html += `<div style="padding:8px 16px;color:#5f6368;font-size:13px;">${I18n.t("No approval requests yet.")}</div>`;
                 } else {
                     fileApprovals.forEach((a) => {
                         const status = String(a.status || 'pending').toLowerCase();
                         const canResolve = me && a.approver_id === me.id && status === 'pending';
                         const isRequester = me && a.requested_by === me.id;
-                        let statusText = status.charAt(0).toUpperCase() + status.slice(1);
+                        let statusText = I18n.label(status, status.charAt(0).toUpperCase() + status.slice(1));
                         if (status === 'pending' && isRequester) {
-                            statusText = `Awaiting ${esc(lookupUserLabel(a.approver_id))}`;
+                            statusText = I18n.t("Awaiting {0}", { 0: esc(lookupUserLabel(a.approver_id)) });
                         } else if (status === 'pending') {
-                            statusText = `Pending — approver: ${esc(lookupUserLabel(a.approver_id))}`;
+                            statusText = I18n.t("Pending — approver: {0}", { 0: esc(lookupUserLabel(a.approver_id)) });
                         }
                         html += `
                             <div class="activity-item" data-approval-id="${esc(a.id)}">
@@ -3926,8 +3961,8 @@ const FileManager = (() => {
                                     <div class="activity-time">${Components.formatDate(a.created_at)}</div>
                                     ${canResolve ? `
                                         <div style="margin-top:8px;display:flex;gap:8px;">
-                                            <button class="btn btn-primary btn-sm approval-approve-btn" data-id="${esc(a.id)}">Approve</button>
-                                            <button class="btn btn-secondary btn-sm approval-reject-btn" data-id="${esc(a.id)}">Reject</button>
+                                            <button class="btn btn-primary btn-sm approval-approve-btn" data-id="${esc(a.id)}">${I18n.t("Approve")}</button>
+                                            <button class="btn btn-secondary btn-sm approval-reject-btn" data-id="${esc(a.id)}">${I18n.t("Reject")}</button>
                                         </div>` : ''}
                                 </div>
                             </div>`;
@@ -3936,7 +3971,7 @@ const FileManager = (() => {
                 if (canRequest) {
                     html += `
                         <div style="padding:8px 16px 16px;">
-                            <button class="btn btn-secondary btn-sm" id="detail-request-approval-btn">Request approval</button>
+                            <button class="btn btn-secondary btn-sm" id="detail-request-approval-btn">${I18n.t("Request approval")}</button>
                         </div>`;
                 }
             } catch {
@@ -3959,9 +3994,9 @@ const FileManager = (() => {
                 input.value = '';
                 if (assigneeInput) assigneeInput.value = '';
                 await renderDetailsActivity(payload);
-                Components.toast('Comment added', 'success');
+                Components.toast(I18n.t("Comment added"), 'success');
             } catch (err) {
-                Components.toast(err?.message || 'Failed to add comment', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to add comment"), 'error');
             }
         });
 
@@ -3969,10 +4004,10 @@ const FileManager = (() => {
             btn.addEventListener('click', async () => {
                 try {
                     await API.comments.delete(data.id, btn.dataset.id);
-                    Components.toast('Comment deleted', 'success');
+                    Components.toast(I18n.t("Comment deleted"), 'success');
                     await renderDetailsActivity(payload);
                 } catch (err) {
-                    Components.toast(err?.message || 'Failed to delete comment', 'error');
+                    Components.toast(I18n.error(err?.message) || I18n.t("Failed to delete comment"), 'error');
                 }
             });
         });
@@ -3986,10 +4021,10 @@ const FileManager = (() => {
             btn.addEventListener('click', async () => {
                 try {
                     await API.approvals.update(btn.dataset.id, { status: 'approved' });
-                    Components.toast('Approval granted', 'success');
+                    Components.toast(I18n.t("Approval granted"), 'success');
                     await renderDetailsActivity(payload);
                 } catch (err) {
-                    Components.toast(err?.message || 'Failed to approve', 'error');
+                    Components.toast(I18n.error(err?.message) || I18n.t("Failed to approve"), 'error');
                 }
             });
         });
@@ -3997,17 +4032,17 @@ const FileManager = (() => {
             btn.addEventListener('click', async () => {
                 try {
                     await API.approvals.update(btn.dataset.id, { status: 'rejected' });
-                    Components.toast('Approval rejected', 'success');
+                    Components.toast(I18n.t("Approval rejected"), 'success');
                     await renderDetailsActivity(payload);
                 } catch (err) {
-                    Components.toast(err?.message || 'Failed to reject', 'error');
+                    Components.toast(I18n.error(err?.message) || I18n.t("Failed to reject"), 'error');
                 }
             });
         });
     }
 
     function buildLocationLabel(folderId) {
-        if (!folderId) return currentPage === 'computers' ? 'Computers' : 'My Drive';
+        if (!folderId) return currentPage === 'computers' ? I18n.t("Computers") : I18n.t("My Drive");
         if (currentComputerContext) {
             const folder = allFolders.find((f) => f.id === folderId);
             if (folder) return `Computers > ${currentComputerContext.name} > ${folder.name}`;
@@ -4016,7 +4051,7 @@ const FileManager = (() => {
             }
         }
         const folder = allFolders.find((f) => f.id === folderId);
-        if (!folder) return 'My Drive';
+        if (!folder) return I18n.t("My Drive");
         return `My Drive > ${folder.name}`;
     }
 
@@ -4048,14 +4083,14 @@ const FileManager = (() => {
                 } catch (err2) {
                     console.error('loadActivity fetch error (/admin/activity):', err2);
                     list.innerHTML = '';
-                    Components.toast('Failed to load activity', 'error');
-                    setBreadcrumbText('Activity');
+                    Components.toast(I18n.t("Failed to load activity"), 'error');
+                    setBreadcrumbText(I18n.t("Activity"));
                     return;
                 }
             } else {
                 list.innerHTML = '';
-                Components.toast('Failed to load activity', 'error');
-                setBreadcrumbText('Activity');
+                Components.toast(I18n.t("Failed to load activity"), 'error');
+                setBreadcrumbText(I18n.t("Activity"));
                 return;
             }
         }
@@ -4081,7 +4116,7 @@ const FileManager = (() => {
             }
 
             if (!merged.length) {
-                list.innerHTML = '<div class="empty-state" style="min-height:220px;"><p>No activity yet</p></div>';
+                list.innerHTML = `<div class="empty-state" style="min-height:220px;"><p>${I18n.t("No activity yet")}</p></div>`;
                 return;
             }
             let myAvatar = '';
@@ -4102,7 +4137,7 @@ const FileManager = (() => {
 
             const rows = merged.map((a) => {
                 try {
-                    const actor = a.username || 'User';
+                    const actor = a.username || I18n.t("User");
                     const isMe = a.user_id === me.id || actor === currentUserLabel();
                     const showPhoto = isMe && myAvatar;
 
@@ -4112,7 +4147,7 @@ const FileManager = (() => {
                         textHtml = `<div class="activity-text">${esc(a.target_name)}</div>`;
                     } else {
                         const action = formatAction(a.action);
-                        textHtml = `<div class="activity-text"><strong>${esc(actor)}</strong> ${esc(action)} <strong>${esc(a.target_name || 'item')}</strong></div>`;
+                        textHtml = `<div class="activity-text"><strong>${esc(actor)}</strong> ${esc(action)} <strong>${esc(a.target_name || I18n.t("item"))}</strong></div>`;
                     }
 
                     return `
@@ -4134,10 +4169,10 @@ const FileManager = (() => {
         } catch (err) {
             console.error('loadActivity error:', err);
             list.innerHTML = '';
-            Components.toast('Failed to load activity', 'error');
+            Components.toast(I18n.t("Failed to load activity"), 'error');
         }
 
-        setBreadcrumbText('Activity');
+        setBreadcrumbText(I18n.t("Activity"));
     }
 
     function formatAction(action) {
@@ -4152,14 +4187,14 @@ const FileManager = (() => {
             restore: 'restored',
             edited: 'edited',
         };
-        return map[action] || action;
+        return I18n.t(map[action] || I18n.label(action));
     }
 
     async function loadStoragePage() {
         currentPage = 'storage';
         clearSelection();
         showStorageView();
-        setBreadcrumbText('Storage');
+        setBreadcrumbText(I18n.t("Storage"));
 
         try {
             const pageSize = 500;
@@ -4216,7 +4251,7 @@ const FileManager = (() => {
             document.getElementById('storage-circle-text').innerHTML = `
                 <div class="storage-circle-inner">
                     <span class="storage-circle-pct">${formatStoragePercentRounded(used, total)}%</span>
-                    <span class="storage-circle-label">${usedStr} of ${totalStr}</span>
+                    <span class="storage-circle-label">${I18n.t("{1} of {2}", { 1: usedStr, 2: totalStr })}</span>
                 </div>
             `;
 
@@ -4247,17 +4282,17 @@ const FileManager = (() => {
             }
 
             document.getElementById('storage-breakdown').innerHTML = `
-                ${renderBreakdownItem('Images',    buckets.Images,    '#ea4335', total)}
-                ${renderBreakdownItem('Videos',    buckets.Videos,    '#fbbc04', total)}
-                ${renderBreakdownItem('Documents', buckets.Documents, '#4285f4', total)}
-                ${renderBreakdownItem('Other',     buckets.Other,     '#a142f4', total)}
+                ${renderBreakdownItem(I18n.t("Images"),    buckets.Images,    '#ea4335', total)}
+                ${renderBreakdownItem(I18n.t("Videos"),    buckets.Videos,    '#fbbc04', total)}
+                ${renderBreakdownItem(I18n.t("Documents"), buckets.Documents, '#4285f4', total)}
+                ${renderBreakdownItem(I18n.t("Other"),     buckets.Other,     '#a142f4', total)}
             `;
 
             const largest = [...files].sort((a, b) => Number(b.size || 0) - Number(a.size || 0)).slice(0, 20);
             window.__fdLargestFiles = largest;
             showLargestFiles();
         } catch {
-            Components.toast('Failed to load storage details', 'error');
+            Components.toast(I18n.t("Failed to load storage details"), 'error');
         }
     }
 
@@ -4306,7 +4341,7 @@ const FileManager = (() => {
         const defaultIcon = '<svg viewBox="0 0 24 24" width="18" height="18" fill="#5f6368"><path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z"/></svg>';
 
         box.innerHTML = `
-            <div class="largest-files-header">Largest files</div>
+            <div class="largest-files-header">${I18n.t("Largest files")}</div>
             ${list.map((f) => {
                 const g = getMimeGroup(f.mime_type, 'file', f.name);
                 const icon = svgIcons[g] || defaultIcon;
@@ -4339,8 +4374,8 @@ const FileManager = (() => {
             if (group === 'sheet') return await openSheetViewer(file);
             return downloadFile(file);
         } catch (err) {
-            console.error('Failed to open file:', err);
-            Components.toast('Failed to open file: ' + err.message, 'error');
+            console.error(I18n.t("Failed to open file:"), err);
+            Components.toast(I18n.t("Failed to open file: ") + I18n.error(err.message), 'error');
         }
     }
 
@@ -4354,24 +4389,24 @@ const FileManager = (() => {
         };
 
         if (group === 'image') {
-            addApp('image', 'FreeDrive Photos', 'View and edit the image', 'photo', () => openImageEditor(file), true);
+            addApp('image', I18n.t("FreeDrive Photos"), I18n.t("View and edit the image"), 'photo', () => openImageEditor(file), true);
         } else if (isJsonMimeOrName(file.mime_type, file.name)) {
-            addApp('json', 'FreeDrive JSON Viewer', 'Structured JSON editor', 'data_object', () => openJsonViewer(file), true);
-            addApp('text', 'FreeDrive Text Editor', 'Open as plain text', 'description', () => openTextEditor(file));
+            addApp('json', I18n.t("FreeDrive JSON Viewer"), I18n.t("Structured JSON editor"), 'data_object', () => openJsonViewer(file), true);
+            addApp('text', I18n.t("FreeDrive Text Editor"), I18n.t("Open as plain text"), 'description', () => openTextEditor(file));
         } else if (group === 'text' || file.mime_type === 'text/markdown') {
-            addApp('text', 'FreeDrive Docs', 'Edit text and documents', 'description', () => openTextEditor(file), true);
+            addApp('text', I18n.t("FreeDrive Docs"), I18n.t("Edit text and documents"), 'description', () => openTextEditor(file), true);
         } else if (group === 'pdf') {
-            addApp('pdf', 'FreeDrive PDF Viewer', 'Read the PDF document', 'picture_as_pdf', () => openPdfViewer(file), true);
+            addApp('pdf', I18n.t("FreeDrive PDF Viewer"), I18n.t("Read the PDF document"), 'picture_as_pdf', () => openPdfViewer(file), true);
         } else if (group === 'video') {
-            addApp('video', 'FreeDrive Video Player', 'Play the video', 'movie', () => openVideoPlayer(file), true);
+            addApp('video', I18n.t("FreeDrive Video Player"), I18n.t("Play the video"), 'movie', () => openVideoPlayer(file), true);
         } else if (group === 'audio') {
-            addApp('audio', 'FreeDrive Audio Player', 'Play the audio file', 'music_note', () => openAudioPlayer(file), true);
+            addApp('audio', I18n.t("FreeDrive Audio Player"), I18n.t("Play the audio file"), 'music_note', () => openAudioPlayer(file), true);
         } else if (group === 'sheet') {
-            addApp('sheet', 'FreeDrive Sheets', 'View and edit the spreadsheet', 'table_chart', () => openSheetViewer(file), true);
+            addApp('sheet', I18n.t("FreeDrive Sheets"), I18n.t("View and edit the spreadsheet"), 'table_chart', () => openSheetViewer(file), true);
         }
 
         if (!apps.length) {
-            addApp('download', 'Download', 'Download and open on this device', 'download', () => downloadFile(file), true);
+            addApp('download', I18n.t("Download"), I18n.t("Download and open on this device"), 'download', () => downloadFile(file), true);
         }
 
         const overlay = document.createElement('div');
@@ -4380,10 +4415,10 @@ const FileManager = (() => {
             <div class="modal open-with-modal" role="dialog" aria-modal="true" aria-labelledby="open-with-title">
                 <div class="modal-header">
                     <div>
-                        <h3 id="open-with-title">Open with</h3>
-                        <p class="open-with-filename">${esc(file.name || 'File')}</p>
+                        <h3 id="open-with-title">${I18n.t("Open with")}</h3>
+                        <p class="open-with-filename">${esc(file.name || I18n.t("File"))}</p>
                     </div>
-                    <button type="button" class="btn-icon open-with-close" aria-label="Close"><span class="material-icons-outlined">close</span></button>
+                    <button type="button" class="btn-icon open-with-close" aria-label="${I18n.t("Close")}"><span class="material-icons-outlined">close</span></button>
                 </div>
                 <div class="modal-body open-with-apps">
                     ${apps.map((app) => `
@@ -4393,7 +4428,7 @@ const FileManager = (() => {
                                 <span class="open-with-app-title">${esc(app.label)}</span>
                                 <span class="open-with-app-description">${esc(app.description)}</span>
                             </span>
-                            ${app.recommended ? '<span class="open-with-recommended">Recommended</span>' : ''}
+                            ${app.recommended ? `<span class="open-with-recommended">${I18n.t("Recommended")}</span>` : ''}
                         </button>
                     `).join('')}
                 </div>
@@ -4405,7 +4440,7 @@ const FileManager = (() => {
             overlay.remove();
         };
         const onKeyDown = (event) => {
-            if (event.key === 'Escape') close();
+            if (event.key === 'Escape' && !Components.isComposing(event)) close();
         };
 
         overlay.addEventListener('click', (event) => {
@@ -4420,8 +4455,8 @@ const FileManager = (() => {
                 try {
                     await app.action();
                 } catch (err) {
-                    console.error('Failed to open file with selected app:', err);
-                    Components.toast('Failed to open file: ' + (err.message || 'Unknown error'), 'error');
+                    console.error(I18n.t("Failed to open file with selected app:"), err);
+                    Components.toast(I18n.t("Failed to open file: ") + (I18n.error(err.message) || I18n.t("Unknown error")), 'error');
                 }
             });
         });
@@ -4447,7 +4482,7 @@ const FileManager = (() => {
                 throw new Error(
                     window.CryptoSync?.describeFileKeyError
                         ? CryptoSync.describeFileKeyError({ code: CryptoSync.ERR_UNLOCK_REQUIRED })
-                        : 'Sign out and sign in again with your password.',
+                        : I18n.t("Sign out and sign in again with your password."),
                 );
             }
             if (!iv) return blob;
@@ -4458,7 +4493,7 @@ const FileManager = (() => {
         } catch (err) {
             const message = window.CryptoSync?.describeFileKeyError
                 ? CryptoSync.describeFileKeyError(err)
-                : (err?.message || 'Decryption failed');
+                : (I18n.error(err?.message) || I18n.t("Decryption failed"));
             throw new Error(message);
         }
     }
@@ -4474,10 +4509,10 @@ const FileManager = (() => {
             a.click();
             a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 1200);
-            Components.toast('Download started', 'info');
+            Components.toast(I18n.t("Download started"), 'info');
             addFileActivity(file.id, 'downloaded', file.name);
         } catch (err) {
-            Components.toast(`Download failed: ${err.message}`, 'error');
+            Components.toast(I18n.t("Download failed: {0}", { 0: I18n.error(err.message) }), 'error');
         }
     }
 
@@ -4553,6 +4588,8 @@ const FileManager = (() => {
         return out;
     }
 
+    const ZIP_UTF8_FLAG = 0x0800;
+
     function createZipBlob(entries) {
         const encoder = new TextEncoder();
         const fileChunks = [];
@@ -4569,7 +4606,8 @@ const FileManager = (() => {
             const localView = new DataView(local.buffer);
             localView.setUint32(0, 0x04034b50, true);
             localView.setUint16(4, 20, true);
-            localView.setUint16(6, 0, true);
+            // Bit 11: names are UTF-8, so Chinese and other non-ASCII names extract intact.
+            localView.setUint16(6, ZIP_UTF8_FLAG, true);
             localView.setUint16(8, 0, true);
             localView.setUint16(10, time, true);
             localView.setUint16(12, date, true);
@@ -4586,9 +4624,10 @@ const FileManager = (() => {
             const central = new Uint8Array(46 + nameBytes.length);
             const centralView = new DataView(central.buffer);
             centralView.setUint32(0, 0x02014b50, true);
-            centralView.setUint16(4, 20, true);
+            // Made by Unix (3): unzip would otherwise re-decode FAT-host names as an OEM code page.
+            centralView.setUint16(4, (3 << 8) | 20, true);
             centralView.setUint16(6, 20, true);
-            centralView.setUint16(8, 0, true);
+            centralView.setUint16(8, ZIP_UTF8_FLAG, true);
             centralView.setUint16(10, 0, true);
             centralView.setUint16(12, time, true);
             centralView.setUint16(14, date, true);
@@ -4600,7 +4639,8 @@ const FileManager = (() => {
             centralView.setUint16(32, 0, true);
             centralView.setUint16(34, 0, true);
             centralView.setUint16(36, 0, true);
-            centralView.setUint32(38, entry.path.endsWith('/') ? 0x10 : 0, true);
+            // Unix mode in the high word (0755 dirs, 0644 files); DOS directory bit kept for Windows.
+            centralView.setUint32(38, entry.path.endsWith('/') ? ((0o40755 << 16) | 0x10) >>> 0 : (0o100644 << 16) >>> 0, true);
             centralView.setUint32(42, offset, true);
             central.set(nameBytes, 46);
             centralChunks.push(central);
@@ -4684,7 +4724,7 @@ const FileManager = (() => {
     async function downloadPayloadListAsZip(payloads, zipName) {
         if (!payloads.length) return;
         try {
-            Components.toast('Preparing ZIP download...', 'info');
+            Components.toast(I18n.t("Preparing ZIP download..."), 'info');
             const entries = [];
             const used = new Set();
             for (const payload of payloads) {
@@ -4692,9 +4732,9 @@ const FileManager = (() => {
             }
             const zipBlob = createZipBlob(entries);
             triggerBlobDownload(zipBlob, zipName || `drive-download-${Date.now()}.zip`);
-            Components.toast('ZIP download started', 'success');
+            Components.toast(I18n.t("ZIP download started"), 'success');
         } catch (err) {
-            Components.toast(`ZIP download failed: ${err.message}`, 'error');
+            Components.toast(I18n.t("ZIP download failed: {0}", { 0: I18n.error(err.message) }), 'error');
         }
     }
 
@@ -4713,7 +4753,7 @@ const FileManager = (() => {
 
     function capitalizeRole(role) {
         const value = String(role || 'viewer');
-        return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+        return I18n.label(value.toLowerCase(), value.charAt(0).toUpperCase() + value.slice(1).toLowerCase());
     }
 
     function setSortColLabel(selector, label) {
@@ -4726,27 +4766,27 @@ const FileManager = (() => {
 
     function updateListHeaderLabels() {
         if (currentPage === 'shared-with') {
-            setSortColLabel('.col-name', 'Name');
-            setSortColLabel('.col-owner', 'Shared by');
-            setSortColLabel('.col-date', 'Date shared');
-            setSortColLabel('.col-size', 'Access');
+            setSortColLabel('.col-name', I18n.t("Name"));
+            setSortColLabel('.col-owner', I18n.t("Shared by"));
+            setSortColLabel('.col-date', I18n.t("Date shared"));
+            setSortColLabel('.col-size', I18n.t("Access"));
             return;
         }
-        setSortColLabel('.col-name', 'Name');
-        setSortColLabel('.col-owner', 'Owner');
-        setSortColLabel('.col-date', 'Last modified');
-        setSortColLabel('.col-size', 'File size');
+        setSortColLabel('.col-name', I18n.t("Name"));
+        setSortColLabel('.col-owner', I18n.t("Owner"));
+        setSortColLabel('.col-date', I18n.t("Last modified"));
+        setSortColLabel('.col-size', I18n.t("File size"));
     }
 
     async function createQuickFile(name, mimeType, textContent) {
         if (!canAcceptUploads()) {
-            Components.toast('Connect a computer to add files here', 'info');
+            Components.toast(I18n.t("Connect a computer to add files here"), 'info');
             return;
         }
         const blob = new Blob([textContent || ''], { type: mimeType || 'text/plain' });
         try {
             const created = await uploadEncryptedBlob(blob, name, mimeType, currentFolderId);
-            Components.toast('File created', 'success');
+            Components.toast(I18n.t("File created"), 'success');
             if (currentPage !== 'files' && currentPage !== 'home' && currentPage !== 'computers') {
                 App.navigate(currentFolderId
                     ? (currentPage === 'computers' ? `/computers/${currentFolderId}` : `/files/${currentFolderId}`)
@@ -4769,12 +4809,12 @@ const FileManager = (() => {
                         if (isSheet) await openSheetViewer(created);
                         else await openTextEditor(created);
                     } catch (err) {
-                        Components.toast(`Open failed: ${err.message || err}`, 'error');
+                        Components.toast(I18n.t("Open failed: {0}", { 0: I18n.error(err.message) || err }), 'error');
                     }
                 }, 120);
             }
         } catch (err) {
-            Components.toast(`Create failed: ${err.message}`, 'error');
+            Components.toast(I18n.t("Create failed: {0}", { 0: I18n.error(err.message) }), 'error');
         }
     }
 
@@ -4801,7 +4841,7 @@ const FileManager = (() => {
         } else {
             if (!insecureUploadNoticeShown) {
                 insecureUploadNoticeShown = true;
-                Components.toast('HTTPS is not enabled, so files will be uploaded without browser encryption.', 'info', { duration: 7000 });
+                Components.toast(I18n.t("HTTPS is not enabled, so files will be uploaded without browser encryption."), 'info', { duration: 7000 });
             }
             payload = await blob.arrayBuffer();
         }
@@ -4825,7 +4865,7 @@ const FileManager = (() => {
             }
         }
         addFileActivity(result.id, 'uploaded', result.name);
-        createNotification('File uploaded successfully', new Date().toISOString(), true, currentUserLabel());
+        createNotification({ key: "File uploaded successfully" }, new Date().toISOString(), true, currentUserLabel());
         return result;
     }
 
@@ -4854,7 +4894,7 @@ const FileManager = (() => {
         } else {
             if (!insecureUploadNoticeShown) {
                 insecureUploadNoticeShown = true;
-                Components.toast('HTTPS is not enabled, so this file will be saved without browser encryption.', 'info', { duration: 7000 });
+                Components.toast(I18n.t("HTTPS is not enabled, so this file will be saved without browser encryption."), 'info', { duration: 7000 });
             }
             payload = await blob.arrayBuffer();
         }
@@ -4876,10 +4916,10 @@ const FileManager = (() => {
                 await API.files.update(file.id, { name: nameToUse });
             }
             addFileActivity(file.id, 'edited', file.name);
-            createNotification(`${currentUserLabel()} edited ${nameToUse}`, new Date().toISOString(), true, currentUserLabel());
+            createNotification({ key: "{0} edited {1}", values: { 0: currentUserLabel(), 1: nameToUse } }, new Date().toISOString(), true, currentUserLabel());
             return true;
         } catch (err) {
-            Components.toast(`Save failed: ${err.message}`, 'error');
+            Components.toast(I18n.t("Save failed: {0}", { 0: I18n.error(err.message) }), 'error');
             return false;
         }
     }
@@ -4888,7 +4928,7 @@ const FileManager = (() => {
         if (e.target === e.currentTarget) closeEditor();
     }
 
-    function openEditorShell(file, titleStatus = 'Saved') {
+    function openEditorShell(file, titleStatus = I18n.t("Saved")) {
         const overlay = document.getElementById('editor-overlay');
         const shell = document.getElementById('editor-shell');
 
@@ -4902,14 +4942,14 @@ const FileManager = (() => {
                     <span class="editor-status" id="editor-save-status">${esc(titleStatus)}</span>
                 </div>
                 <div class="editor-controls" id="editor-main-controls">
-                    <button class="btn btn-secondary btn-sm" id="editor-version-history">Version history</button>
-                    <button class="btn btn-secondary btn-sm" id="editor-undo">Undo</button>
-                    <button class="btn btn-secondary btn-sm" id="editor-redo">Redo</button>
-                    <button class="btn btn-secondary btn-sm" id="editor-reset">Reset</button>
-                    <button class="btn btn-primary btn-sm" id="editor-save">Save</button>
-                    <button class="btn btn-secondary btn-sm" id="editor-download">Download</button>
-                    <button class="btn btn-secondary btn-sm" id="editor-close">Close</button>
-                    <button class="btn-icon" id="editor-close-icon" aria-label="Close editor"><span class="material-icons-outlined">close</span></button>
+                    <button class="btn btn-secondary btn-sm" id="editor-version-history">${I18n.t("Version history")}</button>
+                    <button class="btn btn-secondary btn-sm" id="editor-undo">${I18n.t("Undo")}</button>
+                    <button class="btn btn-secondary btn-sm" id="editor-redo">${I18n.t("Redo")}</button>
+                    <button class="btn btn-secondary btn-sm" id="editor-reset">${I18n.t("Reset")}</button>
+                    <button class="btn btn-primary btn-sm" id="editor-save">${I18n.t("Save")}</button>
+                    <button class="btn btn-secondary btn-sm" id="editor-download">${I18n.t("Download")}</button>
+                    <button class="btn btn-secondary btn-sm" id="editor-close">${I18n.t("Close")}</button>
+                    <button class="btn-icon" id="editor-close-icon" aria-label="${I18n.t("Close editor")}"><span class="material-icons-outlined">close</span></button>
                 </div>
             </div>
         `;
@@ -4946,21 +4986,21 @@ const FileManager = (() => {
                 const status = document.getElementById('editor-save-status');
                 
                 const originalText = btn.textContent;
-                btn.textContent = 'Saving...';
+                btn.textContent = I18n.t("Saving...");
                 btn.disabled = true;
-                if (status) status.textContent = 'Saving...';
+                if (status) status.textContent = I18n.t("Saving...");
                 
                 try {
                     const ok = await editorState.onSave();
                     if (ok) {
                         setEditorSaved(true);
-                        Components.toast('File saved successfully', 'success');
+                        Components.toast(I18n.t("File saved successfully"), 'success');
                     } else {
-                        if (status) status.textContent = 'Save failed';
+                        if (status) status.textContent = I18n.t("Save failed");
                     }
                 } catch (err) {
-                    if (status) status.textContent = 'Save error';
-                    Components.toast(err.message || 'Error saving file', 'error');
+                    if (status) status.textContent = I18n.t("Save error");
+                    Components.toast(I18n.error(err.message) || I18n.t("Error saving file"), 'error');
                 } finally {
                     btn.textContent = originalText;
                     btn.disabled = false;
@@ -4975,25 +5015,25 @@ const FileManager = (() => {
     function closeEditor() {
         if (editorState?.unsaved) {
             Components.showModal(
-                'Unsaved changes',
-                'Unsaved changes. Save before closing?',
+                I18n.t("Unsaved changes"),
+                I18n.t("Unsaved changes. Save before closing?"),
                 [
-                    { text: 'Cancel' },
+                    { text: I18n.t("Cancel") },
                     {
-                        text: 'Discard',
+                        text: I18n.t("Discard"),
                         class: 'btn-secondary',
                         action: () => {
                             forceCloseEditor();
                         },
                     },
                     {
-                        text: 'Save',
+                        text: I18n.t("Save"),
                         class: 'btn-primary',
                         action: async () => {
                             if (editorState?.onSave) {
                                 const ok = await editorState.onSave();
                                 if (ok) {
-                                    Components.toast('File saved successfully', 'success');
+                                    Components.toast(I18n.t("File saved successfully"), 'success');
                                     forceCloseEditor();
                                 }
                             }
@@ -5024,11 +5064,11 @@ const FileManager = (() => {
         editorState.unsaved = !saved;
         const status = document.getElementById('editor-save-status');
         if (!status) return;
-        status.textContent = saved ? 'Saved' : 'Unsaved changes';
+        status.textContent = saved ? I18n.t("Saved") : I18n.t("Unsaved changes");
     }
 
     function editorGlobalShortcuts(e) {
-        if (!editorState) return;
+        if (!editorState || Components.isComposing(e)) return;
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
             document.getElementById('editor-save')?.click();
@@ -5060,29 +5100,29 @@ const FileManager = (() => {
         layout.innerHTML = `
             <div class="image-toolbar" id="image-toolbar">
                 <div class="tool-list" id="img-tool-list">
-                    <button type="button" class="tool-btn tool-btn-icon active" data-tool="pen" title="Pen"><span class="material-icons-outlined">edit</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="brush" title="Brush"><span class="material-icons-outlined">brush</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="eraser" title="Eraser"><span class="material-icons-outlined">auto_fix_off</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon active" data-tool="pen" title="${I18n.t("Pen")}"><span class="material-icons-outlined">edit</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="brush" title="${I18n.t("Brush")}"><span class="material-icons-outlined">brush</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="eraser" title="${I18n.t("Eraser")}"><span class="material-icons-outlined">auto_fix_off</span></button>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="line" title="Line"><span class="material-icons-outlined">show_chart</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="arrow" title="Arrow"><span class="material-icons-outlined">north_east</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="rect" title="Rectangle"><span class="material-icons-outlined">crop_square</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="circle" title="Circle"><span class="material-icons-outlined">circle</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="triangle" title="Triangle"><span class="material-icons-outlined">change_history</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="line" title="${I18n.t("Line")}"><span class="material-icons-outlined">show_chart</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="arrow" title="${I18n.t("Arrow")}"><span class="material-icons-outlined">north_east</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="rect" title="${I18n.t("Rectangle")}"><span class="material-icons-outlined">crop_square</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="circle" title="${I18n.t("Circle")}"><span class="material-icons-outlined">circle</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="triangle" title="${I18n.t("Triangle")}"><span class="material-icons-outlined">change_history</span></button>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="text" title="Text"><span class="material-icons-outlined">title</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="emoji" title="Sticker"><span class="material-icons-outlined">emoji_emotions</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="blur" title="Blur"><span class="material-icons-outlined">blur_on</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-tool="crop" title="Crop"><span class="material-icons-outlined">crop</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="text" title="${I18n.t("Text")}"><span class="material-icons-outlined">title</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="emoji" title="${I18n.t("Sticker")}"><span class="material-icons-outlined">emoji_emotions</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="blur" title="${I18n.t("Blur")}"><span class="material-icons-outlined">blur_on</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-tool="crop" title="${I18n.t("Crop")}"><span class="material-icons-outlined">crop</span></button>
                 </div>
                 <span class="tool-sep" aria-hidden="true"></span>
-                <button type="button" class="tool-btn tool-btn-icon" id="img-rot-l" title="Rotate left"><span class="material-icons-outlined">rotate_left</span></button>
-                <button type="button" class="tool-btn tool-btn-icon" id="img-rot-r" title="Rotate right"><span class="material-icons-outlined">rotate_right</span></button>
-                <button type="button" class="tool-btn tool-btn-icon" id="img-flip-h" title="Flip horizontal"><span class="material-icons-outlined">flip</span></button>
-                <button type="button" class="tool-btn tool-btn-icon" id="img-flip-v" title="Flip vertical"><span class="material-icons-outlined img-flip-v-icon">flip</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-rot-l" title="${I18n.t("Rotate left")}"><span class="material-icons-outlined">rotate_left</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-rot-r" title="${I18n.t("Rotate right")}"><span class="material-icons-outlined">rotate_right</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-flip-h" title="${I18n.t("Flip horizontal")}"><span class="material-icons-outlined">flip</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-flip-v" title="${I18n.t("Flip vertical")}"><span class="material-icons-outlined img-flip-v-icon">flip</span></button>
                 <span class="tool-sep" aria-hidden="true"></span>
-                <button type="button" class="tool-btn tool-btn-icon" id="img-btn-tune" title="Adjustments" data-panel="adjust"><span class="material-icons-outlined">tune</span></button>
-                <button type="button" class="tool-btn tool-btn-icon" id="img-btn-filters" title="Filters" data-panel="filters"><span class="material-icons-outlined">photo_filter</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-btn-tune" title="${I18n.t("Adjustments")}" data-panel="adjust"><span class="material-icons-outlined">tune</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="img-btn-filters" title="${I18n.t("Filters")}" data-panel="filters"><span class="material-icons-outlined">photo_filter</span></button>
             </div>
             <div class="image-editor-body">
                 <div class="editor-canvas-wrap" id="img-canvas-wrap">
@@ -5092,8 +5132,8 @@ const FileManager = (() => {
                 </div>
                 <aside class="image-panel" id="img-panel-adjust" hidden>
                     <div class="image-panel-header">
-                        <h5>Adjustments</h5>
-                        <button type="button" class="tool-btn tool-btn-icon image-panel-close" data-close-panel="adjust" title="Close"><span class="material-icons-outlined">close</span></button>
+                        <h5>${I18n.t("Adjustments")}</h5>
+                        <button type="button" class="tool-btn tool-btn-icon image-panel-close" data-close-panel="adjust" title="${I18n.t("Close")}"><span class="material-icons-outlined">close</span></button>
                     </div>
                     <div class="image-panel-body">
                         ${renderAdjustSlider('brightness', -100, 100, 0)}
@@ -5106,19 +5146,19 @@ const FileManager = (() => {
                 </aside>
                 <aside class="image-panel" id="img-panel-filters" hidden>
                     <div class="image-panel-header">
-                        <h5>Filters</h5>
-                        <button type="button" class="tool-btn tool-btn-icon image-panel-close" data-close-panel="filters" title="Close"><span class="material-icons-outlined">close</span></button>
+                        <h5>${I18n.t("Filters")}</h5>
+                        <button type="button" class="tool-btn tool-btn-icon image-panel-close" data-close-panel="filters" title="${I18n.t("Close")}"><span class="material-icons-outlined">close</span></button>
                     </div>
                     <div class="image-panel-body">
                         <div class="tool-list img-preset-list">
-                            <button type="button" class="tool-btn img-preset" data-preset="original">Original</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="grayscale">Grayscale</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="sepia">Sepia</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="vivid">Vivid</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="cool">Cool</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="warm">Warm</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="fade">Fade</button>
-                            <button type="button" class="tool-btn img-preset" data-preset="dramatic">Dramatic</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="original">${I18n.t("Original")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="grayscale">${I18n.t("Grayscale")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="sepia">${I18n.t("Sepia")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="vivid">${I18n.t("Vivid")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="cool">${I18n.t("Cool")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="warm">${I18n.t("Warm")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="fade">${I18n.t("Fade")}</button>
+                            <button type="button" class="tool-btn img-preset" data-preset="dramatic">${I18n.t("Dramatic")}</button>
                         </div>
                     </div>
                 </aside>
@@ -5229,7 +5269,7 @@ const FileManager = (() => {
             baseSnapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
             if (tool === 'text') {
-                const text = prompt('Text:');
+                const text = prompt(I18n.t("Text:"));
                 if (text) {
                     ctx.fillStyle = '#ffffff';
                     ctx.font = 'bold 24px Manrope';
@@ -5241,7 +5281,7 @@ const FileManager = (() => {
             }
 
             if (tool === 'emoji') {
-                const emoji = prompt('Emoji:', '😀') || '😀';
+                const emoji = prompt(I18n.t("Emoji:"), '😀') || '😀';
                 ctx.font = '36px serif';
                 ctx.fillText(emoji, start.x, start.y);
                 pushCanvasHistory(canvas);
@@ -5440,7 +5480,7 @@ const FileManager = (() => {
     function renderAdjustSlider(key, min, max, value) {
         return `
             <div class="adjust-row">
-                <label><span>${key[0].toUpperCase() + key.slice(1)}</span><span id="adj-${key}">${value}</span></label>
+                <label><span>${I18n.t(key[0].toUpperCase() + key.slice(1))}</span><span id="adj-${key}">${value}</span></label>
                 <input class="adjust-slider" data-key="${key}" type="range" min="${min}" max="${max}" value="${value}">
             </div>
         `;
@@ -5550,9 +5590,9 @@ const FileManager = (() => {
     }
 
     async function openTextEditor(file) {
-        Components.toast('Loading file...', 'info');
+        Components.toast(I18n.t("Loading file..."), 'info');
         const blob = await decryptFileBlob(file);
-        const text = await blob.text();
+        const text = await Components.decodeText(blob);
         const shell = openEditorShell(file);
 
         const ext = getFileExtension(file.name);
@@ -5564,19 +5604,19 @@ const FileManager = (() => {
         if (isRichText) {
             wrap.innerHTML = `
                 <div class="text-toolbar" id="text-toolbar">
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="undo" title="Undo"><span class="material-icons-outlined">undo</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="redo" title="Redo"><span class="material-icons-outlined">redo</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="undo" title="${I18n.t("Undo")}"><span class="material-icons-outlined">undo</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="redo" title="${I18n.t("Redo")}"><span class="material-icons-outlined">redo</span></button>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <select id="text-block" class="tool-select" title="Styles">
-                        <option value="p">Normal</option>
-                        <option value="h1">Heading 1</option>
-                        <option value="h2">Heading 2</option>
-                        <option value="h3">Heading 3</option>
-                        <option value="h4">Heading 4</option>
-                        <option value="h5">Heading 5</option>
-                        <option value="h6">Heading 6</option>
+                    <select id="text-block" class="tool-select" title="${I18n.t("Styles")}">
+                        <option value="p">${I18n.t("Normal")}</option>
+                        <option value="h1">${I18n.t("Heading 1")}</option>
+                        <option value="h2">${I18n.t("Heading 2")}</option>
+                        <option value="h3">${I18n.t("Heading 3")}</option>
+                        <option value="h4">${I18n.t("Heading 4")}</option>
+                        <option value="h5">${I18n.t("Heading 5")}</option>
+                        <option value="h6">${I18n.t("Heading 6")}</option>
                     </select>
-                    <select id="text-font" class="tool-select" title="Font">
+                    <select id="text-font" class="tool-select" title="${I18n.t("Font")}">
                         <option value="Arial">Arial</option>
                         <option value="Georgia">Georgia</option>
                         <option value="Times New Roman">Times New Roman</option>
@@ -5584,7 +5624,7 @@ const FileManager = (() => {
                         <option value="Manrope">Manrope</option>
                         <option value="Space Grotesk">Space Grotesk</option>
                     </select>
-                    <select id="text-size" class="tool-select" title="Font size">
+                    <select id="text-size" class="tool-select" title="${I18n.t("Font size")}">
                         <option value="12">12</option>
                         <option value="14">14</option>
                         <option value="16" selected>16</option>
@@ -5594,47 +5634,47 @@ const FileManager = (() => {
                         <option value="48">48</option>
                     </select>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="bold" title="Bold"><span class="material-icons-outlined">format_bold</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="italic" title="Italic"><span class="material-icons-outlined">format_italic</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="underline" title="Underline"><span class="material-icons-outlined">format_underlined</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="strikeThrough" title="Strikethrough"><span class="material-icons-outlined">strikethrough_s</span></button>
-                    <label class="tool-color" title="Text color"><span class="material-icons-outlined">format_color_text</span><input type="color" id="text-color" value="#202124"></label>
-                    <label class="tool-color" title="Highlight color"><span class="material-icons-outlined">format_color_fill</span><input type="color" id="text-highlight" value="#ffff00"></label>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="bold" title="${I18n.t("Bold")}"><span class="material-icons-outlined">format_bold</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="italic" title="${I18n.t("Italic")}"><span class="material-icons-outlined">format_italic</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="underline" title="${I18n.t("Underline")}"><span class="material-icons-outlined">format_underlined</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="strikeThrough" title="${I18n.t("Strikethrough")}"><span class="material-icons-outlined">strikethrough_s</span></button>
+                    <label class="tool-color" title="${I18n.t("Text color")}"><span class="material-icons-outlined">format_color_text</span><input type="color" id="text-color" value="#202124"></label>
+                    <label class="tool-color" title="${I18n.t("Highlight color")}"><span class="material-icons-outlined">format_color_fill</span><input type="color" id="text-highlight" value="#ffff00"></label>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="insertUnorderedList" title="Bulleted list"><span class="material-icons-outlined">format_list_bulleted</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="insertOrderedList" title="Numbered list"><span class="material-icons-outlined">format_list_numbered</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="outdent" title="Decrease indent"><span class="material-icons-outlined">format_indent_decrease</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="indent" title="Increase indent"><span class="material-icons-outlined">format_indent_increase</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="insertUnorderedList" title="${I18n.t("Bulleted list")}"><span class="material-icons-outlined">format_list_bulleted</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="insertOrderedList" title="${I18n.t("Numbered list")}"><span class="material-icons-outlined">format_list_numbered</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="outdent" title="${I18n.t("Decrease indent")}"><span class="material-icons-outlined">format_indent_decrease</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="indent" title="${I18n.t("Increase indent")}"><span class="material-icons-outlined">format_indent_increase</span></button>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyLeft" title="Align left"><span class="material-icons-outlined">format_align_left</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyCenter" title="Align center"><span class="material-icons-outlined">format_align_center</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyRight" title="Align right"><span class="material-icons-outlined">format_align_right</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyFull" title="Justify"><span class="material-icons-outlined">format_align_justify</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyLeft" title="${I18n.t("Align left")}"><span class="material-icons-outlined">format_align_left</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyCenter" title="${I18n.t("Align center")}"><span class="material-icons-outlined">format_align_center</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyRight" title="${I18n.t("Align right")}"><span class="material-icons-outlined">format_align_right</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="justifyFull" title="${I18n.t("Justify")}"><span class="material-icons-outlined">format_align_justify</span></button>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="subscript" title="Subscript"><span class="material-icons-outlined">subscript</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="superscript" title="Superscript"><span class="material-icons-outlined">superscript</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="subscript" title="${I18n.t("Subscript")}"><span class="material-icons-outlined">subscript</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="superscript" title="${I18n.t("Superscript")}"><span class="material-icons-outlined">superscript</span></button>
                     <span class="tool-sep" aria-hidden="true"></span>
-                    <button type="button" class="tool-btn tool-btn-icon" id="text-link" title="Insert link"><span class="material-icons-outlined">link</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" id="text-image" title="Insert image"><span class="material-icons-outlined">image</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" id="text-quote" title="Quote"><span class="material-icons-outlined">format_quote</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" id="text-code" title="Code block"><span class="material-icons-outlined">code</span></button>
-                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="removeFormat" title="Clear formatting"><span class="material-icons-outlined">format_clear</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-link" title="${I18n.t("Insert link")}"><span class="material-icons-outlined">link</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-image" title="${I18n.t("Insert image")}"><span class="material-icons-outlined">image</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-quote" title="${I18n.t("Quote")}"><span class="material-icons-outlined">format_quote</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" id="text-code" title="${I18n.t("Code block")}"><span class="material-icons-outlined">code</span></button>
+                    <button type="button" class="tool-btn tool-btn-icon" data-cmd="removeFormat" title="${I18n.t("Clear formatting")}"><span class="material-icons-outlined">format_clear</span></button>
                     <input type="file" id="text-image-input" accept="image/*" hidden>
                 </div>
                 <div class="text-editor-scroll">
                     <div class="text-editor text-editor-page" id="text-editor" contenteditable="true" spellcheck="true"></div>
                 </div>
                 <div class="text-meta">
-                    <span id="text-autosave">Auto-save every 30s</span>
-                    <span id="text-count">0 words · 0 chars</span>
+                    <span id="text-autosave">${I18n.t("Auto-save every 30s")}</span>
+                    <span id="text-count">${I18n.t("0 words · 0 chars")}</span>
                 </div>
             `;
         } else {
             wrap.innerHTML = `
                 <textarea class="text-editor text-editor-plain" id="text-editor-plain" spellcheck="false"></textarea>
                 <div class="text-meta">
-                    <span id="text-autosave">Auto-save every 30s</span>
-                    <span id="text-count">0 words · 0 chars</span>
+                    <span id="text-autosave">${I18n.t("Auto-save every 30s")}</span>
+                    <span id="text-count">${I18n.t("0 words · 0 chars")}</span>
                 </div>
             `;
         }
@@ -5691,7 +5731,7 @@ const FileManager = (() => {
 
             document.getElementById('text-link').addEventListener('mousedown', (e) => e.preventDefault());
             document.getElementById('text-link').addEventListener('click', () => {
-                const href = prompt('Enter URL');
+                const href = prompt(I18n.t("Enter URL"));
                 if (!href) return;
                 runCmd('createLink', href);
             });
@@ -5796,7 +5836,7 @@ const FileManager = (() => {
             const ok = await saveBlobToExistingFile(file, saveBlob, mimeType, fileName);
             if (ok) {
                 setEditorSaved(true);
-                document.getElementById('text-autosave').textContent = `Last saved ${Components.formatDate(new Date().toISOString())}`;
+                document.getElementById('text-autosave').textContent = I18n.t("Last saved {0}", { 0: Components.formatDate(new Date().toISOString()) });
             }
             return ok;
         };
@@ -5822,10 +5862,17 @@ const FileManager = (() => {
         };
     }
 
+
+    // Each Han or kana character counts as a word (CJK text has no spaces); other text
+    // splits on whitespace as before. CJK punctuation separates words and is not counted.
+    const WORD_TOKEN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]+/gu;
+    function countWords(text) {
+        return (String(text || '').match(WORD_TOKEN) || []).length;
+    }
     function updateWordCount(text) {
-        const words = (text.trim().match(/\S+/g) || []).length;
+        const words = countWords(text);
         const chars = text.length;
-        document.getElementById('text-count').textContent = `${words} words · ${chars.toLocaleString()} chars`;
+        document.getElementById('text-count').textContent = I18n.t("{0} words · {1} chars", { 0: words, 1: chars.toLocaleString(I18n.language === 'en' ? undefined : I18n.language) });
     }
 
     async function openPdfViewer(file) {
@@ -5838,8 +5885,8 @@ const FileManager = (() => {
         wrap.innerHTML = `
             <div class="pdf-toolbar">
                 <div class="row-inline">
-                    <button class="btn btn-secondary btn-sm" id="pdf-print">Print</button>
-                    <button class="btn btn-secondary btn-sm" id="pdf-download">Download</button>
+                    <button class="btn btn-secondary btn-sm" id="pdf-print">${I18n.t("Print")}</button>
+                    <button class="btn btn-secondary btn-sm" id="pdf-download">${I18n.t("Download")}</button>
                 </div>
             </div>
             <div class="pdf-content">
@@ -5881,7 +5928,7 @@ const FileManager = (() => {
                 <div class="video-overlay" id="video-overlay">
                     <div class="video-overlay-top">
                         <span class="video-title-label">${esc(file.name)}</span>
-                        <button class="video-icon-btn" id="video-fullscreen" title="Fullscreen">
+                        <button class="video-icon-btn" id="video-fullscreen" title="${I18n.t("Fullscreen")}">
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
                         </button>
                     </div>
@@ -5893,18 +5940,18 @@ const FileManager = (() => {
                         </div>
                         <div class="video-controls-row">
                             <div class="video-controls-left">
-                                <button class="video-icon-btn" id="video-play" title="Play/Pause">
+                                <button class="video-icon-btn" id="video-play" title="${I18n.t("Play/Pause")}">
                                     <svg class="ico-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                     <svg class="ico-pause hidden" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
                                 </button>
-                                <button class="video-icon-btn" id="video-back" title="Back 10s">
+                                <button class="video-icon-btn" id="video-back" title="${I18n.t("Back 10s")}">
                                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 5V1l-5 5 5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6h-2c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/><text x="8.5" y="14.5" font-size="5" fill="currentColor" font-family="sans-serif">10</text></svg>
                                 </button>
-                                <button class="video-icon-btn" id="video-fwd" title="Forward 10s">
+                                <button class="video-icon-btn" id="video-fwd" title="${I18n.t("Forward 10s")}">
                                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/><text x="9" y="14.5" font-size="5" fill="currentColor" font-family="sans-serif">10</text></svg>
                                 </button>
                                 <div class="video-vol-group">
-                                    <button class="video-icon-btn" id="video-mute" title="Mute">
+                                    <button class="video-icon-btn" id="video-mute" title="${I18n.t("Mute")}">
                                         <svg class="ico-vol" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                                         <svg class="ico-mute hidden" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
                                     </button>
@@ -6113,8 +6160,8 @@ const FileManager = (() => {
             const paused = audio.paused;
             playIcon.classList.toggle('hidden', !paused);
             pauseIcon.classList.toggle('hidden', paused);
-            toggle.setAttribute('aria-label', paused ? 'Play' : 'Pause');
-            toggle.title = paused ? 'Play' : 'Pause';
+            toggle.setAttribute('aria-label', paused ? I18n.t("Play") : I18n.t("Pause"));
+            toggle.title = paused ? I18n.t("Play") : I18n.t("Pause");
         };
 
         const playAudio = async (silentAutoplay = false) => {
@@ -6124,9 +6171,9 @@ const FileManager = (() => {
                 syncPlayButton();
                 if (silentAutoplay && err?.name === 'NotAllowedError') return;
                 const detail = err?.name === 'NotSupportedError'
-                    ? 'This audio codec is not supported by your browser.'
-                    : (err?.message || 'Unknown playback error');
-                Components.toast(`Could not play audio: ${detail}`, 'error');
+                    ? I18n.t("This audio codec is not supported by your browser.")
+                    : (I18n.error(err?.message) || I18n.t("Unknown playback error"));
+                Components.toast(I18n.t("Could not play audio: {0}", { 0: detail }), 'error');
             }
         };
 
@@ -6166,7 +6213,7 @@ const FileManager = (() => {
         audio.onpause = syncPlayButton;
         audio.onerror = () => {
             syncPlayButton();
-            Components.toast('Could not play audio. The file may use an unsupported codec or be damaged.', 'error');
+            Components.toast(I18n.t("Could not play audio. The file may use an unsupported codec or be damaged."), 'error');
         };
         audio.onloadedmetadata = () => {
             duration.textContent = formatAudioTime(audio.duration);
@@ -6193,7 +6240,7 @@ const FileManager = (() => {
         syncPlayButton();
         startWaveform(audio);
         await playAudio(true);
-        Components.toast(audio.paused ? 'Audio ready — press Play' : 'Audio playback started', 'success');
+        Components.toast(audio.paused ? I18n.t("Audio ready — press Play") : I18n.t("Audio playback started"), 'success');
     }
 
     function startWaveform(audio) {
@@ -6231,22 +6278,22 @@ const FileManager = (() => {
         wrap.className = 'sheet-wrap';
         wrap.innerHTML = `
             <div class="sheet-toolbar">
-                <button type="button" class="tool-btn tool-btn-icon" id="sheet-undo" title="Undo"><span class="material-icons-outlined">undo</span></button>
-                <button type="button" class="tool-btn tool-btn-icon" id="sheet-redo" title="Redo"><span class="material-icons-outlined">redo</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="sheet-undo" title="${I18n.t("Undo")}"><span class="material-icons-outlined">undo</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="sheet-redo" title="${I18n.t("Redo")}"><span class="material-icons-outlined">redo</span></button>
                 <span class="tool-sep" aria-hidden="true"></span>
-                <label class="sheet-search-wrap" title="Find rows">
+                <label class="sheet-search-wrap" title="${I18n.t("Find rows")}">
                     <span class="material-icons-outlined">search</span>
-                    <input id="sheet-search" placeholder="Search">
+                    <input id="sheet-search" placeholder="${I18n.t("Search")}">
                 </label>
                 <span class="tool-sep" aria-hidden="true"></span>
-                <button type="button" class="tool-btn tool-btn-icon" id="sheet-export" title="Export CSV"><span class="material-icons-outlined">download</span></button>
+                <button type="button" class="tool-btn tool-btn-icon" id="sheet-export" title="${I18n.t("Export CSV")}"><span class="material-icons-outlined">download</span></button>
             </div>
             <div class="sheet-formula-bar">
                 <span class="sheet-cell-address" id="sheet-cell-address">A1</span>
                 <span class="sheet-fx">fx</span>
-                <input id="sheet-formula-input" aria-label="Cell value or formula" placeholder="Select a cell">
+                <input id="sheet-formula-input" aria-label="${I18n.t("Cell value or formula")}" placeholder="${I18n.t("Select a cell")}">
             </div>
-            <div class="sheet-body" id="sheet-body"><div style="padding:40px;text-align:center;color:var(--fd-text-muted)">Loading...</div></div>
+            <div class="sheet-body" id="sheet-body"><div style="padding:40px;text-align:center;color:var(--fd-text-muted)">${I18n.t("Loading...")}</div></div>
             <div class="sheet-tabs-bar" id="sheet-tabs"></div>
         `;
         shell.appendChild(wrap);
@@ -6278,15 +6325,15 @@ const FileManager = (() => {
                     throw new Error('No worksheet found in this file');
                 }
             } else {
-                const csv = await blob.text();
+                const csv = (await Components.decodeText(blob)).replace(/^\ufeff/, '');
                 csvRows = csv.split(/\r?\n/).filter((r) => r.length > 0).map((r) => r.split(','));
                 if (!csvRows.length) csvRows = [['']];
-                sheetNames = ['Sheet1'];
+                sheetNames = [I18n.t("Sheet1")];
             }
         } catch (err) {
             const body = document.getElementById('sheet-body');
             if (body) {
-                body.innerHTML = `<div style="padding:40px;text-align:center;color:#ea4335">Failed to open table: ${esc(err.message || 'Unknown error')}</div>`;
+                body.innerHTML = `<div style="padding:40px;text-align:center;color:#ea4335">${I18n.t("Failed to open table: {0}", { 0: esc(I18n.error(err.message) || I18n.t("Unknown error")) })}</div>`;
             }
             return;
         }
@@ -6469,7 +6516,7 @@ const FileManager = (() => {
         document.getElementById('sheet-export')?.addEventListener('click', () => {
             const data = collectSheetData();
             const out = data.map((r) => r.join(',')).join('\n');
-            const outBlob = new Blob([out], { type: 'text/csv' });
+            const outBlob = new Blob([Components.csvForExcel(out)], { type: 'text/csv' });
             const url = URL.createObjectURL(outBlob);
             const a = document.createElement('a');
             a.href = url;
@@ -6554,7 +6601,7 @@ const FileManager = (() => {
                 });
                 const data = csvRows;
                 const out = data.map((r) => r.join(',')).join('\n');
-                saveBlob = new Blob([out], { type: 'text/csv' });
+                saveBlob = new Blob([Components.csvForExcel(out)], { type: 'text/csv' });
                 mimeType = 'text/csv';
             }
 
@@ -6604,9 +6651,9 @@ const FileManager = (() => {
         wrap.className = 'json-viewer-wrap';
         wrap.innerHTML = `
             <div class="json-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;border-bottom:1px solid var(--fd-border);">
-                <button class="btn btn-secondary btn-sm" id="json-format">Format</button>
-                <button class="btn btn-secondary btn-sm" id="json-minify">Minify</button>
-                <button class="btn btn-secondary btn-sm" id="json-validate">Validate</button>
+                <button class="btn btn-secondary btn-sm" id="json-format">${I18n.t("Format")}</button>
+                <button class="btn btn-secondary btn-sm" id="json-minify">${I18n.t("Minify")}</button>
+                <button class="btn btn-secondary btn-sm" id="json-validate">${I18n.t("Validate")}</button>
             </div>
             <div style="padding:10px;">
                 <textarea id="json-editor" spellcheck="false" style="width:100%;min-height:60vh;resize:vertical;background:var(--fd-bg-soft);color:var(--fd-text);border:1px solid var(--fd-border);border-radius:10px;padding:12px;font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:13px;line-height:1.45;"></textarea>
@@ -6619,10 +6666,10 @@ const FileManager = (() => {
 
         try {
             const blob = await decryptFileBlob(file);
-            originalText = await blob.text();
+            originalText = await Components.decodeText(blob);
             editor.value = originalText;
         } catch (err) {
-            Components.toast(`Failed to load JSON: ${err.message}`, 'error');
+            Components.toast(I18n.t("Failed to load JSON: {0}", { 0: I18n.error(err.message) }), 'error');
             editor.value = '';
         }
 
@@ -6632,7 +6679,7 @@ const FileManager = (() => {
             try {
                 return { ok: true, value: JSON.parse(editor.value) };
             } catch (err) {
-                Components.toast(`Invalid JSON: ${err.message}`, 'error');
+                Components.toast(I18n.t("Invalid JSON: {0}", { 0: I18n.error(err.message) }), 'error');
                 return { ok: false, value: null };
             }
         };
@@ -6654,7 +6701,7 @@ const FileManager = (() => {
         document.getElementById('json-validate')?.addEventListener('click', () => {
             const parsed = parseOrToast();
             if (!parsed.ok) return;
-            Components.toast('JSON is valid', 'success');
+            Components.toast(I18n.t("JSON is valid"), 'success');
         });
 
         editorState.onSave = async () => {
@@ -6677,117 +6724,117 @@ const FileManager = (() => {
             const resp = await API.files.versions(file.id);
             const versions = resp.versions || [];
             if (!versions.length) {
-                Components.toast('No previous versions', 'info');
+                Components.toast(I18n.t("No previous versions"), 'info');
                 return;
             }
 
             const body = versions.map((v) => {
                 return `
                     <div class="share-existing-entry" style="grid-template-columns:1fr 110px 90px;">
-                        <div>Version ${v.version} · ${Components.formatDate(v.created_at)}</div>
+                        <div>${I18n.t("Version {0} · {1}", { 0: v.version, 1: Components.formatDate(v.created_at) })}</div>
                         <span>${Components.formatSize(v.size)}</span>
-                        <button class="btn btn-secondary btn-sm" data-version="${v.version}">Restore</button>
+                        <button class="btn btn-secondary btn-sm" data-version="${v.version}">${I18n.t("Restore")}</button>
                     </div>
                 `;
             }).join('');
 
-            Components.showModal('Version history', body, [{ text: 'Close' }]);
+            Components.showModal(I18n.t("Version history"), body, [{ text: I18n.t("Close") }]);
             setTimeout(() => {
                 document.querySelectorAll('[data-version]').forEach((btn) => {
                     btn.addEventListener('click', async () => {
                         const version = btn.dataset.version;
                         try {
                             await API.files.restoreVersion(file.id, version);
-                            Components.toast('Version restored', 'success');
+                            Components.toast(I18n.t("Version restored"), 'success');
                             Components.hideModal();
                             refresh();
                         } catch (err) {
-                            Components.toast(`Restore failed: ${err.message}`, 'error');
+                            Components.toast(I18n.t("Restore failed: {0}", { 0: I18n.error(err.message) }), 'error');
                         }
                     });
                 });
             }, 30);
         } catch {
-            Components.toast('Version history unavailable', 'error');
+            Components.toast(I18n.t("Version history unavailable"), 'error');
         }
     }
 
     function showShortcuts() {
         const data = [
             {
-                title: 'Navigation',
+                title: I18n.t("Navigation"),
                 items: [
-                    ['n', 'New folder'],
-                    ['u', 'Upload file'],
-                    ['/', 'Search'],
-                    ['g then h', 'Go to Home'],
-                    ['g then d', 'Go to My Drive'],
-                    ['g then r', 'Go to Recent'],
-                    ['g then t', 'Go to Trash'],
-                    ['g then s', 'Go to Storage'],
-                    ['Backspace', 'Go up one folder'],
+                    ['n', I18n.t("New folder")],
+                    ['u', I18n.t("Upload file")],
+                    ['/', I18n.t("Search")],
+                    [I18n.t('g then h'), I18n.t("Go to Home")],
+                    [I18n.t('g then d'), I18n.t("Go to My Drive")],
+                    [I18n.t('g then r'), I18n.t("Go to Recent")],
+                    [I18n.t('g then t'), I18n.t("Go to Trash")],
+                    [I18n.t('g then s'), I18n.t("Go to Storage")],
+                    ['Backspace', I18n.t("Go up one folder")],
                 ],
             },
             {
-                title: 'Selection',
+                title: I18n.t("Selection"),
                 items: [
-                    ['a', 'Select all'],
-                    ['Ctrl + A', 'Select all (alternative)'],
-                    ['Esc', 'Deselect all / Close panel'],
-                    ['↑ / ↓', 'Move selection up / down'],
-                    ['← / →', 'Move selection left / right'],
-                    ['Shift + Click', 'Range select'],
-                    ['Ctrl + Click', 'Multi-select'],
-                    ['Space', 'Toggle item selection'],
+                    ['a', I18n.t("Select all")],
+                    ['Ctrl + A', I18n.t("Select all (alternative)")],
+                    ['Esc', I18n.t("Deselect all / Close panel")],
+                    ['↑ / ↓', I18n.t("Move selection up / down")],
+                    ['← / →', I18n.t("Move selection left / right")],
+                    [I18n.t('Shift + Click'), I18n.t("Range select")],
+                    [I18n.t('Ctrl + Click'), I18n.t("Multi-select")],
+                    ['Space', I18n.t("Toggle item selection")],
                 ],
             },
             {
-                title: 'Actions',
+                title: I18n.t("Actions"),
                 items: [
-                    ['Enter', 'Open selected item'],
-                    ['Del / Backspace', inTrashView() ? 'Delete forever' : 'Move to trash'],
-                    ['s', 'Toggle star'],
-                    ['.', 'Share selected'],
-                    ['d', 'Download selected'],
-                    ['Ctrl + Z', 'Undo last action'],
-                    ['Ctrl + C', 'Copy selected'],
-                    ['Ctrl + X', 'Cut selected'],
-                    ['Ctrl + V', 'Paste'],
-                    ['F2', 'Rename selected'],
-                    ['m', 'Move to…'],
+                    ['Enter', I18n.t("Open selected item")],
+                    ['Del / Backspace', inTrashView() ? I18n.t("Delete forever") : I18n.t("Move to trash")],
+                    ['s', I18n.t("Toggle star")],
+                    ['.', I18n.t("Share selected")],
+                    ['d', I18n.t("Download selected")],
+                    ['Ctrl + Z', I18n.t("Undo last action")],
+                    ['Ctrl + C', I18n.t("Copy selected")],
+                    ['Ctrl + X', I18n.t("Cut selected")],
+                    ['Ctrl + V', I18n.t("Paste")],
+                    ['F2', I18n.t("Rename selected")],
+                    ['m', I18n.t("Move to…")],
                 ],
             },
             {
-                title: 'Views',
+                title: I18n.t("Views"),
                 items: [
-                    ['1', 'List view'],
-                    ['2', 'Grid view'],
-                    ['i', 'Toggle details panel'],
-                    ['p', 'Preview selected'],
-                    ['Ctrl + Shift + L', 'Toggle sidebar'],
+                    ['1', I18n.t("List view")],
+                    ['2', I18n.t("Grid view")],
+                    ['i', I18n.t("Toggle details panel")],
+                    ['p', I18n.t("Preview selected")],
+                    ['Ctrl + Shift + L', I18n.t("Toggle sidebar")],
                 ],
             },
             {
-                title: 'File Editing',
+                title: I18n.t("File Editing"),
                 items: [
-                    ['Ctrl + S', 'Save file'],
-                    ['Ctrl + Z', 'Undo edit'],
-                    ['Ctrl + Shift + Z', 'Redo edit'],
-                    ['Ctrl + B', 'Bold text'],
-                    ['Ctrl + I', 'Italic text'],
-                    ['Ctrl + U', 'Underline text'],
-                    ['Ctrl + K', 'Insert link'],
+                    ['Ctrl + S', I18n.t("Save file")],
+                    ['Ctrl + Z', I18n.t("Undo edit")],
+                    ['Ctrl + Shift + Z', I18n.t("Redo edit")],
+                    ['Ctrl + B', I18n.t("Bold text")],
+                    ['Ctrl + I', I18n.t("Italic text")],
+                    ['Ctrl + U', I18n.t("Underline text")],
+                    ['Ctrl + K', I18n.t("Insert link")],
                 ],
             },
             {
-                title: 'System',
+                title: I18n.t("System"),
                 items: [
-                    ['Shift + ?', 'Show keyboard shortcuts'],
-                    ['Ctrl + F', 'Find in page'],
-                    ['Alt + N', 'Notifications'],
-                    ['Ctrl + ,', 'Settings'],
-                    ['Ctrl + Shift + H', 'Activity log'],
-                    ['F11', 'Toggle fullscreen'],
+                    ['Shift + ?', I18n.t("Show keyboard shortcuts")],
+                    ['Ctrl + F', I18n.t("Find in page")],
+                    ['Alt + N', I18n.t("Notifications")],
+                    ['Ctrl + ,', I18n.t("Settings")],
+                    ['Ctrl + Shift + H', I18n.t("Activity log")],
+                    ['F11', I18n.t("Toggle fullscreen")],
                 ],
             },
         ];
@@ -6807,6 +6854,7 @@ const FileManager = (() => {
     let _gKeyTimer = null;
 
     function handleShortcut(e) {
+        if (Components.isComposing(e)) return;
         const target = e.target;
         const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
@@ -7068,19 +7116,19 @@ const FileManager = (() => {
             barFill.style.width = `${widthPct}%`;
             barFill.style.background = rawPct >= 90 ? '#d93025' : '#1a73e8';
             document.getElementById('storage-text').textContent =
-                `${formatStorageSize(rawUsed)} of ${formatStorageSize(rawTotal)} used`;
+                I18n.t("{0} of {1} used", { 0: formatStorageSize(rawUsed), 1: formatStorageSize(rawTotal) });
 
             if (rawPct >= 80) {
                 const key = 'fd_storage_notice_last';
                 const last = Number(localStorage.getItem(key) || 0);
                 const now = Date.now();
                 if (!last || (now - last) > (60 * 60 * 1000)) {
-                    createNotification(`Storage is ${Math.round(pct)}% full`, new Date().toISOString(), false, 'System');
+                    createNotification({ key: "Storage is {0}% full", values: { 0: Math.round(pct) } }, new Date().toISOString(), false, I18n.t("System"));
                     localStorage.setItem(key, String(now));
                 }
             }
         } catch {
-            document.getElementById('storage-text').textContent = 'Storage unavailable';
+            document.getElementById('storage-text').textContent = I18n.t("Storage unavailable");
         }
     }
 
@@ -7117,7 +7165,7 @@ const FileManager = (() => {
 
     function shareSelectedItem() {
         if (!selectedPrimary || selectedItems.size !== 1) {
-            Components.toast('Select one item to share', 'warning');
+            Components.toast(I18n.t("Select one item to share"), 'warning');
             return;
         }
         openShareModal(selectedPrimary);
@@ -7128,17 +7176,17 @@ const FileManager = (() => {
         if (selectedPrimary.type === 'file') {
             await downloadFile(selectedPrimary.data);
         } else {
-            Components.toast('Folders cannot be downloaded directly', 'info');
+            Components.toast(I18n.t("Folders cannot be downloaded directly"), 'info');
         }
     }
 
     async function renameSelected() {
         if (!selectedPrimary) return;
-        const newName = await Components.prompt('Rename', selectedPrimary.data.name, 'New name');
+        const newName = await Components.prompt(I18n.t("Rename"), selectedPrimary.data.name, I18n.t("New name"));
         if (!newName || newName === selectedPrimary.data.name) return;
         try {
             await renameItem(selectedPrimary, newName);
-            Components.toast('Renamed', 'success');
+            Components.toast(I18n.t("Renamed"), 'success');
             refresh();
         } catch (err) {
             Components.toast(err.message, 'error');
@@ -7151,7 +7199,7 @@ const FileManager = (() => {
 
     function afterUpload(result, file) {
         addFileActivity(result.id, 'uploaded', result.name);
-        createNotification('File uploaded successfully', new Date().toISOString(), false, currentUserLabel());
+        createNotification({ key: "File uploaded successfully" }, new Date().toISOString(), false, currentUserLabel());
     }
 
     return {

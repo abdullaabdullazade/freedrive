@@ -110,9 +110,9 @@ func (h *UserHandler) RequestEmailChange(w http.ResponseWriter, r *http.Request)
 
 	siteURL := siteBaseURL(adminsettings.SiteURL(), r)
 	confirmURL := fmt.Sprintf("%s/confirm-email?token=%s", siteURL, url.QueryEscape(rawToken))
-	subject := "Confirm your new FreeDrive email"
+	subject := email.T("Confirm your new FreeDrive email")
 	body := fmt.Sprintf(
-		"Hello %s,\n\nYou requested to change your FreeDrive account email to this address.\n\nConfirm your new email:\n%s\n\nThis link expires in 24 hours. If you did not request this change, ignore this email.\n",
+		email.T("Hello %s,\n\nYou requested to change your FreeDrive account email to this address.\n\nConfirm your new email:\n%s\n\nThis link expires in 24 hours. If you did not request this change, ignore this email.\n"),
 		chooseDisplayName(user.Username, user.Email),
 		confirmURL,
 	)
@@ -125,9 +125,9 @@ func (h *UserHandler) RequestEmailChange(w http.ResponseWriter, r *http.Request)
 
 	// Optional notice to old email (informational only).
 	go func() {
-		noticeSubject := "FreeDrive email change requested"
+		noticeSubject := email.T("FreeDrive email change requested")
 		noticeBody := fmt.Sprintf(
-			"Hello %s,\n\nA request was made to change your FreeDrive account email to %s.\n\nIf this was not you, contact your administrator immediately.\n",
+			email.T("Hello %s,\n\nA request was made to change your FreeDrive account email to %s.\n\nIf this was not you, contact your administrator immediately.\n"),
 			chooseDisplayName(user.Username, user.Email),
 			newEmail,
 		)

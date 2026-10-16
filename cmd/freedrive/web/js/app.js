@@ -99,12 +99,12 @@ const App = (() => {
     }
 
     function profileDisplayName(user) {
-        if (!user) return 'User';
+        if (!user) return I18n.t("User");
         const username = String(user.username || '').trim();
         if (username) return username;
         const email = String(user.email || '');
         const at = email.indexOf('@');
-        return at > 0 ? email.slice(0, at) : (email || 'User');
+        return at > 0 ? email.slice(0, at) : (email || I18n.t("User"));
     }
 
     async function refreshProfileStorage() {
@@ -123,7 +123,7 @@ const App = (() => {
                 return;
             }
             const pct = Math.min(100, Math.round((used / total) * 100));
-            textEl.textContent = `${Components.formatSize(used)} of ${Components.formatSize(total)} used`;
+            textEl.textContent = I18n.t("{0} of {1} used", { 0: Components.formatSize(used), 1: Components.formatSize(total) });
             fillEl.style.width = `${pct}%`;
             warnEl?.classList.toggle('hidden', pct < 80);
             storageEl.classList.remove('hidden');
@@ -137,7 +137,7 @@ const App = (() => {
         const displayName = profileDisplayName(user);
         const greeting = document.getElementById('profile-greeting');
         const emailEl = document.getElementById('profile-email');
-        if (greeting) greeting.textContent = `Hi, ${displayName}!`;
+        if (greeting) greeting.textContent = I18n.t("Hi, {0}!", { 0: displayName });
         if (emailEl) emailEl.textContent = user.email || '';
 
         const initial = Components.initials(displayName || user.email || 'U');
@@ -187,10 +187,10 @@ const App = (() => {
             const un = document.getElementById('user-name');
             if (un) un.textContent = user.username || user.email;
             const ur = document.getElementById('user-role');
-            if (ur) ur.textContent = user.role;
+            if (ur) ur.textContent = I18n.label(user.role);
 
             const greeting = document.getElementById('profile-greeting');
-            if (greeting) greeting.textContent = `Hi, ${profileDisplayName(user)}!`;
+            if (greeting) greeting.textContent = I18n.t("Hi, {0}!", { 0: profileDisplayName(user) });
             const emailEl = document.getElementById('profile-email');
             if (emailEl) emailEl.textContent = user.email || '';
             const lgAvatar = document.getElementById('profile-avatar-lg');
@@ -218,13 +218,13 @@ const App = (() => {
     }
 
     function formatEmailExpiry(iso) {
-        if (!iso) return 'soon';
+        if (!iso) return I18n.t('soon');
         try {
             const d = new Date(iso);
-            if (Number.isNaN(d.getTime())) return 'soon';
-            return d.toLocaleString();
+            if (Number.isNaN(d.getTime())) return I18n.t('soon');
+            return d.toLocaleString(I18n.language === 'en' ? undefined : I18n.language);
         } catch {
-            return 'soon';
+            return I18n.t('soon');
         }
     }
 
@@ -246,60 +246,60 @@ const App = (() => {
 
         const pendingBanner = pendingStatus.pending
             ? `<div id="settings-email-pending" style="margin-top:12px;padding:12px 14px;border-radius:8px;background:#e8f0fe;color:#174ea6;font-size:13px;line-height:1.45;">
-                Check your inbox at <strong>${esc(pendingStatus.new_email_masked || 'your new address')}</strong>.
-                The confirmation link expires ${esc(formatEmailExpiry(pendingStatus.expires_at))}.
+                ${I18n.t("Check your inbox at {0}.", { 0: `<strong>${esc(pendingStatus.new_email_masked || I18n.t("your new address"))}</strong>` })}
+                ${I18n.t('The confirmation link expires {0}.', { 0: esc(formatEmailExpiry(pendingStatus.expires_at)) })}
             </div>`
             : '';
 
-        Components.showModal('Settings', `
+        Components.showModal(I18n.t("Settings"), `
             <div class="drive-settings-modal" style="padding: 8px 0;">
                 <div class="drive-settings-profile" style="margin-bottom: 24px;">
                     <div class="drive-settings-avatar ${previewAvatar ? 'has-photo' : ''}" id="settings-avatar-preview" style="${previewAvatar ? `background-image:url(${previewAvatar});` : ''}">${previewAvatar ? '' : esc(Components.initials(user.username || user.email || 'U'))}</div>
                     <div class="drive-settings-meta">
-                        <div class="drive-settings-name">${esc(user.username || 'User')}</div>
-                        <div class="drive-settings-email">${esc(user.email || 'No email')}</div>
+                        <div class="drive-settings-name">${esc(user.username || I18n.t("User"))}</div>
+                        <div class="drive-settings-email">${esc(user.email || I18n.t("No email"))}</div>
                         <div class="drive-settings-avatar-actions">
-                            <label class="drive-avatar-upload-btn" for="settings-avatar-input">Upload photo</label>
-                            <button type="button" class="drive-avatar-remove-btn" id="settings-avatar-remove">Remove</button>
+                            <label class="drive-avatar-upload-btn" for="settings-avatar-input">${I18n.t("Upload photo")}</label>
+                            <button type="button" class="drive-avatar-remove-btn" id="settings-avatar-remove">${I18n.t("Remove")}</button>
                         </div>
                     </div>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:16px;">
                     <label class="drive-settings-field drive-settings-field-full">
-                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">First name</span>
-                        <input id="settings-first-name" type="text" value="${esc(firstName)}" placeholder="First name" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
+                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">${I18n.t("First name")}</span>
+                        <input id="settings-first-name" type="text" value="${esc(firstName)}" placeholder="${I18n.t("First name")}" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
                     </label>
                     <label class="drive-settings-field drive-settings-field-full">
-                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Last name</span>
-                        <input id="settings-last-name" type="text" value="${esc(lastName)}" placeholder="Last name" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
+                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">${I18n.t("Last name")}</span>
+                        <input id="settings-last-name" type="text" value="${esc(lastName)}" placeholder="${I18n.t("Last name")}" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
                     </label>
                     <label class="drive-settings-field drive-settings-field-full">
-                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Email</span>
-                        <input id="settings-email" type="email" value="${esc(user.email || '')}" placeholder="Email" autocomplete="email" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
-                        <span style="display:block;margin-top:6px;font-size:12px;color:#5f6368;">Confirmation link will be sent to the new address.</span>
+                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">${I18n.t("Email")}</span>
+                        <input id="settings-email" type="email" value="${esc(user.email || '')}" placeholder="${I18n.t("Email")}" autocomplete="email" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
+                        <span style="display:block;margin-top:6px;font-size:12px;color:#5f6368;">${I18n.t("Confirmation link will be sent to the new address.")}</span>
                     </label>
                     <label class="drive-settings-field drive-settings-field-full hidden" id="settings-email-password-wrap">
-                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">Current password</span>
-                        <input id="settings-email-password" type="password" placeholder="Required to change email" autocomplete="current-password" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
+                        <span style="font-size:13px;font-weight:500;color:#5f6368;display:block;margin-bottom:6px;">${I18n.t("Current password")}</span>
+                        <input id="settings-email-password" type="password" placeholder="${I18n.t("Required to change email")}" autocomplete="current-password" style="width:100%;height:36px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;font-size:14px;background:#fff;">
                     </label>
-                    <button type="button" class="btn btn-secondary drive-settings-confirm-btn" id="settings-send-email-confirm">Confirm</button>
+                    <button type="button" class="btn btn-secondary drive-settings-confirm-btn" id="settings-send-email-confirm">${I18n.t("Confirm")}</button>
                     ${pendingBanner}
                     <div style="margin-top:8px;padding-top:20px;border-top:1px solid #e8eaed;">
-                        <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:8px;">Keyboard shortcuts</div>
+                        <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:8px;">${I18n.t("Keyboard shortcuts")}</div>
                         <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
-                            View keyboard shortcuts for navigating and managing files.
+                            ${I18n.t("View keyboard shortcuts for navigating and managing files.")}
                         </p>
                         <button type="button" class="btn btn-secondary" id="settings-keyboard-shortcuts-btn">
-                            Keyboard shortcuts
+                            ${I18n.t("Keyboard shortcuts")}
                         </button>
                     </div>
                 </div>
                 <input id="settings-avatar-input" type="file" accept="image/*" hidden>
             </div>
         `, [
-            { text: 'Cancel' },
+            { text: I18n.t("Cancel") },
             {
-                text: 'Save',
+                text: I18n.t("Save"),
                 class: 'btn-primary',
                 close: false,
                 action: async () => {
@@ -307,7 +307,7 @@ const App = (() => {
                     const last = String(document.getElementById('settings-last-name')?.value || '').trim();
                     const fullName = [first, last].filter(Boolean).join(' ');
                     if (!fullName) {
-                        Components.toast('First or last name is required', 'error');
+                        Components.toast(I18n.t("First or last name is required"), 'error');
                         return;
                     }
 
@@ -327,10 +327,10 @@ const App = (() => {
                         API.setUser(updated);
                         syncAvatarCache(updated.avatar_url || '');
                         refreshUserUI();
-                        Components.toast('Profile updated', 'success');
+                        Components.toast(I18n.t("Profile updated"), 'success');
                         Components.hideModal();
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to save profile', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to save profile"), 'error');
                     }
                 },
             },
@@ -385,29 +385,29 @@ const App = (() => {
             const newEmail = String(emailInput?.value || '').trim().toLowerCase();
             const password = String(passwordInput?.value || '');
             if (!newEmail || !newEmail.includes('@')) {
-                Components.toast('Enter a valid email address', 'error');
+                Components.toast(I18n.t("Enter a valid email address"), 'error');
                 return;
             }
             if (newEmail === currentEmail) {
-                Components.toast('Enter a different email address', 'error');
+                Components.toast(I18n.t("Enter a different email address"), 'error');
                 return;
             }
             if (!password) {
-                Components.toast('Current password is required to change email', 'error');
+                Components.toast(I18n.t("Current password is required to change email"), 'error');
                 return;
             }
 
             sendConfirmBtn.disabled = true;
             const prevLabel = sendConfirmBtn.textContent;
-            sendConfirmBtn.textContent = 'Sending...';
+            sendConfirmBtn.textContent = I18n.t("Sending...");
             try {
                 const result = await API.requestEmailChange(newEmail, password);
-                Components.toast(`Confirmation link sent to ${result.new_email_masked || newEmail}`, 'success', { duration: 7000 });
+                Components.toast(I18n.t("Confirmation link sent to {0}", { 0: result.new_email_masked || newEmail }), 'success', { duration: 7000 });
                 if (passwordInput) passwordInput.value = '';
                 Components.hideModal();
                 openDriveSettings();
             } catch (err) {
-                Components.toast(err?.message || 'Failed to request email change', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to request email change"), 'error');
             } finally {
                 sendConfirmBtn.disabled = false;
                 sendConfirmBtn.textContent = prevLabel;
@@ -438,7 +438,7 @@ const App = (() => {
         } catch { /* ignore */ }
 
         const requiredNote = required
-            ? '<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Your administrator requires two-factor authentication (authenticator app or email).</p>'
+            ? `<p style="margin:12px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">${I18n.t("Your administrator requires two-factor authentication (authenticator app or email).")}</p>`
             : '';
 
         let needsRecovery = false;
@@ -449,7 +449,7 @@ const App = (() => {
         }
         const recoveryBanner = needsRecovery
             ? `<div id="security-crypto-recovery-banner" style="margin-bottom:12px;padding:12px 14px;border-radius:8px;background:#fce8e6;color:#c5221f;font-size:13px;line-height:1.45;">
-                Server lost encryption account data, but encrypted file keys are still on the server. Enter your recovery code below to restore access.
+                ${I18n.t("Server lost encryption account data, but encrypted file keys are still on the server. Enter your recovery code below to restore access.")}
             </div>`
             : '';
         const recoverySection = needsRecovery
@@ -457,108 +457,108 @@ const App = (() => {
                 <input id="security-crypto-recovery-input" type="text" placeholder="xxxx-xxxx-..."
                     style="width:100%;height:40px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
                 <button type="button" class="btn btn-secondary" id="security-crypto-recovery-restore-btn" style="margin-top:8px;">
-                    Restore encryption
+                    ${I18n.t("Restore encryption")}
                 </button>
             </div>`
             : '';
 
         const totpBody = totpEnabled
-            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Authenticator app is enabled${profile.totp_enrolled_at ? ` (since ${esc(new Date(profile.totp_enrolled_at).toLocaleDateString())})` : ''}.</p>
-               <button type="button" class="btn btn-secondary" id="security-totp-disable-btn" style="margin-top:12px;">Disable authenticator</button>`
-            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">Use Google Authenticator, Authy, or 1Password for sign-in codes. Preferred when both methods are enabled.</p>
-               <button type="button" class="btn btn-primary" id="security-totp-setup-btn">Set up authenticator</button>
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">${I18n.t("Authenticator app is enabled{0}.", { 0: profile.totp_enrolled_at ? I18n.t(" (since {0})", { 0: esc(new Date(profile.totp_enrolled_at).toLocaleDateString(I18n.language === 'en' ? undefined : I18n.language)) }) : '' })}</p>
+               <button type="button" class="btn btn-secondary" id="security-totp-disable-btn" style="margin-top:12px;">${I18n.t("Disable authenticator")}</button>`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">${I18n.t("Use Google Authenticator, Authy, or 1Password for sign-in codes. Preferred when both methods are enabled.")}</p>
+               <button type="button" class="btn btn-primary" id="security-totp-setup-btn">${I18n.t("Set up authenticator")}</button>
                <div id="security-totp-setup-panel" class="hidden" style="margin-top:14px;"></div>`;
 
         const emailCanDisable = !(required && !totpEnabled);
         const emailBody = emailEnabled
-            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Email verification codes are enabled for ${esc(profile.email || 'your email')}.</p>
-               <button type="button" class="btn btn-secondary" id="security-email-2fa-disable-btn" style="margin-top:12px;" ${emailCanDisable ? '' : 'disabled'}>Disable email codes</button>
-               ${emailCanDisable ? '' : '<p style="margin:8px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">Required by your administrator until an authenticator app is set up.</p>'}`
-            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">Protect your account with a 6-digit code sent to ${esc(profile.email || 'your email')} each time you sign in.</p>
-               <button type="button" class="btn btn-primary" id="security-email-2fa-enable-btn">Enable email codes</button>
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">${I18n.t("Email verification codes are enabled for {0}.", { 0: esc(profile.email || I18n.t("your email")) })}</p>
+               <button type="button" class="btn btn-secondary" id="security-email-2fa-disable-btn" style="margin-top:12px;" ${emailCanDisable ? '' : 'disabled'}>${I18n.t("Disable email codes")}</button>
+               ${emailCanDisable ? '' : `<p style="margin:8px 0 0;font-size:12px;color:#174ea6;line-height:1.45;">${I18n.t("Required by your administrator until an authenticator app is set up.")}</p>`}`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">${I18n.t("Protect your account with a 6-digit code sent to {0} each time you sign in.", { 0: esc(profile.email || I18n.t("your email")) })}</p>
+               <button type="button" class="btn btn-primary" id="security-email-2fa-enable-btn">${I18n.t("Enable email codes")}</button>
                ${requiredNote}`;
 
         const phoneTrustedNote = phoneStatus.has_trusted_mobile
-            ? '<p style="margin:8px 0 0;font-size:12px;color:#137333;line-height:1.45;">Trusted FreeDrive mobile app detected.</p>'
-            : '<p style="margin:8px 0 0;font-size:12px;color:#b06000;line-height:1.45;">No trusted mobile app signed in yet. Install FreeDrive on your phone and stay signed in.</p>';
+            ? `<p style="margin:8px 0 0;font-size:12px;color:#137333;line-height:1.45;">${I18n.t("Trusted FreeDrive mobile app detected.")}</p>`
+            : `<p style="margin:8px 0 0;font-size:12px;color:#b06000;line-height:1.45;">${I18n.t("No trusted mobile app signed in yet. Install FreeDrive on your phone and stay signed in.")}</p>`;
         const phoneBody = phoneEnabled
-            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">Phone sign-in prompts are enabled.</p>
+            ? `<p style="margin:0;font-size:13px;color:#137333;line-height:1.45;">${I18n.t("Phone sign-in prompts are enabled.")}</p>
                ${phoneTrustedNote}
-               <button type="button" class="btn btn-secondary" id="security-phone-approval-disable-btn" style="margin-top:12px;">Disable phone prompts</button>`
-            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">When you sign in on a new computer or browser, FreeDrive can ask your phone to approve instead of an authenticator code. Requires the FreeDrive mobile app signed in.</p>
-               <button type="button" class="btn btn-primary" id="security-phone-approval-enable-btn">Enable phone prompts</button>
+               <button type="button" class="btn btn-secondary" id="security-phone-approval-disable-btn" style="margin-top:12px;">${I18n.t("Disable phone prompts")}</button>`
+            : `<p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">${I18n.t("When you sign in on a new computer or browser, FreeDrive can ask your phone to approve instead of an authenticator code. Requires the FreeDrive mobile app signed in.")}</p>
+               <button type="button" class="btn btn-primary" id="security-phone-approval-enable-btn">${I18n.t("Enable phone prompts")}</button>
                ${phoneTrustedNote}`;
 
-        Components.showModal('Security', `
+        Components.showModal(I18n.t("Security"), `
             <div class="drive-settings-modal" style="padding:8px 0;display:flex;flex-direction:column;gap:16px;">
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
-                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Authenticator app</div>
-                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Protect your account with a time-based code from an authenticator app.</div>
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">${I18n.t("Authenticator app")}</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">${I18n.t("Protect your account with a time-based code from an authenticator app.")}</div>
                     ${totpBody}
                 </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
-                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Email two-factor authentication</div>
-                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Protect your account with a verification code sent by email.</div>
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">${I18n.t("Email two-factor authentication")}</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">${I18n.t("Protect your account with a verification code sent by email.")}</div>
                     ${emailBody}
                 </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
-                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">Phone sign-in prompts</div>
-                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">Approve sign-ins from your phone, like Google Prompt.</div>
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:4px;">${I18n.t("Phone sign-in prompts")}</div>
+                    <div style="font-size:13px;color:#5f6368;line-height:1.45;margin-bottom:12px;">${I18n.t("Approve sign-ins from your phone, like Google Prompt.")}</div>
                     ${phoneBody}
                 </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
-                        <div style="font-size:15px;font-weight:600;color:#202124;">Devices</div>
+                        <div style="font-size:15px;font-weight:600;color:#202124;">${I18n.t("Devices")}</div>
                         <button type="button" class="btn btn-secondary" id="security-revoke-others-btn" style="font-size:12px;height:32px;">
-                            Sign out other devices
+                            ${I18n.t("Sign out other devices")}
                         </button>
                     </div>
                     <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
-                        Devices currently signed in to your account. Signing out a device forces it to log in again.
+                        ${I18n.t("Devices currently signed in to your account. Signing out a device forces it to log in again.")}
                     </p>
                     <div id="security-sessions-list" style="display:flex;flex-direction:column;gap:8px;">
-                        <div style="font-size:13px;color:#5f6368;">Loading devices…</div>
+                        <div style="font-size:13px;color:#5f6368;">${I18n.t("Loading devices…")}</div>
                     </div>
                 </div>
                 <div style="border:1px solid #e8eaed;border-radius:12px;padding:16px 18px;background:#fff;">
-                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:8px;">Encryption</div>
+                    <div style="font-size:15px;font-weight:600;color:#202124;margin-bottom:8px;">${I18n.t("Encryption")}</div>
                     ${recoveryBanner}
                     <p style="margin:0 0 8px;font-size:12px;color:#5f6368;line-height:1.45;">
-                        Status: <strong id="security-crypto-status">${window.CryptoSync?.isUnlocked?.() ? 'Active' : 'Inactive'}</strong>
-                        — encryption unlocks automatically when you sign in. Keys sync across your devices.
+                        ${I18n.t("Status:")} <strong id="security-crypto-status">${window.CryptoSync?.isUnlocked?.() ? I18n.t("Active") : I18n.t("Inactive")}</strong>
+                        ${I18n.t("— encryption unlocks automatically when you sign in. Keys sync across your devices.")}
                     </p>
                     ${recoverySection}
                     <details style="font-size:13px;color:#5f6368;margin-bottom:12px;">
-                        <summary style="cursor:pointer;">Advanced: rotate encryption key</summary>
+                        <summary style="cursor:pointer;">${I18n.t("Advanced: rotate encryption key")}</summary>
                         <button type="button" class="btn btn-secondary" id="security-crypto-rotate-btn" style="margin-top:8px;">
-                            Rotate encryption key
+                            ${I18n.t("Rotate encryption key")}
                         </button>
                     </details>
-                    <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:6px;">Manual backup (optional)</div>
+                    <div style="font-size:13px;font-weight:500;color:#5f6368;margin-bottom:6px;">${I18n.t("Manual backup (optional)")}</div>
                     <p style="margin:0 0 12px;font-size:12px;color:#5f6368;line-height:1.45;">
-                        Export/import below only if you need to move keys manually between browsers.
+                        ${I18n.t("Export/import below only if you need to move keys manually between browsers.")}
                     </p>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                        <button type="button" class="btn btn-secondary" id="security-export-keys-btn">Export encryption keys</button>
-                        <button type="button" class="btn btn-secondary" id="security-import-keys-btn">Import encryption keys</button>
+                        <button type="button" class="btn btn-secondary" id="security-export-keys-btn">${I18n.t("Export encryption keys")}</button>
+                        <button type="button" class="btn btn-secondary" id="security-import-keys-btn">${I18n.t("Import encryption keys")}</button>
                     </div>
                     <input type="file" id="security-import-keys-input" accept="application/json,.json" hidden>
                 </div>
             </div>
-        `, [{ text: 'Close' }]);
+        `, [{ text: I18n.t("Close") }]);
 
         const setEmail2FA = async (next) => {
             if (required && !totpEnabled && !next) {
-                Components.toast('Two-factor authentication is required by your administrator', 'info');
+                Components.toast(I18n.t("Two-factor authentication is required by your administrator"), 'info');
                 return;
             }
             try {
                 const updated = await API.updateMe({ email_2fa_enabled: next });
                 API.setUser(updated);
-                Components.toast(next ? 'Email verification codes enabled' : 'Email verification codes disabled', 'success');
+                Components.toast(next ? I18n.t("Email verification codes enabled") : I18n.t("Email verification codes disabled"), 'success');
                 openSecurityCenter();
             } catch (err) {
-                Components.toast(err?.message || 'Failed to update email two-factor setting', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to update email two-factor setting"), 'error');
             }
         };
         document.getElementById('security-email-2fa-enable-btn')?.addEventListener('click', () => setEmail2FA(true));
@@ -568,10 +568,10 @@ const App = (() => {
             try {
                 const updated = await API.updateMe({ login_approval_enabled: next });
                 API.setUser(updated);
-                Components.toast(next ? 'Phone sign-in prompts enabled' : 'Phone sign-in prompts disabled', 'success');
+                Components.toast(next ? I18n.t("Phone sign-in prompts enabled") : I18n.t("Phone sign-in prompts disabled"), 'success');
                 openSecurityCenter();
             } catch (err) {
-                Components.toast(err?.message || 'Failed to update phone prompt setting', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to update phone prompt setting"), 'error');
             }
         };
         document.getElementById('security-phone-approval-enable-btn')?.addEventListener('click', () => setPhoneApproval(true));
@@ -579,12 +579,12 @@ const App = (() => {
 
         const showBackupCodes = (codes) => {
             const list = (codes || []).map((c) => `<code style="display:inline-block;margin:2px 6px 2px 0;padding:4px 8px;background:#f1f3f4;border-radius:6px;">${esc(c)}</code>`).join('');
-            Components.showModal('Backup codes', `
+            Components.showModal(I18n.t("Backup codes"), `
                 <p style="margin:0 0 12px;font-size:13px;color:#5f6368;line-height:1.45;">
-                    Save these one-time backup codes somewhere safe. Each code can be used once if you lose access to your authenticator.
+                    ${I18n.t("Save these one-time backup codes somewhere safe. Each code can be used once if you lose access to your authenticator.")}
                 </p>
-                <div style="line-height:1.8;">${list || 'No codes returned.'}</div>
-            `, [{ text: 'Done', class: 'btn-primary', action: () => openSecurityCenter() }]);
+                <div style="line-height:1.8;">${list || I18n.t("No codes returned.")}</div>
+            `, [{ text: I18n.t("Done"), class: 'btn-primary', action: () => openSecurityCenter() }]);
         };
 
         document.getElementById('security-totp-setup-btn')?.addEventListener('click', async () => {
@@ -597,43 +597,43 @@ const App = (() => {
                 panel.classList.remove('hidden');
                 panel.innerHTML = `
                     <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
-                        <img src="${esc(setup.qr)}" alt="Authenticator QR code" width="160" height="160" style="border:1px solid #e8eaed;border-radius:8px;">
+                        <img src="${esc(setup.qr)}" alt="${I18n.t("Authenticator QR code")}" width="160" height="160" style="border:1px solid #e8eaed;border-radius:8px;">
                         <div style="flex:1;min-width:180px;">
-                            <p style="margin:0 0 8px;font-size:13px;color:#5f6368;line-height:1.45;">Scan this QR code, or enter the secret manually:</p>
+                            <p style="margin:0 0 8px;font-size:13px;color:#5f6368;line-height:1.45;">${I18n.t("Scan this QR code, or enter the secret manually:")}</p>
                             <code style="display:block;word-break:break-all;padding:8px 10px;background:#f1f3f4;border-radius:8px;font-size:12px;">${esc(setup.secret)}</code>
-                            <input id="security-totp-confirm-code" type="text" inputmode="numeric" maxlength="8" placeholder="6-digit code"
+                            <input id="security-totp-confirm-code" type="text" inputmode="numeric" maxlength="8" placeholder="${I18n.t("6-digit code")}"
                                 style="width:100%;height:40px;margin-top:12px;border-radius:8px;border:1px solid #dadce0;padding:0 12px;">
-                            <button type="button" class="btn btn-primary" id="security-totp-confirm-btn" style="margin-top:8px;">Confirm</button>
+                            <button type="button" class="btn btn-primary" id="security-totp-confirm-btn" style="margin-top:8px;">${I18n.t("Confirm")}</button>
                         </div>
                     </div>`;
                 document.getElementById('security-totp-confirm-btn')?.addEventListener('click', async () => {
                     const code = String(document.getElementById('security-totp-confirm-code')?.value || '').trim();
                     if (code.length < 6) {
-                        Components.toast('Enter the 6-digit code from your authenticator', 'error');
+                        Components.toast(I18n.t("Enter the 6-digit code from your authenticator"), 'error');
                         return;
                     }
                     try {
                         const result = await API.totpConfirm(code);
                         const updated = await API.me();
                         API.setUser(updated);
-                        Components.toast('Authenticator app enabled', 'success');
+                        Components.toast(I18n.t("Authenticator app enabled"), 'success');
                         showBackupCodes(result?.backup_codes || []);
                     } catch (err) {
-                        Components.toast(err?.message || 'Failed to confirm authenticator', 'error');
+                        Components.toast(I18n.error(err?.message) || I18n.t("Failed to confirm authenticator"), 'error');
                     }
                 });
             } catch (err) {
-                Components.toast(err?.message || 'Failed to start authenticator setup', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to start authenticator setup"), 'error');
             } finally {
                 if (btn) btn.disabled = false;
             }
         });
 
         document.getElementById('security-totp-disable-btn')?.addEventListener('click', async () => {
-            const code = window.prompt('Enter a current authenticator code (or leave blank and enter password next):') || '';
+            const code = window.prompt(I18n.t("Enter a current authenticator code (or leave blank and enter password next):")) || '';
             let password = '';
             if (!String(code).trim()) {
-                password = window.prompt('Enter your account password to disable authenticator:') || '';
+                password = window.prompt(I18n.t("Enter your account password to disable authenticator:")) || '';
             }
             if (!String(code).trim() && !String(password).trim()) return;
             try {
@@ -643,36 +643,36 @@ const App = (() => {
                     const me = await API.me();
                     API.setUser(me);
                 }
-                Components.toast('Authenticator app disabled', 'success');
+                Components.toast(I18n.t("Authenticator app disabled"), 'success');
                 openSecurityCenter();
             } catch (err) {
-                Components.toast(err?.message || 'Failed to disable authenticator', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to disable authenticator"), 'error');
             }
         });
 
         const sessionsListEl = document.getElementById('security-sessions-list');
         const formatSessionTime = (iso) => {
-            if (!iso) return 'Unknown';
+            if (!iso) return I18n.t("Unknown");
             const ts = new Date(iso).getTime();
-            if (Number.isNaN(ts)) return 'Unknown';
+            if (Number.isNaN(ts)) return I18n.t("Unknown");
             const mins = Math.floor((Date.now() - ts) / 60000);
-            if (mins < 1) return 'Just now';
-            if (mins < 60) return `${mins} min ago`;
+            if (mins < 1) return I18n.t("Just now");
+            if (mins < 60) return I18n.t("{0} min ago", { 0: mins });
             const hours = Math.floor(mins / 60);
-            if (hours < 24) return `${hours}h ago`;
+            if (hours < 24) return I18n.t("{0}h ago", { 0: hours });
             const days = Math.floor(hours / 24);
-            if (days < 14) return `${days}d ago`;
-            return new Date(iso).toLocaleDateString();
+            if (days < 14) return I18n.t("{0}d ago", { 0: days });
+            return new Date(iso).toLocaleDateString(I18n.language === 'en' ? undefined : I18n.language);
         };
 
         const renderSessions = async () => {
             if (!sessionsListEl) return;
-            sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">Loading devices…</div>';
+            sessionsListEl.innerHTML = `<div style="font-size:13px;color:#5f6368;">${I18n.t("Loading devices…")}</div>`;
             try {
                 const data = await API.auth.getSessions();
                 const sessions = Array.isArray(data?.sessions) ? data.sessions : [];
                 if (!sessions.length) {
-                    sessionsListEl.innerHTML = '<div style="font-size:13px;color:#5f6368;">No active devices.</div>';
+                    sessionsListEl.innerHTML = `<div style="font-size:13px;color:#5f6368;">${I18n.t("No active devices.")}</div>`;
                     return;
                 }
                 sessionsListEl.innerHTML = sessions.map((s) => {
@@ -680,17 +680,17 @@ const App = (() => {
                         ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10H3V6a1 1 0 0 1 1-1zm-1 13h18v2H3v-2z"/></svg>'
                         : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5v2h2v2H7v-2h2v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v7h16V6H4z"/></svg>';
                     const badge = s.current
-                        ? '<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#e6f4ea;color:#137333;font-size:11px;font-weight:600;">This device</span>'
+                        ? `<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#e6f4ea;color:#137333;font-size:11px;font-weight:600;">${I18n.t("This device")}</span>`
                         : '';
                     const revokeBtn = s.current
                         ? ''
-                        : `<button type="button" class="btn btn-secondary security-revoke-session-btn" data-session-id="${esc(s.id)}" style="font-size:12px;height:30px;">Sign out</button>`;
+                        : `<button type="button" class="btn btn-secondary security-revoke-session-btn" data-session-id="${esc(s.id)}" style="font-size:12px;height:30px;">${I18n.t("Sign out")}</button>`;
                     return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid #e8eaed;border-radius:10px;background:#fff;">
                         <div style="display:flex;align-items:flex-start;gap:12px;min-width:0;">
                             <div style="color:#5f6368;margin-top:2px;">${icon}</div>
                             <div style="min-width:0;">
-                                <div style="font-size:14px;font-weight:500;color:#202124;">${esc(s.device_name || 'Unknown device')}${badge}</div>
-                                <div style="font-size:12px;color:#5f6368;margin-top:2px;">${esc(s.ip_address || '—')} · Last active ${esc(formatSessionTime(s.last_seen_at))}</div>
+                                <div style="font-size:14px;font-weight:500;color:#202124;">${esc(s.device_name ? I18n.device(s.device_name) : I18n.t("Unknown device"))}${badge}</div>
+                                <div style="font-size:12px;color:#5f6368;margin-top:2px;">${I18n.t("{3} · Last active {4}", { 3: esc(s.ip_address || '—'), 4: esc(formatSessionTime(s.last_seen_at)) })}</div>
                             </div>
                         </div>
                         ${revokeBtn}
@@ -701,33 +701,33 @@ const App = (() => {
                     btn.addEventListener('click', async () => {
                         const id = btn.getAttribute('data-session-id');
                         if (!id) return;
-                        if (!window.confirm('Sign out this device? It will need to log in again.')) return;
+                        if (!window.confirm(I18n.t("Sign out this device? It will need to log in again."))) return;
                         btn.disabled = true;
                         try {
                             await API.auth.revokeSession(id);
-                            Components.toast('Device signed out', 'success');
+                            Components.toast(I18n.t("Device signed out"), 'success');
                             await renderSessions();
                         } catch (err) {
                             btn.disabled = false;
-                            Components.toast(err?.message || 'Failed to sign out device', 'error');
+                            Components.toast(I18n.error(err?.message) || I18n.t("Failed to sign out device"), 'error');
                         }
                     });
                 });
             } catch (err) {
-                sessionsListEl.innerHTML = `<div style="font-size:13px;color:#c5221f;">${esc(err?.message || 'Failed to load devices')}</div>`;
+                sessionsListEl.innerHTML = `<div style="font-size:13px;color:#c5221f;">${esc(I18n.error(err?.message) || I18n.t("Failed to load devices"))}</div>`;
             }
         };
 
         document.getElementById('security-revoke-others-btn')?.addEventListener('click', async () => {
-            if (!window.confirm('Sign out all other devices? They will need to log in again.')) return;
+            if (!window.confirm(I18n.t("Sign out all other devices? They will need to log in again."))) return;
             const btn = document.getElementById('security-revoke-others-btn');
             if (btn) btn.disabled = true;
             try {
                 await API.auth.revokeOtherSessions();
-                Components.toast('Other devices signed out', 'success');
+                Components.toast(I18n.t("Other devices signed out"), 'success');
                 await renderSessions();
             } catch (err) {
-                Components.toast(err?.message || 'Failed to sign out other devices', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to sign out other devices"), 'error');
             } finally {
                 if (btn) btn.disabled = false;
             }
@@ -738,19 +738,19 @@ const App = (() => {
         document.getElementById('security-export-keys-btn')?.addEventListener('click', async () => {
             try {
                 if (!CryptoModule.canEncrypt()) {
-                    Components.toast('Encryption is not available in this browser session', 'error');
+                    Components.toast(I18n.t("Encryption is not available in this browser session"), 'error');
                     return;
                 }
                 const exportData = await CryptoModule.exportAllKeys();
                 const count = Object.keys(exportData.keys || {}).length;
                 if (count === 0) {
-                    Components.toast('No encryption keys found in this browser', 'info');
+                    Components.toast(I18n.t("No encryption keys found in this browser"), 'info');
                     return;
                 }
                 CryptoModule.downloadKeyExport(exportData);
-                Components.toast(`Exported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
+                Components.toast(I18n.t("Exported {0} encryption key{1}", { 0: count, 1: count === 1 ? '' : 's' }), 'success');
             } catch (err) {
-                Components.toast(err?.message || 'Failed to export encryption keys', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to export encryption keys"), 'error');
             }
         });
 
@@ -764,43 +764,43 @@ const App = (() => {
             if (!file) return;
             try {
                 if (!CryptoModule.canEncrypt()) {
-                    Components.toast('Encryption is not available in this browser session', 'error');
+                    Components.toast(I18n.t("Encryption is not available in this browser session"), 'error');
                     return;
                 }
                 const text = await file.text();
                 const exportData = CryptoModule.parseKeyExportFile(text);
                 const count = await CryptoModule.importAllKeys(exportData);
                 if (count === 0) {
-                    Components.toast('No valid keys found in import file', 'info');
+                    Components.toast(I18n.t("No valid keys found in import file"), 'info');
                     return;
                 }
-                Components.toast(`Imported ${count} encryption key${count === 1 ? '' : 's'}`, 'success');
+                Components.toast(I18n.t("Imported {0} encryption key{1}", { 0: count, 1: count === 1 ? '' : 's' }), 'success');
             } catch (err) {
-                Components.toast(err?.message || 'Failed to import encryption keys', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to import encryption keys"), 'error');
             }
         });
 
         document.getElementById('security-crypto-recovery-restore-btn')?.addEventListener('click', async () => {
             const recovery = String(document.getElementById('security-crypto-recovery-input')?.value || '').trim();
             if (!recovery) {
-                Components.toast('Enter your recovery code', 'error');
+                Components.toast(I18n.t("Enter your recovery code"), 'error');
                 return;
             }
             try {
                 await CryptoSync.restoreWithRecoveryCode(recovery);
                 const statusEl = document.getElementById('security-crypto-status');
-                if (statusEl) statusEl.textContent = 'Active';
+                if (statusEl) statusEl.textContent = I18n.t("Active");
                 document.getElementById('security-crypto-recovery-banner')?.remove();
                 document.getElementById('security-crypto-recovery-section')?.remove();
-                Components.toast('Encryption restored', 'success');
+                Components.toast(I18n.t("Encryption restored"), 'success');
             } catch (err) {
-                Components.toast(err?.message || 'Recovery failed', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Recovery failed"), 'error');
             }
         });
 
         document.getElementById('security-crypto-rotate-btn')?.addEventListener('click', async () => {
             if (!window.CryptoSync?.rotateAccountKey) return;
-            const password = window.prompt('Enter your password to rotate your encryption key:');
+            const password = window.prompt(I18n.t("Enter your password to rotate your encryption key:"));
             if (!password) return;
             try {
                 const result = await CryptoSync.rotateAccountKey(password);
@@ -808,10 +808,10 @@ const App = (() => {
                     await CryptoSync.showRecoverySetupModal(result.recoveryCode);
                 }
                 const statusEl = document.getElementById('security-crypto-status');
-                if (statusEl) statusEl.textContent = 'Active';
-                Components.toast('Encryption key rotated', 'success');
+                if (statusEl) statusEl.textContent = I18n.t("Active");
+                Components.toast(I18n.t("Encryption key rotated"), 'success');
             } catch (err) {
-                Components.toast(err?.message || 'Key rotation failed', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Key rotation failed"), 'error');
             }
         });
     }
@@ -860,6 +860,18 @@ const App = (() => {
         handleRoute();
     }
 
+    // Reads the download name from Content-Disposition, preferring the RFC 5987
+    // filename* form that the server uses for non-ASCII (e.g. Chinese) names.
+    function dispositionFilename(disposition) {
+        const encoded = /filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i.exec(disposition);
+        if (encoded) {
+            try { return decodeURIComponent(encoded[2].trim()); } catch { /* fall back to filename= */ }
+        }
+        const plain = /filename\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]+))/i.exec(disposition);
+        if (!plain) return '';
+        return plain[1] != null ? plain[1].replace(/\\(.)/g, '$1') : plain[2].trim();
+    }
+
     function showPublicShareDownload() {
         document.getElementById('auth-screen')?.classList.add('hidden');
         document.getElementById('app')?.classList.add('hidden');
@@ -879,10 +891,10 @@ const App = (() => {
         page.innerHTML = `
             <section class="public-share-card" aria-labelledby="public-share-title">
                 <div class="public-share-logo">FreeDrive</div>
-                <h1 id="public-share-title">Encrypted file</h1>
-                <p>The decryption key stays in this link and is never sent to the server.</p>
-                <input id="public-share-password" type="password" placeholder="Link password, if required" autocomplete="off">
-                <button id="public-share-download" type="button" class="btn btn-primary">Download and decrypt</button>
+                <h1 id="public-share-title">${I18n.t("Encrypted file")}</h1>
+                <p>${I18n.t("The decryption key stays in this link and is never sent to the server.")}</p>
+                <input id="public-share-password" type="password" placeholder="${I18n.t("Link password, if required")}" autocomplete="off">
+                <button id="public-share-download" type="button" class="btn btn-primary">${I18n.t("Download and decrypt")}</button>
                 <p id="public-share-status" role="status" aria-live="polite"></p>
             </section>`;
         document.body.appendChild(page);
@@ -891,11 +903,11 @@ const App = (() => {
         const status = page.querySelector('#public-share-status');
         button?.addEventListener('click', async () => {
             if (!token || !keyText) {
-                status.textContent = 'This encrypted link is incomplete.';
+                status.textContent = I18n.t("This encrypted link is incomplete.");
                 return;
             }
             button.disabled = true;
-            status.textContent = 'Downloading encrypted file…';
+            status.textContent = I18n.t("Downloading encrypted file…");
             try {
                 const password = page.querySelector('#public-share-password')?.value || '';
                 const response = await fetch(`/api/v1/public/share/${encodeURIComponent(token)}/download`, {
@@ -905,14 +917,13 @@ const App = (() => {
                 if (!response.ok) throw new Error('Link is invalid, expired, or requires the correct password.');
                 const iv = response.headers.get('X-File-IV') || '';
                 if (!iv) throw new Error('The encrypted file metadata is incomplete.');
-                status.textContent = 'Decrypting in your browser…';
+                status.textContent = I18n.t("Decrypting in your browser…");
                 const key = await CryptoModule.importKey(keyText);
                 const plaintext = await CryptoModule.decryptFile(
                     await response.arrayBuffer(), key, CryptoModule.base64ToUint8(iv),
                 );
                 const disposition = response.headers.get('Content-Disposition') || '';
-                const match = disposition.match(/filename="([^"]+)"/i);
-                const fileName = (match?.[1] || 'freedrive-download').replace(/[\\/\r\n]/g, '_');
+                const fileName = (dispositionFilename(disposition) || 'freedrive-download').replace(/[\\/\r\n]/g, '_');
                 const blob = new Blob([plaintext], {
                     type: response.headers.get('X-File-Mime') || 'application/octet-stream',
                 });
@@ -922,9 +933,9 @@ const App = (() => {
                 anchor.download = fileName;
                 anchor.click();
                 setTimeout(() => URL.revokeObjectURL(url), 1200);
-                status.textContent = 'File decrypted and downloaded.';
+                status.textContent = I18n.t("File decrypted and downloaded.");
             } catch (error) {
-                status.textContent = error?.message || 'Download failed.';
+                status.textContent = I18n.error(error?.message) || I18n.t("Download failed.");
             } finally {
                 button.disabled = false;
             }
@@ -1113,9 +1124,9 @@ const App = (() => {
         });
 
         document.getElementById('new-folder-action')?.addEventListener('click', () => FileManager.createFolder());
-        document.getElementById('new-doc-action')?.addEventListener('click', () => FileManager.createQuickFile('Document.txt', 'text/plain', ''));
-        document.getElementById('new-sheet-action')?.addEventListener('click', () => FileManager.createQuickFile('Spreadsheet.csv', 'text/csv', 'Column 1,Column 2\n,\n'));
-        document.getElementById('new-presentation-action')?.addEventListener('click', () => FileManager.createQuickFile('Presentation.md', 'text/markdown', '# New Presentation\n'));
+        document.getElementById('new-doc-action')?.addEventListener('click', () => FileManager.createQuickFile(I18n.t("Document.txt"), 'text/plain', ''));
+        document.getElementById('new-sheet-action')?.addEventListener('click', () => FileManager.createQuickFile(I18n.t("Spreadsheet.csv"), 'text/csv', I18n.t("Column 1,Column 2\n,\n")));
+        document.getElementById('new-presentation-action')?.addEventListener('click', () => FileManager.createQuickFile(I18n.t("Presentation.md"), 'text/markdown', '# New Presentation\n'));
 
         document.getElementById('file-upload-action')?.addEventListener('click', () => document.getElementById('file-input')?.click());
         document.getElementById('folder-upload-action')?.addEventListener('click', () => document.getElementById('folder-input')?.click());
@@ -1155,14 +1166,14 @@ const App = (() => {
                 dragCounter = 0;
                 document.getElementById('drop-overlay')?.classList.add('hidden');
                 if (!FileManager.canAcceptUploads()) {
-                    Components.toast('Connect a computer to upload files here', 'info');
+                    Components.toast(I18n.t("Connect a computer to upload files here"), 'info');
                     return;
                 }
                 try {
                     const files = await Upload.collectFromDataTransfer(e.dataTransfer);
                     if (files.length) Upload.uploadFileTree(files);
                 } catch {
-                    Components.toast('Could not read dropped files', 'error');
+                    Components.toast(I18n.t("Could not read dropped files"), 'error');
                 }
             });
         }
@@ -1229,7 +1240,7 @@ const App = (() => {
 
         document.getElementById('help-shortcuts')?.addEventListener('click', () => FileManager.showShortcuts());
         document.getElementById('help-feedback')?.addEventListener('click', () => {
-            Components.showModal('Send feedback', '<p style="margin:0;color:#5f6368;font-size:14px;line-height:1.45;">Email your administrator or open an issue in the FreeDrive repository with steps to reproduce and screenshots.</p>', [{ text: 'OK', class: 'btn-primary' }]);
+            Components.showModal(I18n.t("Send feedback"), `<p style="margin:0;color:#5f6368;font-size:14px;line-height:1.45;">${I18n.t("Email your administrator or open an issue in the FreeDrive repository with steps to reproduce and screenshots.")}</p>`, [{ text: 'OK', class: 'btn-primary' }]);
         });
         document.getElementById('help-center')?.addEventListener('click', () => {
             window.open('https://github.com/abdullaabdullazade/freedrive', '_blank', 'noopener');
@@ -1314,14 +1325,14 @@ const App = (() => {
             try {
                 await FileManager.saveShareModal();
             } catch (err) {
-                Components.toast(err?.message || 'Failed to save sharing settings', 'error');
+                Components.toast(I18n.error(err?.message) || I18n.t("Failed to save sharing settings"), 'error');
             }
         });
         document.getElementById('share-copy-link')?.addEventListener('click', async () => {
-            try { await FileManager.copyCurrentShareLink(); } catch { Components.toast('Failed to copy link', 'error'); }
+            try { await FileManager.copyCurrentShareLink(); } catch { Components.toast(I18n.t("Failed to copy link"), 'error'); }
         });
         document.getElementById('share-copy-link-footer')?.addEventListener('click', async () => {
-            try { await FileManager.copyCurrentShareLink(); } catch { Components.toast('Failed to copy link', 'error'); }
+            try { await FileManager.copyCurrentShareLink(); } catch { Components.toast(I18n.t("Failed to copy link"), 'error'); }
         });
 
         [
@@ -1421,7 +1432,7 @@ const App = (() => {
 
         if (isAdminRoute) {
             if (String(user.role || '').toLowerCase() !== 'admin') {
-                Components.toast('Admin access required', 'error');
+                Components.toast(I18n.t("Admin access required"), 'error');
                 setLayoutMode(false);
                 navigate('/files', { replace: true });
                 return;
@@ -1513,7 +1524,7 @@ const App = (() => {
                         const file = await API.files.get(fileId);
                         if (file) FileManager.openFileById(file);
                     } catch {
-                        Components.toast('File not found or access denied', 'error');
+                        Components.toast(I18n.t("File not found or access denied"), 'error');
                     }
                 }, 400);
             }
@@ -1578,4 +1589,4 @@ const App = (() => {
     };
 })();
 
-document.addEventListener('DOMContentLoaded', App.init);
+// App.init is called by bootstrap.js after language resolution.

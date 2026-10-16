@@ -33,10 +33,10 @@ const Auth = (() => {
         if (isPassword) {
             const email = String(emailInput?.value || '').trim().toLowerCase();
             if (accountEmail) accountEmail.textContent = email;
-            setAuthHeading('Welcome', '');
+            setAuthHeading(I18n.t("Welcome"), '');
             window.setTimeout(() => passwordInput?.focus(), 40);
         } else {
-            setAuthHeading('Sign in', 'Use your FreeDrive Account');
+            setAuthHeading(I18n.t("Sign in"), I18n.t("Use your FreeDrive Account"));
             if (passwordInput) passwordInput.value = '';
             const showPassword = document.getElementById('login-show-password');
             if (showPassword) showPassword.checked = false;
@@ -61,7 +61,7 @@ const Auth = (() => {
         clearFormError('register-error');
 
         if (isRegister) {
-            setAuthHeading('Create your FreeDrive Account', 'One account for every FreeDrive device');
+            setAuthHeading(I18n.t("Create your FreeDrive Account"), I18n.t("One account for every FreeDrive device"));
             window.setTimeout(() => document.getElementById('reg-username')?.focus(), 40);
         } else {
             setLoginStep(loginStep);
@@ -84,30 +84,30 @@ const Auth = (() => {
         const raw = String(err?.message || err || '').trim();
         const lower = raw.toLowerCase();
         if (!raw || lower === 'failed to fetch' || lower.includes('networkerror') || lower.includes('load failed')) {
-            return 'Cannot reach the server. Check the FreeDrive URL (HTTPS / reverse proxy) and try again.';
+            return I18n.t("Cannot reach the server. Check the FreeDrive URL (HTTPS / reverse proxy) and try again.");
         }
         if (lower.includes('session expired')) {
-            return 'Session expired. Please sign in again.';
+            return I18n.t("Session expired. Please sign in again.");
         }
         if (lower.includes('invalid email or password')) {
-            return 'Invalid email or password. Use the exact email from account registration (Admin → Users if unsure).';
+            return I18n.t("Invalid email or password. Use the exact email from account registration (Admin → Users if unsure).");
         }
         if (lower.includes('must match the invite email')) {
-            return 'This invite requires the email address it was sent to. Check the invite email or ask your admin for a new invite.';
+            return I18n.t("This invite requires the email address it was sent to. Check the invite email or ask your admin for a new invite.");
         }
         if (lower.includes('account suspended')) {
-            return 'Your account has been suspended. Contact your FreeDrive administrator.';
+            return I18n.t("Your account has been suspended. Contact your FreeDrive administrator.");
         }
         if (lower.includes('registration is closed')) {
-            return 'New account registration is currently closed.';
+            return I18n.t("New account registration is currently closed.");
         }
         if (lower.includes('verification code') || lower.includes('two-factor')) {
             return raw;
         }
         if (lower.includes('access denied from this network')) {
-            return 'Sign-in is not allowed from this network. Contact your administrator.';
+            return I18n.t("Sign-in is not allowed from this network. Contact your administrator.");
         }
-        return raw || 'Something went wrong. Please try again.';
+        return raw || I18n.t("Something went wrong. Please try again.");
     }
 
     function showTwoFAForm(challengeId, emailMasked, method, methodsAvailable) {
@@ -125,8 +125,8 @@ const Auth = (() => {
 
         const titleEl = document.querySelector('.auth-logo h1');
         const subtitleEl = document.querySelector('.auth-logo .tagline');
-        if (titleEl) titleEl.textContent = 'Verify sign-in';
-        if (subtitleEl) subtitleEl.textContent = 'two-factor authentication';
+        if (titleEl) titleEl.textContent = I18n.t("Verify sign-in");
+        if (subtitleEl) subtitleEl.textContent = I18n.t("two-factor authentication");
 
         const activeMethod = method === 'totp' ? 'totp' : 'email';
         const methods = Array.isArray(methodsAvailable) ? methodsAvailable : [];
@@ -136,11 +136,11 @@ const Auth = (() => {
         const messageEl = document.getElementById('twofa-message');
         if (messageEl) {
             if (activeMethod === 'totp') {
-                messageEl.textContent = 'Enter the 6-digit code from your authenticator app (or a backup code).';
+                messageEl.textContent = I18n.t("Enter the 6-digit code from your authenticator app (or a backup code).");
             } else {
                 messageEl.textContent = emailMasked
-                    ? `Enter the 6-digit code sent to ${emailMasked}.`
-                    : 'Enter the 6-digit code sent to your email.';
+                    ? I18n.t("Enter the 6-digit code sent to {0}.", { 0: emailMasked })
+                    : I18n.t("Enter the 6-digit code sent to your email.");
             }
         }
 
@@ -156,7 +156,7 @@ const Auth = (() => {
         const codeInput = document.getElementById('twofa-code');
         if (codeInput) {
             codeInput.value = '';
-            codeInput.placeholder = activeMethod === 'totp' ? 'Authenticator or backup code' : '6-digit code';
+            codeInput.placeholder = activeMethod === 'totp' ? I18n.t("Authenticator or backup code") : I18n.t("6-digit code");
             codeInput.focus();
         }
         clearFormError('twofa-error');
@@ -198,16 +198,17 @@ const Auth = (() => {
 
         const titleEl = document.querySelector('.auth-logo h1');
         const subtitleEl = document.querySelector('.auth-logo .tagline');
-        if (titleEl) titleEl.textContent = 'Check your phone';
-        if (subtitleEl) subtitleEl.textContent = 'confirm sign-in';
+        if (titleEl) titleEl.textContent = I18n.t("Check your phone");
+        if (subtitleEl) subtitleEl.textContent = I18n.t("confirm sign-in");
 
         document.getElementById('login-approval-id').value = challengeId || '';
         document.getElementById('login-approval-token').value = challengeToken || '';
         const msg = document.getElementById('login-approval-message');
         if (msg) {
+            const confirmLabel = `<strong>${I18n.t("Yes, it's me")}</strong>`;
             msg.innerHTML = deviceName
-                ? `Open FreeDrive on your phone and tap <strong>Yes, it's me</strong> to approve sign-in to <strong>${Components.escapeHtml(deviceName)}</strong>.`
-                : `Open FreeDrive on your phone and tap <strong>Yes, it's me</strong> to finish signing in.`;
+                ? I18n.t('Open FreeDrive on your phone and tap {0} to approve sign-in to {1}.', { 0: confirmLabel, 1: `<strong>${Components.escapeHtml(I18n.device(deviceName))}</strong>` })
+                : I18n.t('Open FreeDrive on your phone and tap {0} to finish signing in.', { 0: confirmLabel });
         }
         clearFormError('login-approval-error');
         scheduleApprovalPoll();
@@ -226,11 +227,11 @@ const Auth = (() => {
                     return;
                 }
                 if (data?.status === 'denied') {
-                    setFormError('login-approval-error', 'Sign-in denied on your phone.');
+                    setFormError('login-approval-error', I18n.t("Sign-in denied on your phone."));
                     return;
                 }
                 if (data?.status === 'expired') {
-                    setFormError('login-approval-error', 'Sign-in request expired.');
+                    setFormError('login-approval-error', I18n.t("Sign-in request expired."));
                     return;
                 }
                 if (data?.status === 'approved' && data?.tokens) {
@@ -264,7 +265,7 @@ const Auth = (() => {
         if (password && window.CryptoSync?.ensureUnlockedAfterLogin) {
             await CryptoSync.ensureUnlockedAfterLogin(password);
         }
-        Components.toast('Welcome back, ' + (data.user.username || data.user.email) + '!', 'success');
+        Components.toast(I18n.t("Welcome back, ") + (data.user.username || data.user.email) + '!', 'success');
         history.replaceState(null, '', '/');
         App.showApp();
     }
@@ -272,7 +273,7 @@ const Auth = (() => {
     function setFormError(id, message) {
         const el = document.getElementById(id);
         if (!el) return;
-        el.textContent = message || '';
+        el.textContent = I18n.error(message || '');
     }
 
     function clearFormError(id) {
@@ -282,29 +283,29 @@ const Auth = (() => {
     function showForgotPasswordHelp() {
         const loginEmail = String(document.getElementById('login-email')?.value || '').trim();
         Components.showModal(
-            'Forgot password',
+            I18n.t("Forgot password"),
             `<p style="margin:0 0 12px;color:#5f6368;font-size:14px;line-height:1.45;">
-                Enter the email on your FreeDrive account. If it exists, we will send a reset link (requires SMTP).
+                ${I18n.t("Enter the email on your FreeDrive account. If it exists, we will send a reset link (requires SMTP).")}
             </p>
             <input id="forgot-email-input" type="email" autocomplete="email"
                 style="width:100%;height:48px;padding:0 14px;border-radius:8px;border:1px solid #dadce0;font-size:15px;box-sizing:border-box;"
                 value="${Components.escapeHtml(loginEmail)}" placeholder="you@example.com">`,
             [
-                { text: 'Cancel', class: 'btn-secondary' },
+                { text: I18n.t("Cancel"), class: 'btn-secondary' },
                 {
-                    text: 'Send reset link',
+                    text: I18n.t("Send reset link"),
                     class: 'btn-primary',
                     action: async () => {
                         const email = String(document.getElementById('forgot-email-input')?.value || '').trim().toLowerCase();
                         if (!email) {
-                            Components.toast('Enter your account email', 'error');
+                            Components.toast(I18n.t("Enter your account email"), 'error');
                             return false;
                         }
                         try {
                             await API.auth.forgotPassword(email);
-                            Components.toast('If that account exists, a reset link was sent.', 'success');
+                            Components.toast(I18n.t("If that account exists, a reset link was sent."), 'success');
                         } catch (err) {
-                            Components.toast(err?.message || 'Failed to send reset link', 'error');
+                            Components.toast(I18n.error(err?.message) || I18n.t("Failed to send reset link"), 'error');
                             return false;
                         }
                     },
@@ -325,7 +326,7 @@ const Auth = (() => {
             if (passwordInput) passwordInput.type = event.target.checked ? 'text' : 'password';
         });
         document.getElementById('forgot-email-btn')?.addEventListener('click', () => {
-            Components.toast('Contact your FreeDrive administrator to recover your account email.', 'info');
+            Components.toast(I18n.t("Contact your FreeDrive administrator to recover your account email."), 'info');
         });
 
         document.getElementById('forgot-password-btn')?.addEventListener('click', (e) => {
@@ -350,7 +351,7 @@ const Auth = (() => {
                 if (btn) btn.disabled = true;
                 const data = await API.auth.send2FAEmail(challengeId);
                 showTwoFAForm(data.challenge_id, data.email_masked, data.method, data.methods_available);
-                Components.toast('Verification code sent by email', 'success');
+                Components.toast(I18n.t("Verification code sent by email"), 'success');
             } catch (err) {
                 const msg = friendlyAuthError(err);
                 setFormError('twofa-error', msg);
@@ -371,8 +372,8 @@ const Auth = (() => {
             const minLen = method === 'totp' ? 6 : 6;
             if (!challengeId || code.length < minLen) {
                 const msg = method === 'totp'
-                    ? 'Enter an authenticator code or backup code'
-                    : 'Enter the 6-digit verification code';
+                    ? I18n.t("Enter an authenticator code or backup code")
+                    : I18n.t("Enter the 6-digit verification code");
                 setFormError('twofa-error', msg);
                 Components.toast(msg, 'error');
                 return;
@@ -381,7 +382,7 @@ const Auth = (() => {
             try {
                 btn.disabled = true;
                 btn.querySelector('.btn-loader').classList.remove('hidden');
-                btn.querySelector('span').textContent = 'Verifying...';
+                btn.querySelector('span').textContent = I18n.t("Verifying...");
                 const data = await API.auth.verify2FA(challengeId, code);
                 await completeLogin(data, pendingLoginPassword);
                 pendingLoginPassword = '';
@@ -392,7 +393,7 @@ const Auth = (() => {
             } finally {
                 btn.disabled = false;
                 btn.querySelector('.btn-loader').classList.add('hidden');
-                btn.querySelector('span').textContent = 'Verify';
+                btn.querySelector('span').textContent = I18n.t("Verify");
             }
         });
 
@@ -408,7 +409,7 @@ const Auth = (() => {
             if (emailInput && inviteEmailParam) {
                 emailInput.value = inviteEmailParam;
                 emailInput.readOnly = true;
-                emailInput.title = 'This invite requires this email address';
+                emailInput.title = I18n.t("This invite requires this email address");
             }
         }
 
@@ -424,8 +425,8 @@ const Auth = (() => {
             document.querySelector('.auth-tabs')?.classList.add('hidden');
             const titleEl = document.querySelector('.auth-logo h1');
             const subtitleEl = document.querySelector('.auth-logo .tagline');
-            if (titleEl) titleEl.textContent = 'Reset password';
-            if (subtitleEl) subtitleEl.textContent = 'set a new password for your account';
+            if (titleEl) titleEl.textContent = I18n.t("Reset password");
+            if (subtitleEl) subtitleEl.textContent = I18n.t("set a new password for your account");
             const emailInput = document.getElementById('reset-email');
             if (emailInput) emailInput.value = email;
 
@@ -438,19 +439,19 @@ const Auth = (() => {
                 clearFormError('reset-error');
 
                 if (!token || !finalEmail) {
-                    const msg = 'Invalid reset link';
+                    const msg = I18n.t("Invalid reset link");
                     setFormError('reset-error', msg);
                     Components.toast(msg, 'error');
                     return;
                 }
                 if (newPassword.length < 6) {
-                    const msg = 'Password must be at least 6 characters';
+                    const msg = I18n.t("Password must be at least 6 characters");
                     setFormError('reset-error', msg);
                     Components.toast(msg, 'error');
                     return;
                 }
                 if (newPassword !== confirm) {
-                    const msg = 'Passwords do not match';
+                    const msg = I18n.t("Passwords do not match");
                     setFormError('reset-error', msg);
                     Components.toast(msg, 'error');
                     return;
@@ -459,21 +460,21 @@ const Auth = (() => {
                 try {
                     btn.disabled = true;
                     btn.querySelector('.btn-loader').classList.remove('hidden');
-                    btn.querySelector('span').textContent = 'Resetting...';
+                    btn.querySelector('span').textContent = I18n.t("Resetting...");
                     const recoveryCode = String(document.getElementById('reset-recovery-code')?.value || '').trim();
                     let cryptoUpdate = null;
                     if (recoveryCode && window.CryptoSync?.buildCryptoUpdateForReset) {
                         try {
                             cryptoUpdate = await CryptoSync.buildCryptoUpdateForReset(token, finalEmail, newPassword, recoveryCode);
                         } catch (cryptoErr) {
-                            const msg = cryptoErr?.message || 'Invalid recovery code';
+                            const msg = cryptoErr?.message || I18n.t("Invalid recovery code");
                             setFormError('reset-error', msg);
                             Components.toast(msg, 'error');
                             return;
                         }
                     }
                     await API.auth.resetPassword(token, finalEmail, newPassword, cryptoUpdate);
-                    Components.toast('Password reset successful. Please sign in.', 'success');
+                    Components.toast(I18n.t("Password reset successful. Please sign in."), 'success');
                     window.location.replace('/login');
                 } catch (err) {
                     const msg = friendlyAuthError(err);
@@ -482,7 +483,7 @@ const Auth = (() => {
                 } finally {
                     btn.disabled = false;
                     btn.querySelector('.btn-loader').classList.add('hidden');
-                    btn.querySelector('span').textContent = 'Reset password';
+                    btn.querySelector('span').textContent = I18n.t("Reset password");
                 }
             });
         }
@@ -496,14 +497,14 @@ const Auth = (() => {
             document.querySelector('.auth-tabs')?.classList.add('hidden');
             const titleEl = document.querySelector('.auth-logo h1');
             const subtitleEl = document.querySelector('.auth-logo .tagline');
-            if (titleEl) titleEl.textContent = 'Confirm email';
-            if (subtitleEl) subtitleEl.textContent = 'verify your new FreeDrive address';
+            if (titleEl) titleEl.textContent = I18n.t("Confirm email");
+            if (subtitleEl) subtitleEl.textContent = I18n.t("verify your new FreeDrive address");
 
             const messageEl = document.getElementById('confirm-email-message');
             const loginBtn = document.getElementById('confirm-email-login-btn');
 
             if (!token) {
-                const msg = 'Invalid confirmation link';
+                const msg = I18n.t("Invalid confirmation link");
                 setFormError('confirm-email-error', msg);
                 if (messageEl) messageEl.textContent = msg;
                 Components.toast(msg, 'error');
@@ -515,19 +516,19 @@ const Auth = (() => {
                     const data = await API.auth.confirmEmail(token);
                     const newEmail = String(data?.email || '').trim();
                     const successMsg = newEmail
-                        ? `Email updated to ${newEmail}. Sign in with your new address.`
-                        : 'Email updated. Please sign in with your new address.';
+                        ? I18n.t("Email updated to {0}. Sign in with your new address.", { 0: newEmail })
+                        : I18n.t("Email updated. Please sign in with your new address.");
                     if (messageEl) messageEl.textContent = successMsg;
                     clearFormError('confirm-email-error');
-                    Components.toast('Email confirmed. Please sign in.', 'success');
+                    Components.toast(I18n.t("Email confirmed. Please sign in."), 'success');
                     API.clearAuth();
                     loginBtn?.classList.remove('hidden');
                     history.replaceState(null, '', '/');
                 } catch (err) {
                     const msg = friendlyAuthError(err);
                     if (/invalid|expired/i.test(msg)) {
-                        setFormError('confirm-email-error', 'This confirmation link is invalid or has expired.');
-                        if (messageEl) messageEl.textContent = 'This confirmation link is invalid or has expired.';
+                        setFormError('confirm-email-error', I18n.t("This confirmation link is invalid or has expired."));
+                        if (messageEl) messageEl.textContent = I18n.t("This confirmation link is invalid or has expired.");
                     } else {
                         setFormError('confirm-email-error', msg);
                         if (messageEl) messageEl.textContent = msg;
@@ -557,7 +558,7 @@ const Auth = (() => {
             try {
                 btn.disabled = true;
                 btn.querySelector('.btn-loader').classList.remove('hidden');
-                btn.querySelector('span').textContent = 'Signing in...';
+                btn.querySelector('span').textContent = I18n.t("Signing in...");
 
                 const data = await API.auth.login(email, password);
                 if (data?.requires_login_approval) {
@@ -578,7 +579,7 @@ const Auth = (() => {
             } finally {
                 btn.disabled = false;
                 btn.querySelector('.btn-loader').classList.add('hidden');
-                btn.querySelector('span').textContent = 'Sign in';
+                btn.querySelector('span').textContent = I18n.t("Sign in");
             }
         });
 
@@ -595,7 +596,7 @@ const Auth = (() => {
             try {
                 btn.disabled = true;
                 btn.querySelector('.btn-loader').classList.remove('hidden');
-                btn.querySelector('span').textContent = 'Creating account...';
+                btn.querySelector('span').textContent = I18n.t("Creating account...");
 
                 await API.auth.register(email, username, password, inviteCode);
 
@@ -619,7 +620,7 @@ const Auth = (() => {
             } finally {
                 btn.disabled = false;
                 btn.querySelector('.btn-loader').classList.add('hidden');
-                btn.querySelector('span').textContent = 'Create Account';
+                btn.querySelector('span').textContent = I18n.t("Create Account");
             }
         });
 
