@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeDrive — Open-Source Google Drive Alternative</title>
+  <meta name="description" content="FreeDrive is a free, self-hosted Google Drive alternative with the same familiar UI. Single binary, zero dependencies, unlimited storage." />
+  <meta property="og:title" content="FreeDrive — Open-Source Google Drive Alternative" />
+  <meta property="og:description" content="Google Drive design. Your server. Zero cost. Single binary." />
+  <meta property="og:image" content="https://abdullaabdullazade.github.io/freedrive/og-image.png" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-inner">
+      <a href="#" class="nav-brand">
+        <svg class="drive-logo" viewBox="0 0 87.3 78" width="30" height="26">
+          <path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/>
+          <path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/>
+          <path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/>
+          <path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/>
+          <path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/>
+          <path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/>
+        </svg>
+        <span>FreeDrive</span>
+      </a>
+      <div class="nav-links">
+        <a href="#why">Why FreeDrive</a>
+        <a href="#preview">Preview</a>
+        <a href="#security">Security</a>
+        <a href="#comparison">Compare</a>
+        <a href="#install">Install</a>
+        <a
+          href="https://github.com/abdullaabdullazade/freedrive/stargazers"
+          class="github-stars"
+          id="github-stars-link"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="FreeDrive GitHub stars"
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M12 17.27L18.18 21l-1.64-7.02L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.74L5.82 21z"/></svg>
+          <span id="github-stars-count">Star</span>
+        </a>
+     
+        <a href="https://github.com/abdullaabdullazade/freedrive" class="nav-gh" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="pulse-dot"></span>
+        Open Source &amp; Free Forever
+      </div>
+      <h1>Google Drive Design.<br/><span class="hero-accent">Your Server. Zero Cost.</span></h1>
+      <p class="hero-sub">
+        FreeDrive gives you the <strong>familiar Google Drive experience</strong> — the same clean UI, 
+        file management, and sharing — but running entirely on <strong>your own server</strong> as a single 18MB binary.
+      </p>
+      <div class="hero-btns">
+        <a class="btn-main" href="#install">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Deploy Now
+        </a>
+        <a class="btn-outline" href="https://github.com/abdullaabdullazade/freedrive#readme" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="hero-pills">
+        <div class="pill">
+          <span class="pill-icon-svg blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12h18"></path><path d="M12 3v18"></path>
+            </svg>
+          </span>
+          Scalable Storage
+        </div>
+        <div class="pill">
+          <span class="pill-icon-svg green" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path>
+            </svg>
+          </span>
+          Forever Free
+        </div>
+        <div class="pill">
+          <span class="pill-icon-svg amber" aria-hidden="true">
+            <svg viewBox="0 0 87.3 78" width="15" height="13">
+              <path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/>
+              <path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/>
+              <path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/>
+              <path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/>
+              <path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/>
+              <path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/>
+            </svg>
+          </span>
+          Single Binary
+        </div>
+        <div class="pill">
+          <span class="pill-icon-svg red" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            </svg>
+          </span>
+          Encrypted Uploads
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Why FreeDrive -->
+  <section class="why-section" id="why">
+    <div class="container">
+      <div class="sec-head">
+        <span class="tag blue-tag">Why FreeDrive?</span>
+        <h2>The Google Drive Experience — Without Google</h2>
+        <p>FreeDrive replicates the clean, intuitive Google Drive interface you already know, but keeps everything on your infrastructure.</p>
+      </div>
+
+      <!-- Advantage Cards -->
+      <div class="adv-grid">
+        <div class="adv-card adv-wide">
+          <div class="adv-icon blue-bg">
+            <svg viewBox="0 0 87.3 78" width="28" height="24"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
+          </div>
+          <h3>Familiar Google Drive Design</h3>
+          <p>If you've used Google Drive, you already know FreeDrive. Same clean layout, same file grid, same intuitive navigation — no learning curve. We built the UI to feel like home.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon green-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Single Binary — Zero Dependencies</h3>
+          <p>One ~18MB Go binary. No Docker, no PHP, no MySQL, no Apache, no config files. Download it, run it, you're live. The entire app — backend, frontend, database — in one file.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon amber-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>100% Data Privacy</h3>
+          <p>Your files never leave your server. No Google scanning your documents, no Dropbox sharing with "partners." You control every byte of your data.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon red-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <h3>Scalable Storage Architecture</h3>
+          <p>FreeDrive writes directly to your server storage. Scale from a single SSD to large arrays without vendor quotas or forced pricing tiers.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon purple-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </div>
+          <h3>File Sharing &amp; Link Sharing</h3>
+          <p>Share files with specific users or generate public links — just like Google Drive's sharing modal. Copy link, send, done.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon cyan-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </div>
+          <h3>Built-in Editors &amp; Viewers</h3>
+          <p>Preview and edit text files, images, PDFs, JSON, audio, and video directly in the browser. Encrypted blobs are decrypted in-browser for authorized sessions.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon teal-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          </div>
+          <h3>Admin Dashboard</h3>
+          <p>Full admin panel at <code>/admin</code> — invite users by email, assign roles and quotas, configure SMTP, review activity logs, manage security controls, and run backups.</p>
+        </div>
+
+        <div class="adv-card">
+          <div class="adv-icon indigo-bg">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </div>
+          <h3>Open Source (MIT)</h3>
+          <p>Full source code on GitHub. Fork it, modify it, contribute to it. No vendor lock-in, no surprise pricing changes, no "we're discontinuing this product" emails.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Product Preview -->
+  <section class="preview-section" id="preview">
+    <div class="container">
+      <div class="sec-head">
+        <span class="tag blue-tag">Visual Proof</span>
+        <h2>See the Actual FreeDrive Interface</h2>
+        <p>Real product screens from the running app, including user workspace and admin settings.</p>
+      </div>
+      <div class="preview-video">
+        <div class="video-inner">
+          <video src="./screenshots/intro.mp4" playsinline controls></video>
+        </div>
+      </div>
+      <div class="preview-gallery anim">
+        <figure class="preview-shot">
+          <div class="preview-top">
+            <div class="preview-dots"><span></span><span></span><span></span></div>
+            <span>User Workspace</span>
+          </div>
+          <img src="./screenshots/user.png" alt="FreeDrive user workspace interface screenshot" />
+        </figure>
+        <figure class="preview-shot">
+          <div class="preview-top">
+            <div class="preview-dots"><span></span><span></span><span></span></div>
+            <span>Admin Panel</span>
+          </div>
+          <img src="./screenshots/admin.png" alt="FreeDrive admin panel interface screenshot" />
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- Security -->
+  <section class="security-section" id="security">
+    <div class="container">
+      <div class="sec-head">
+        <span class="tag green-tag">Security</span>
+        <h2>Built for Privacy-Critical Workloads</h2>
+        <p>Security posture is explicit: encrypted file flows in browser, JWT-based auth, and self-hosted control boundaries.</p>
+      </div>
+      <div class="security-grid">
+        <article class="security-card">
+          <h3>Encrypted File Pipeline</h3>
+          <p>Files are encrypted before storage, and authorized browser sessions decrypt content locally for viewing and editing workflows.</p>
+        </article>
+        <article class="security-card">
+          <h3>JWT + Refresh Token Auth</h3>
+          <p>Session handling uses JWT access tokens with refresh token flow for controlled re-auth and token rotation.</p>
+        </article>
+        <article class="security-card">
+          <h3>Self-Hosted Trust Boundary</h3>
+          <p>Your identity, storage, logs, and policy stay on your infrastructure, reducing third-party data exposure.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Comparison -->
+  <section class="comp-section" id="comparison">
+    <div class="container">
+      <div class="sec-head">
+        <span class="tag green-tag">Comparison</span>
+        <h2>FreeDrive vs. The Competition</h2>
+        <p>How does FreeDrive compare to the cloud storage solutions you're paying for?</p>
+      </div>
+      <div class="table-wrap" id="compare-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th class="hl">
+                <div class="th-fd">
+                  <svg viewBox="0 0 87.3 78" width="14" height="12"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
+                  FreeDrive
+                </div>
+              </th>
+              <th>Google Drive</th>
+              <th>Dropbox</th>
+              <th>Nextcloud</th>
+              <th>OneDrive</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="fn">Price</td><td class="hl"><span class="g">Free Forever</span></td><td class="m">$1.99/mo+</td><td class="m">$11.99/mo+</td><td><span class="g">Free (self-host)</span></td><td class="m">$1.99/mo+</td></tr>
+            <tr><td class="fn">Storage Model</td><td class="hl"><span class="g">Scalable (your disks)</span></td><td class="m">15 GB free</td><td class="m">2 GB free</td><td><span class="g">Scalable (self-host)</span></td><td class="m">5 GB free</td></tr>
+            <tr><td class="fn">Self-Hosted</td><td class="hl"><span class="y">✓</span></td><td><span class="n">✗</span></td><td><span class="n">✗</span></td><td><span class="y">✓</span></td><td><span class="n">✗</span></td></tr>
+            <tr><td class="fn">Open Source</td><td class="hl"><span class="y">✓</span></td><td><span class="n">✗</span></td><td><span class="n">✗</span></td><td><span class="y">✓</span></td><td><span class="n">✗</span></td></tr>
+            <tr><td class="fn">Data Privacy</td><td class="hl"><span class="g">Full Control</span></td><td><span class="r">Google Scans Files</span></td><td class="m">Limited</td><td><span class="g">Full Control</span></td><td><span class="r">Microsoft Access</span></td></tr>
+            <tr><td class="fn">Setup</td><td class="hl"><span class="g">1 Binary</span></td><td class="m">SaaS</td><td class="m">SaaS</td><td><span class="r">Docker+PHP+MySQL</span></td><td class="m">SaaS</td></tr>
+            <tr><td class="fn">Dependencies</td><td class="hl"><span class="g">Zero</span></td><td class="m">—</td><td class="m">—</td><td><span class="r">PHP, MySQL, Apache</span></td><td class="m">—</td></tr>
+            <tr><td class="fn">External DB Required</td><td class="hl"><span class="g">No (Embedded SQLite)</span></td><td class="m">Managed by provider</td><td class="m">Managed by provider</td><td><span class="r">Yes (MySQL/PostgreSQL)</span></td><td class="m">Managed by provider</td></tr>
+            <tr><td class="fn">Typical RAM Footprint</td><td class="hl"><span class="g">&lt; 50MB idle</span></td><td class="m">N/A (SaaS)</td><td class="m">N/A (SaaS)</td><td><span class="r">500MB+ stack dependent</span></td><td class="m">N/A (SaaS)</td></tr>
+            <tr><td class="fn">Binary Size</td><td class="hl"><span class="g">~18 MB</span></td><td class="m">N/A</td><td class="m">N/A</td><td class="m">Multi-service stack</td><td class="m">N/A</td></tr>
+            <tr><td class="fn">Google Drive UI</td><td class="hl"><span class="y">✓ Identical</span></td><td><span class="y">✓ Original</span></td><td><span class="n">✗</span></td><td class="m">Different UI</td><td class="m">Different UI</td></tr>
+            <tr><td class="fn">Built-in Editors</td><td class="hl"><span class="y">✓</span></td><td><span class="y">✓</span></td><td class="m">Limited</td><td><span class="y">✓ (plugins)</span></td><td><span class="y">✓</span></td></tr>
+            <tr><td class="fn">Admin Panel</td><td class="hl"><span class="y">✓</span></td><td class="m">Workspace only</td><td class="m">Business only</td><td><span class="y">✓</span></td><td class="m">Admin center</td></tr>
+            <tr><td class="fn">Tech Stack</td><td class="hl"><span class="g">Go + SQLite</span></td><td class="m">Proprietary</td><td class="m">Proprietary</td><td class="m">PHP + MySQL</td><td class="m">Proprietary</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-scroll-hint" id="table-scroll-hint">Scroll for more →</div>
+      <p class="tn">Resource numbers are practical baseline estimates and can vary by workload and deployment setup.</p>
+    </div>
+  </section>
+
+  <!-- Install -->
+  <section class="inst-section" id="install">
+    <div class="container">
+      <div class="inst-grid">
+        <div class="inst-info">
+          <span class="tag amber-tag">Get Started</span>
+          <h2>Running in 60 Seconds</h2>
+          <p>One script downloads, compiles, and sets up FreeDrive as a background service. Or just grab the binary and double-click. Systemd setup requires sudo/root privileges.</p>
+          <ul class="check-list">
+            <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#34a853" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Single binary — no runtime deps</li>
+            <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#34a853" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Embedded SQLite — no DB setup</li>
+            <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#34a853" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Auto-creates systemd service</li>
+            <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#34a853" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Persists across reboots</li>
+            <li><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#34a853" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Works on any Linux server</li>
+          </ul>
+        </div>
+        <div class="inst-code">
+          <div class="term">
+            <div class="term-bar">
+              <div class="dots"><span class="d r"></span><span class="d y"></span><span class="d g"></span></div>
+              <span class="term-t">Terminal</span>
+              <button class="cp" onclick="copyCmd()" id="cp">Copy</button>
+            </div>
+            <pre><code><span class="c"># Install FreeDrive on your server</span>
+<span class="cmd">curl</span> <span class="arg">-fsSL</span> <span class="url">https://abdullaabdullazade.github.io/freedrive/install.sh</span> \
+  <span class="arg">-o</span> <span class="path">install.sh</span>
+<span class="cmd">chmod</span> <span class="arg">+x</span> <span class="path">install.sh</span>
+<span class="cmd">./install.sh</span>
+
+<span class="c"># HTTPS enables browser-side encryption</span></code></pre>
+          </div>
+          <div class="term term-dev">
+            <div class="term-bar">
+              <div class="dots"><span class="d r"></span><span class="d y"></span><span class="d g"></span></div>
+              <span class="term-t">Update Existing Install</span>
+              <button class="cp" onclick="copyUpdateCmd()" id="cp-update">Copy</button>
+            </div>
+            <pre><code><span class="cmd">curl</span> <span class="arg">-fsSL</span> <span class="url">https://abdullaabdullazade.github.io/freedrive/update.sh</span> \
+  <span class="arg">-o</span> <span class="path">update.sh</span>
+<span class="cmd">chmod</span> <span class="arg">+x</span> <span class="path">update.sh</span>
+<span class="cmd">./update.sh</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-box">
+        <h2>Ready to Self-Host Your Drive Stack?</h2>
+        <p>Take control of your files. No subscriptions, no data mining, no limits.</p>
+        <div class="cta-btns">
+          <a class="btn-main btn-lg" href="https://github.com/abdullaabdullazade/freedrive#readme" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            Read Documentation
+          </a>
+          <a class="btn-outline btn-lg" href="#install">View Installation</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container ft-inner">
+      <div class="ft-brand">
+        <svg viewBox="0 0 87.3 78" width="16" height="14"><path d="M6.6 66.85L3.3 61.35 29.1 17 35.7 17 10 61.35z" fill="#0066DA"/><path d="M43.65 25L29.1 0 58.2 0 72.8 25z" fill="#00AC47"/><path d="M72.8 25L87.3 50 58.2 78 43.7 53z" fill="#EA4335"/><path d="M43.65 25L29.1 50 0 50 14.5 25z" fill="#2684FC"/><path d="M43.65 25L58.2 50 29.1 50z" fill="#00832D"/><path d="M72.8 25L87.3 50 58.2 50z" fill="#FFBA00"/></svg>
+        FreeDrive
+      </div>
+      <span class="ft-copy">Open-source &amp; free forever. Built with Go.</span>
+      <div class="ft-links">
+        <a href="https://github.com/abdullaabdullazade/freedrive" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <a href="https://github.com/abdullaabdullazade/freedrive/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+        <a href="https://github.com/abdullaabdullazade/freedrive/releases" target="_blank" rel="noopener noreferrer">Releases</a>
+      </div>
+    </div>
+  </footer>
+
+  <div class="lightbox hidden" id="preview-lightbox" aria-hidden="true">
+    <button class="lightbox-close" id="lightbox-close" aria-label="Close preview">×</button>
+    <img id="lightbox-image" src="" alt="" />
+  </div>
+
+  <script>
+    document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 40);
+    window.addEventListener('scroll', () => document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 40));
+    function copyCmd() {
+      navigator.clipboard.writeText(`curl -fsSL https://abdullaabdullazade.github.io/freedrive/install.sh -o install.sh\nchmod +x install.sh\n./install.sh`).then(() => {
+        const b = document.getElementById('cp'); b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy', 2000);
+      });
+    }
+    function copyUpdateCmd() {
+      navigator.clipboard.writeText(`curl -fsSL https://abdullaabdullazade.github.io/freedrive/update.sh -o update.sh\nchmod +x update.sh\n./update.sh`).then(() => {
+        const b = document.getElementById('cp-update'); b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy', 2000);
+      });
+    }
+    const revealOnView = new IntersectionObserver(
+      (entries) => entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('vis');
+          revealOnView.unobserve(entry.target);
+        }
+      }),
+      { threshold: .08 }
+    );
+
+    document.querySelectorAll('.adv-card,.sec-head,.preview-gallery,.preview-shot,.security-card,.inst-grid,.cta-box,.why-section').forEach(el => {
+      el.classList.add('anim');
+      revealOnView.observe(el);
+    });
+
+    const lightbox = document.getElementById('preview-lightbox');
+    const lightboxImg = document.getElementById('lightbox-image');
+    const lightboxClose = document.getElementById('lightbox-close');
+
+    document.querySelectorAll('.preview-shot img').forEach((img) => {
+      img.addEventListener('click', () => {
+        lightboxImg.src = img.src;
+        lightboxImg.alt = img.alt;
+        lightbox.classList.remove('hidden');
+        lightbox.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+      });
+    });
+
+    function closeLightbox() {
+      lightbox.classList.add('hidden');
+      lightbox.setAttribute('aria-hidden', 'true');
+      lightboxImg.src = '';
+      document.body.style.overflow = '';
+    }
+
+    lightboxClose.addEventListener('click', closeLightbox);
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox) closeLightbox();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !lightbox.classList.contains('hidden')) closeLightbox();
+    });
+
+    const compareWrap = document.getElementById('compare-table-wrap');
+    const compareHint = document.getElementById('table-scroll-hint');
+    function updateTableHint() {
+      if (!compareWrap || !compareHint) return;
+      const hasOverflow = compareWrap.scrollWidth > compareWrap.clientWidth + 1;
+      const nearEnd = compareWrap.scrollLeft + compareWrap.clientWidth >= compareWrap.scrollWidth - 4;
+      compareHint.classList.toggle('hidden', !hasOverflow || nearEnd);
+    }
+    compareWrap?.addEventListener('scroll', updateTableHint, { passive: true });
+    window.addEventListener('resize', updateTableHint);
+    updateTableHint();
+
+    const sectionIds = ['why', 'preview', 'security', 'comparison', 'install'];
+    const navAnchors = sectionIds
+      .map((id) => document.querySelector(`.nav-links a[href="#${id}"]`))
+      .filter(Boolean);
+
+    function setActiveLink() {
+      const y = window.scrollY + 130;
+      let activeId = sectionIds[0];
+      sectionIds.forEach((id) => {
+        const section = document.getElementById(id);
+        if (section && section.offsetTop <= y) activeId = id;
+      });
+      navAnchors.forEach((a) => {
+        a.classList.toggle('nav-link-active', a.getAttribute('href') === `#${activeId}`);
+      });
+    }
+
+    window.addEventListener('scroll', setActiveLink, { passive: true });
+    setActiveLink();
+
+    const GITHUB_REPO = 'abdullaabdullazade/freedrive';
+    const starCountEl = document.getElementById('github-stars-count');
+    const starLinkEl = document.getElementById('github-stars-link');
+
+    function formatStars(value) {
+      if (!Number.isFinite(value)) return 'Star';
+      if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+      if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
+      return String(value);
+    }
+
+    function setStarCount(value) {
+      if (!starCountEl) return;
+      starCountEl.textContent = value;
+    }
+
+    async function loadBuildStars() {
+      try {
+        const res = await fetch('./stars.json', { cache: 'no-cache' });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const count = Number(data?.count);
+        if (!Number.isFinite(count)) return null;
+        setStarCount(formatStars(count));
+        if (starLinkEl) {
+          starLinkEl.setAttribute('title', `${count} GitHub stars`);
+        }
+        return count;
+      } catch {
+        setStarCount('Star');
+        return null;
+      }
+    }
+
+    async function loadLiveStars() {
+      try {
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}`, {
+          headers: {
+            Accept: 'application/vnd.github+json'
+          }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const count = Number(data?.stargazers_count);
+        if (!Number.isFinite(count)) return;
+        setStarCount(formatStars(count));
+        if (starLinkEl) {
+          starLinkEl.setAttribute('title', `${count} GitHub stars`);
+        }
+      } catch {
+        // Keep default text when network is unavailable.
+      }
+    }
+
+    (async function initStars() {
+      setStarCount('Star');
+      if (starLinkEl) {
+        starLinkEl.setAttribute('title', `GitHub stars for ${GITHUB_REPO}`);
+      }
+      const buildCount = await loadBuildStars();
+      if (!Number.isFinite(buildCount) || buildCount <= 0) {
+        await loadLiveStars();
+      }
+    })();
+  </script>
+</body>
+</html>
